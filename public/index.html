@@ -63,6 +63,8 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .composer textarea{flex:1;resize:none;max-height:140px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;outline:none;line-height:1.4}
 .composer textarea:focus{border-color:var(--accent)}
 .placeholder{margin:auto;color:var(--muted);text-align:center;padding:24px}
+.msg img.media,.msg video.media{display:block;max-width:100%;max-height:320px;border-radius:10px;cursor:pointer}
+.msg audio.media{display:block;width:240px;max-width:100%}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:9;max-width:90vw}
 @media (max-width:760px){
   .app{grid-template-columns:1fr}
@@ -131,6 +133,9 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
       </header>
       <div class="messages" id="messages"></div>
       <form class="composer" id="composer">
+        <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn"></button>
+        <input id="fileInput" type="file" accept="image/*,video/*" hidden>
+        <button type="button" class="icon" id="recBtn" data-i18n="recBtn"></button>
         <textarea id="input" rows="1" data-i18n-ph="typeMessage"></textarea>
         <button class="btn" data-i18n="send"></button>
       </form>
@@ -159,7 +164,10 @@ const I18N = {
     errNoUser: 'This user does not exist', errNetwork: 'No connection. Reconnecting…',
     messageFailed: 'Message not sent', back: 'Back', newMessage: 'New message from {name}', you: 'You',
     readAt: 'read {time}',
-    confirmDeleteMsg: 'Delete this message for both of you?', msgDeleted: 'A message was deleted'
+    confirmDeleteMsg: 'Delete this message for both of you?', msgDeleted: 'A message was deleted',
+    attachBtn: 'File', recBtn: 'Voice', recStop: 'Stop', photoLabel: 'Photo', videoLabel: 'Video', voiceLabel: 'Voice message',
+    fileTooBig: 'File is too large (max 15 MB)', uploadFailed: 'Could not send the file',
+    micDenied: 'Allow microphone access to send voice messages', badFile: 'This file type is not supported'
   },
   uk: {
     tagline: 'Оберіть нікнейм і пароль, щоб почати спілкування',
@@ -177,7 +185,10 @@ const I18N = {
     errNoUser: 'Такого користувача не існує', errNetwork: 'Немає зв’язку. Перепідключення…',
     messageFailed: 'Повідомлення не надіслано', back: 'Назад', newMessage: 'Нове повідомлення від {name}', you: 'Ви',
     readAt: 'прочитано {time}',
-    confirmDeleteMsg: 'Видалити це повідомлення для обох?', msgDeleted: 'Повідомлення видалено'
+    confirmDeleteMsg: 'Видалити це повідомлення для обох?', msgDeleted: 'Повідомлення видалено',
+    attachBtn: 'Файл', recBtn: 'Голос', recStop: 'Стоп', photoLabel: 'Фото', videoLabel: 'Відео', voiceLabel: 'Голосове повідомлення',
+    fileTooBig: 'Файл завеликий (максимум 15 МБ)', uploadFailed: 'Не вдалося надіслати файл',
+    micDenied: 'Дозвольте доступ до мікрофона, щоб надсилати голосові', badFile: 'Цей тип файлу не підтримується'
   },
   ru: {
     tagline: 'Выберите никнейм и пароль, чтобы начать общение',
@@ -195,7 +206,10 @@ const I18N = {
     errNoUser: 'Такого пользователя не существует', errNetwork: 'Нет связи. Переподключение…',
     messageFailed: 'Сообщение не отправлено', back: 'Назад', newMessage: 'Новое сообщение от {name}', you: 'Вы',
     readAt: 'прочитано {time}',
-    confirmDeleteMsg: 'Удалить это сообщение у обоих?', msgDeleted: 'Сообщение удалено'
+    confirmDeleteMsg: 'Удалить это сообщение у обоих?', msgDeleted: 'Сообщение удалено',
+    attachBtn: 'Файл', recBtn: 'Голос', recStop: 'Стоп', photoLabel: 'Фото', videoLabel: 'Видео', voiceLabel: 'Голосовое сообщение',
+    fileTooBig: 'Файл слишком большой (максимум 15 МБ)', uploadFailed: 'Не удалось отправить файл',
+    micDenied: 'Разрешите доступ к микрофону, чтобы отправлять голосовые', badFile: 'Этот тип файла не поддерживается'
   }
 };
 const LOCALES = { en: 'en-US', uk: 'uk-UA', ru: 'ru-RU' };
@@ -353,6 +367,81 @@ function onLogin(res) {
   showApp();
 }
 
+function mediaNode(m) {
+  if (!m.kind || m.kind === 'text') return null;
+  const stop = e => e.stopPropagation();
+  if (m.kind === 'image') return el('img', { src: m.text, alt: '', class: 'media', onclick: e => { stop(e); window.open(m.text, '_blank'); } });
+  if (m.kind === 'video') return el('video', { src: m.text, controls: '', playsinline: '', class: 'media', onclick: stop });
+  if (m.kind === 'audio') return el('audio', { src: m.text, controls: '', class: 'media', onclick: stop });
+  return null;
+}
+
+function previewText(m) {
+  if (m.kind === 'image') return '📷 ' + t('photoLabel');
+  if (m.kind === 'video') return '🎬 ' + t('videoLabel');
+  if (m.kind === 'audio') return '🎤 ' + t('voiceLabel');
+  return m.text;
+}
+
+function readAsDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+async function sendMedia(blob) {
+  if (!active) return;
+  if (!socket?.connected) return toast(t('errNetwork'));
+  if (blob.size > 15 * 1024 * 1024) return toast(t('fileTooBig'));
+  const clean = new Blob([blob], { type: (blob.type || '').split(';')[0] });
+  let data;
+  try { data = await readAsDataURL(clean); }
+  catch { return toast(t('uploadFailed')); }
+  let res;
+  try {
+    res = await (await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: localStorage.getItem('gigi_token'), data })
+    })).json();
+  } catch { return toast(t('uploadFailed')); }
+  if (!res?.ok) {
+    const keys = { too_big: 'fileTooBig', bad_type: 'badFile' };
+    return toast(t(keys[res?.error] || 'uploadFailed'));
+  }
+  socket.emit('message', { to: active, text: res.url, kind: res.kind }, ack => {
+    if (!ack?.ok) toast(t('messageFailed'));
+  });
+}
+
+let recorder = null;
+let recChunks = [];
+
+async function toggleRecord() {
+  if (recorder) { recorder.stop(); return; }
+  if (!active) return;
+  if (!window.MediaRecorder) return toast(t('uploadFailed'));
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { return toast(t('micDenied')); }
+  recChunks = [];
+  recorder = new MediaRecorder(stream);
+  recorder.ondataavailable = e => { if (e.data.size) recChunks.push(e.data); };
+  recorder.onstop = () => {
+    const type = recorder.mimeType || 'audio/webm';
+    stream.getTracks().forEach(tr => tr.stop());
+    recorder = null;
+    $('recBtn').textContent = t('recBtn');
+    const blob = new Blob(recChunks, { type });
+    if (blob.size) sendMedia(blob);
+  };
+  recorder.start();
+  $('recBtn').textContent = t('recStop');
+}
+
 function deleteMessage(m) {
   if (m.from !== me) return;
   if (!confirm(t('confirmDeleteMsg'))) return;
@@ -427,7 +516,7 @@ function chatItem(nick) {
   const av = el('div', { class: 'avatar' }, nick[0].toUpperCase());
   av.style.background = avatarBg(nick);
   if (online.has(nick)) av.append(el('span', { class: 'dot' }));
-  const preview = info.last ? (info.last.from === me ? t('you') + ': ' : '') + info.last.text : '';
+  const preview = info.last ? (info.last.from === me ? t('you') + ': ' : '') + previewText(info.last) : '';
   const btn = el('button', { class: 'item' + (nick === active ? ' active' : ''), onclick: () => openChat(nick) },
     av,
     el('div', { class: 'meta' }, el('div', { class: 'name' }, nick), el('div', { class: 'preview' }, preview)));
@@ -472,7 +561,7 @@ function renderMessages() {
   for (const m of cache.get(active) || []) {
     const own = m.from === me;
     box.append(el('div', { class: 'msg' + (own ? ' own' : ''), onclick: own ? () => deleteMessage(m) : null },
-      m.text,
+      mediaNode(m) ?? m.text,
       el('span', { class: 'time' }, messageMeta(m))));
   }
   box.scrollTop = box.scrollHeight;
@@ -526,6 +615,14 @@ $('search').addEventListener('input', e => {
     renderList();
   }, 250);
 });
+
+$('attachBtn').addEventListener('click', () => $('fileInput').click());
+$('fileInput').addEventListener('change', e => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (f) sendMedia(f);
+});
+$('recBtn').addEventListener('click', toggleRecord);
 
 $('back').addEventListener('click', closeChat);
 
