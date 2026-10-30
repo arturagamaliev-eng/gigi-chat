@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>gigi chat</title>
+<style>
+:root{
+  --bg:#0e1621; --panel:#17212b; --panel2:#1e2c3a; --line:#243447;
+  --out:#2b5278; --in:#182533; --accent:#5ea8e0; --text:#e6edf3; --muted:#7d8b99;
+  --online:#4fd18b; --danger:#e5736b;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-size:15px}
+button,input,textarea{font:inherit;color:inherit}
+[hidden]{display:none!important}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.login{height:100%;display:grid;place-items:center;padding:24px}
+.card{width:min(360px,100%);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px}
+.card h1{margin:0 0 6px;font-size:22px;font-weight:650;letter-spacing:-.01em}
+.card p{margin:0 0 20px;color:var(--muted);line-height:1.5}
+label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+.field{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;outline:none}
+.field:focus{border-color:var(--accent)}
+.btn{background:var(--accent);color:#0b1520;border:0;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.hint{font-size:12px;color:var(--muted);margin-top:8px;min-height:16px}
+.error .hint{color:var(--danger)}
+.lang{display:flex;gap:2px;background:var(--bg);border-radius:8px;padding:2px}
+.lang button{background:none;border:0;padding:4px 7px;border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;font-weight:600}
+.lang button[aria-pressed="true"]{background:var(--panel2);color:var(--text)}
+.icon{background:none;border:0;color:var(--muted);cursor:pointer;padding:6px 8px;border-radius:8px;font-size:13px}
+.icon:hover{color:var(--text);background:var(--panel2)}
+.app{height:100%;display:grid;grid-template-columns:320px 1fr}
+.sidebar{background:var(--panel);display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+.side-top{padding:14px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+.row{display:flex;align-items:center;gap:10px}
+.brand{font-weight:700;letter-spacing:-.01em;flex:1}
+.list{flex:1;overflow-y:auto;padding:6px}
+.item{display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;cursor:pointer;width:100%;background:none;border:0;text-align:left}
+.item:hover{background:var(--panel2)}
+.item.active{background:var(--out)}
+.avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:600;flex:none;position:relative;color:#fff}
+.dot{position:absolute;right:0;bottom:0;width:11px;height:11px;border-radius:50%;background:var(--online);border:2px solid var(--panel)}
+.meta{min-width:0;flex:1}
+.name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.preview{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.badge{background:var(--accent);color:#0b1520;border-radius:999px;font-size:12px;font-weight:700;padding:1px 7px;min-width:20px;text-align:center}
+.empty{color:var(--muted);text-align:center;padding:28px 16px;line-height:1.5}
+.status{font-size:13px;color:var(--muted)}
+.status.on{color:var(--online)}
+.chat{display:flex;flex-direction:column;min-height:0;background:var(--bg)}
+.chat-view{display:flex;flex-direction:column;flex:1;min-height:0}
+.chat-top{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.back{display:none}
+.messages{flex:1;overflow-y:auto;padding:18px clamp(12px,4vw,48px);display:flex;flex-direction:column;gap:6px}
+.msg{max-width:min(520px,80%);padding:8px 12px;border-radius:14px;background:var(--in);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.4;border-bottom-left-radius:4px}
+.msg.own{align-self:flex-end;background:var(--out);border-bottom-left-radius:14px;border-bottom-right-radius:4px}
+.time{display:block;font-size:11px;color:var(--muted);text-align:right;margin-top:3px}
+.msg.own .time{color:#a9c4de}
+.composer{display:flex;gap:10px;align-items:flex-end;padding:12px 16px;background:var(--panel);border-top:1px solid var(--line)}
+.composer textarea{flex:1;resize:none;max-height:140px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;outline:none;line-height:1.4}
+.composer textarea:focus{border-color:var(--accent)}
+.placeholder{margin:auto;color:var(--muted);text-align:center;padding:24px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:9;max-width:90vw}
+@media (max-width:760px){
+  .app{grid-template-columns:1fr}
+  .sidebar{border-right:0}
+  .app.chat-open .sidebar{display:none}
+  .app:not(.chat-open) .chat{display:none}
+  .back{display:inline-flex}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<section id="login" class="login" hidden>
+  <form class="card" id="loginForm" novalidate>
+    <h1>gigi chat</h1>
+    <p data-i18n="tagline"></p>
+    <label for="nick" data-i18n="nickLabel"></label>
+    <input id="nick" class="field" autocomplete="username" maxlength="20">
+    <label for="pass" data-i18n="passLabel" style="margin-top:14px"></label>
+    <input id="pass" class="field" type="password" autocomplete="current-password" maxlength="100">
+    <div class="hint" id="loginHint"></div>
+    <button class="btn" style="width:100%;margin-top:14px" data-i18n="enter"></button>
+    <div class="lang" style="justify-content:center;margin-top:18px">
+      <button type="button" data-set-lang="en">EN</button>
+      <button type="button" data-set-lang="uk">УК</button>
+      <button type="button" data-set-lang="ru">РУ</button>
+    </div>
+  </form>
+</section>
+
+<section id="app" class="app" hidden>
+  <aside class="sidebar">
+    <div class="side-top">
+      <div class="row">
+        <div class="brand">gigi chat</div>
+        <div class="lang">
+          <button type="button" data-set-lang="en">EN</button>
+          <button type="button" data-set-lang="uk">УК</button>
+          <button type="button" data-set-lang="ru">РУ</button>
+        </div>
+      </div>
+      <input id="search" class="field" type="search" autocomplete="off" data-i18n-ph="search">
+    </div>
+    <div class="list" id="list"></div>
+    <div class="side-top" style="border-top:1px solid var(--line);border-bottom:0">
+      <div class="row">
+        <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button class="icon" id="renameBtn" data-i18n="renameBtn"></button>
+        <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)"></button>
+        <button class="icon" id="logout" data-i18n="logout"></button>
+      </div>
+      <div class="hint" id="net"></div>
+    </div>
+  </aside>
+  <main class="chat" id="chat">
+    <div class="placeholder" id="placeholder" data-i18n="selectChat"></div>
+    <div class="chat-view" id="chatView" hidden>
+      <header class="chat-top">
+        <button class="icon back" id="back" data-i18n="back"></button>
+        <div class="avatar" id="hAvatar" style="width:40px;height:40px;font-size:15px"></div>
+        <div class="meta">
+          <div class="name" id="hName"></div>
+          <div class="status" id="hStatus"></div>
+        </div>
+      </header>
+      <div class="messages" id="messages"></div>
+      <form class="composer" id="composer">
+        <textarea id="input" rows="1" data-i18n-ph="typeMessage"></textarea>
+        <button class="btn" data-i18n="send"></button>
+      </form>
+    </div>
+  </main>
+</section>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const I18N = {
+  en: {
+    tagline: 'Pick a nickname and password to start chatting',
+    nickLabel: 'Nickname', nickHint: '3–20 characters: letters, digits or _',
+    passLabel: 'Password', errShortPass: 'Password: at least 4 characters',
+    errTaken: 'This nickname is taken or the password is wrong', errSession: 'Session expired. Please log in again.',
+    accountDeleted: 'Your account was deleted.',
+    enter: 'Enter', logout: 'Log out', search: 'Search by nickname',
+    renameBtn: 'Rename', deleteBtn: 'Delete', renamePrompt: 'New nickname (3–20 characters)',
+    renamed: 'Nickname changed', errNickTaken: 'This nickname is taken',
+    confirmDelete: 'Delete your account and all your messages? This cannot be undone.',
+    noChats: 'No chats yet. Search for a friend by nickname.', noResults: 'No one found',
+    selectChat: 'Select a chat to start messaging', typeMessage: 'Write a message…', send: 'Send',
+    online: 'online', offline: 'offline', errInvalidNick: 'Nickname: 3–20 letters, digits or _',
+    errNoUser: 'This user does not exist', errNetwork: 'No connection. Reconnecting…',
+    messageFailed: 'Message not sent', back: 'Back', newMessage: 'New message from {name}', you: 'You',
+    readAt: 'read {time}',
+    confirmDeleteMsg: 'Delete this message for both of you?', msgDeleted: 'A message was deleted'
+  },
+  uk: {
+    tagline: 'Оберіть нікнейм і пароль, щоб почати спілкування',
+    nickLabel: 'Нікнейм', nickHint: '3–20 символів: літери, цифри або _',
+    passLabel: 'Пароль', errShortPass: 'Пароль: щонайменше 4 символи',
+    errTaken: 'Цей нікнейм уже зайнятий або пароль невірний', errSession: 'Сеанс завершився. Увійдіть знову.',
+    accountDeleted: 'Акаунт видалено.',
+    enter: 'Увійти', logout: 'Вийти', search: 'Пошук за нікнеймом',
+    renameBtn: 'Нікнейм', deleteBtn: 'Видалити', renamePrompt: 'Новий нікнейм (3–20 символів)',
+    renamed: 'Нікнейм змінено', errNickTaken: 'Цей нікнейм уже зайнятий',
+    confirmDelete: 'Видалити акаунт і всі ваші повідомлення? Це не можна скасувати.',
+    noChats: 'Чатів ще немає. Знайдіть друга за нікнеймом.', noResults: 'Нікого не знайдено',
+    selectChat: 'Оберіть чат, щоб почати листування', typeMessage: 'Напишіть повідомлення…', send: 'Надіслати',
+    online: 'в мережі', offline: 'не в мережі', errInvalidNick: 'Нікнейм: 3–20 літер, цифр або _',
+    errNoUser: 'Такого користувача не існує', errNetwork: 'Немає зв’язку. Перепідключення…',
+    messageFailed: 'Повідомлення не надіслано', back: 'Назад', newMessage: 'Нове повідомлення від {name}', you: 'Ви',
+    readAt: 'прочитано {time}',
+    confirmDeleteMsg: 'Видалити це повідомлення для обох?', msgDeleted: 'Повідомлення видалено'
+  },
+  ru: {
+    tagline: 'Выберите никнейм и пароль, чтобы начать общение',
+    nickLabel: 'Никнейм', nickHint: '3–20 символов: буквы, цифры или _',
+    passLabel: 'Пароль', errShortPass: 'Пароль: минимум 4 символа',
+    errTaken: 'Этот никнейм уже занят или пароль неверный', errSession: 'Сеанс истёк. Войдите снова.',
+    accountDeleted: 'Аккаунт удалён.',
+    enter: 'Войти', logout: 'Выйти', search: 'Поиск по никнейму',
+    renameBtn: 'Никнейм', deleteBtn: 'Удалить', renamePrompt: 'Новый никнейм (3–20 символов)',
+    renamed: 'Никнейм изменён', errNickTaken: 'Этот никнейм уже занят',
+    confirmDelete: 'Удалить аккаунт и все ваши сообщения? Это нельзя отменить.',
+    noChats: 'Чатов пока нет. Найдите друга по никнейму.', noResults: 'Никого не найдено',
+    selectChat: 'Выберите чат, чтобы начать переписку', typeMessage: 'Напишите сообщение…', send: 'Отправить',
+    online: 'в сети', offline: 'не в сети', errInvalidNick: 'Никнейм: 3–20 букв, цифр или _',
+    errNoUser: 'Такого пользователя не существует', errNetwork: 'Нет связи. Переподключение…',
+    messageFailed: 'Сообщение не отправлено', back: 'Назад', newMessage: 'Новое сообщение от {name}', you: 'Вы',
+    readAt: 'прочитано {time}',
+    confirmDeleteMsg: 'Удалить это сообщение у обоих?', msgDeleted: 'Сообщение удалено'
+  }
+};
+const LOCALES = { en: 'en-US', uk: 'uk-UA', ru: 'ru-RU' };
+const NICK_RE = /^[\p{L}\p{N}_]{3,20}$/u;
+
+let lang = localStorage.getItem('gigi_lang') || (navigator.language || 'en').slice(0, 2);
+if (!I18N[lang]) lang = 'en';
+
+let me = localStorage.getItem('gigi_nick') || null;
+let socket = null;
+let pending = null;
+let online = new Set();
+let chats = new Map();
+let cache = new Map();
+let results = [];
+let search = '';
+let active = null;
+let netKey = null;
+
+const $ = id => document.getElementById(id);
+const enc = encodeURIComponent;
+const t = (k, vars = {}) => (I18N[lang][k] ?? I18N.en[k] ?? k).replace(/\{(\w+)\}/g, (_, v) => vars[v] ?? '');
+const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % 360; };
+const avatarBg = nick => `hsl(${hue(nick)} 45% 42%)`;
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n[k] = v;
+    else n.setAttribute(k, v);
+  }
+  n.append(...kids);
+  return n;
+};
+const unreadTotal = () => [...chats.values()].reduce((s, c) => s + (c.unread || 0), 0);
+const fmtTime = d => new Intl.DateTimeFormat(LOCALES[lang], { hour: '2-digit', minute: '2-digit' }).format(new Date(d));
+
+function applyI18n() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(n => n.textContent = t(n.dataset.i18n));
+  document.querySelectorAll('[data-i18n-ph]').forEach(n => n.placeholder = t(n.dataset.i18nPh));
+  document.querySelectorAll('[data-set-lang]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.setLang === lang)));
+  const h = $('loginHint'); if (h.dataset.key) h.textContent = t(h.dataset.key);
+  if (netKey) $('net').textContent = t(netKey);
+  document.title = unreadTotal() ? `(${unreadTotal()}) gigi chat` : 'gigi chat';
+  renderList(); renderHeader(); if (active) renderMessages();
+}
+
+function setHint(key, isErr = false) {
+  const h = $('loginHint');
+  h.dataset.key = key; h.textContent = t(key);
+  $('loginForm').classList.toggle('error', isErr);
+}
+
+function toast(msg) {
+  const n = $('toast');
+  n.textContent = msg; n.hidden = false;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => n.hidden = true, 2800);
+}
+
+function showLogin() { $('app').hidden = true; $('login').hidden = false; }
+function showApp() {
+  $('login').hidden = true; $('app').hidden = false;
+  $('meName').textContent = me;
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+  loadChats();
+}
+function forget() {
+  me = null;
+  localStorage.removeItem('gigi_nick');
+  localStorage.removeItem('gigi_token');
+}
+function closeChat() {
+  active = null;
+  $('app').classList.remove('chat-open');
+  $('chatView').hidden = true;
+  $('placeholder').hidden = false;
+  renderList();
+}
+
+function setNet(ok) { netKey = ok ? null : 'errNetwork'; $('net').textContent = ok ? '' : t('errNetwork'); }
+
+function markRead(nick) {
+  if (socket?.connected) socket.emit('read', { with: nick });
+}
+
+// Rename a contact everywhere on this page (chat list, cached messages, open chat).
+function renameLocal(from, to) {
+  if (chats.has(from)) { const c = chats.get(from); chats.delete(from); chats.set(to, c); }
+  if (cache.has(from)) { const list = cache.get(from); cache.delete(from); cache.set(to, list); }
+  for (const list of cache.values()) for (const m of list) {
+    if (m.from === from) m.from = to;
+    if (m.to === from) m.to = to;
+  }
+  for (const c of chats.values()) if (c.last) {
+    if (c.last.from === from) c.last.from = to;
+    if (c.last.to === from) c.last.to = to;
+  }
+  if (active === from) active = to;
+}
+
+function createSocket() {
+  socket = io();
+  socket.on('connect', () => {
+    setNet(true);
+    let payload = null;
+    if (pending) { payload = pending; pending = null; }
+    else if (localStorage.getItem('gigi_token')) payload = { token: localStorage.getItem('gigi_token') };
+    if (payload) socket.emit('login', payload, onLogin);
+  });
+  socket.on('disconnect', () => setNet(false));
+  socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); });
+  socket.on('message', onMessage);
+  socket.on('msg_deleted', onMsgDeleted);
+  socket.on('read', ({ by, at }) => {
+    let changed = false;
+    for (const m of cache.get(by) || []) {
+      if (m.from === me && !m.read_at) { m.read_at = at; changed = true; }
+    }
+    if (changed && active === by) renderMessages();
+  });
+  socket.on('renamed', ({ from, to }) => {
+    if (from === me) {
+      me = to;
+      localStorage.setItem('gigi_nick', me);
+      $('meName').textContent = me;
+    }
+    renameLocal(from, to);
+    renderList(); renderHeader(); if (active) renderMessages();
+  });
+  socket.on('user_deleted', ({ nick }) => {
+    chats.delete(nick); cache.delete(nick);
+    if (active === nick) closeChat();
+    renderList();
+  });
+  socket.on('account_deleted', () => {
+    sessionStorage.setItem('gigi_flash', 'accountDeleted');
+    forget();
+    location.reload();
+  });
+}
+
+function onLogin(res) {
+  if (!res?.ok) {
+    if (res?.error === 'bad_session') { forget(); showLogin(); setHint('errSession', true); return; }
+    showLogin();
+    const keys = { invalid_nick: 'errInvalidNick', invalid_password: 'errShortPass', nick_taken: 'errTaken' };
+    setHint(keys[res?.error] || 'errNetwork', true);
+    return;
+  }
+  me = res.nick;
+  localStorage.setItem('gigi_nick', me);
+  if (res.token) localStorage.setItem('gigi_token', res.token);
+  showApp();
+}
+
+function deleteMessage(m) {
+  if (m.from !== me) return;
+  if (!confirm(t('confirmDeleteMsg'))) return;
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('msg_delete', { id: m.id }, res => { if (!res?.ok) toast(t('messageFailed')); });
+}
+
+function onMsgDeleted({ id, from, to }) {
+  const partner = from === me ? to : from;
+  const list = cache.get(partner);
+  if (list) cache.set(partner, list.filter(m => m.id !== id));
+  const c = chats.get(partner);
+  if (c?.last?.id === id) c.last = null;
+  if (active === partner) renderMessages();
+  renderList();
+  loadChats();
+  if (from !== me) toast(t('msgDeleted'));
+}
+
+function onMessage(m) {
+  const partner = m.from === me ? m.to : m.from;
+  const list = cache.get(partner);
+  if (list && !list.some(x => x.id === m.id)) list.push(m);
+
+  const c = chats.get(partner) || { last: null, unread: 0 };
+  c.last = m;
+  if (m.from !== me && partner !== active) {
+    c.unread = (c.unread || 0) + 1;
+    toast(t('newMessage', { name: partner }));
+    if (document.hidden && 'Notification' in window && Notification.permission === 'granted')
+      new Notification('gigi chat', { body: t('newMessage', { name: partner }) });
+  }
+  chats.set(partner, c);
+
+  if (partner === active) {
+    c.unread = 0;
+    renderMessages();
+    if (m.from !== me) markRead(partner);
+  }
+  renderList();
+  document.title = unreadTotal() ? `(${unreadTotal()}) gigi chat` : 'gigi chat';
+}
+
+async function loadChats() {
+  try {
+    const rows = await (await fetch(`/api/chats?me=${enc(me)}`)).json();
+    for (const r of rows) chats.set(r.nick, { last: r.last, unread: chats.get(r.nick)?.unread || 0 });
+    renderList();
+  } catch {}
+}
+
+async function openChat(nick) {
+  active = nick;
+  if (!chats.has(nick)) chats.set(nick, { last: null, unread: 0 });
+  chats.get(nick).unread = 0;
+  if (search) { search = ''; results = []; $('search').value = ''; }
+  $('placeholder').hidden = true;
+  $('chatView').hidden = false;
+  $('app').classList.add('chat-open');
+  renderHeader(); renderList(); renderMessages();
+
+  const rows = await (await fetch(`/api/history?me=${enc(me)}&with=${enc(nick)}`)).json();
+  const existing = cache.get(nick) || [];
+  const ids = new Set(rows.map(r => r.id));
+  cache.set(nick, [...rows, ...existing.filter(m => !ids.has(m.id))]);
+  if (active === nick) { renderMessages(); markRead(nick); }
+  $('input').focus();
+}
+
+function chatItem(nick) {
+  const info = chats.get(nick) || {};
+  const av = el('div', { class: 'avatar' }, nick[0].toUpperCase());
+  av.style.background = avatarBg(nick);
+  if (online.has(nick)) av.append(el('span', { class: 'dot' }));
+  const preview = info.last ? (info.last.from === me ? t('you') + ': ' : '') + info.last.text : '';
+  const btn = el('button', { class: 'item' + (nick === active ? ' active' : ''), onclick: () => openChat(nick) },
+    av,
+    el('div', { class: 'meta' }, el('div', { class: 'name' }, nick), el('div', { class: 'preview' }, preview)));
+  if (info.unread) btn.append(el('span', { class: 'badge' }, String(info.unread)));
+  return btn;
+}
+
+function renderList() {
+  const list = $('list');
+  list.replaceChildren();
+  const items = search
+    ? results
+    : [...chats.keys()].sort((a, b) => (chats.get(b).last?.created_at || 0) - (chats.get(a).last?.created_at || 0));
+  if (!items.length) {
+    list.append(el('div', { class: 'empty' }, t(search ? 'noResults' : 'noChats')));
+    return;
+  }
+  for (const nick of items) list.append(chatItem(nick));
+}
+
+function renderHeader() {
+  if (!active) return;
+  const on = online.has(active);
+  $('hName').textContent = active;
+  const av = $('hAvatar');
+  av.textContent = active[0].toUpperCase();
+  av.style.background = avatarBg(active);
+  const st = $('hStatus');
+  st.textContent = t(on ? 'online' : 'offline');
+  st.classList.toggle('on', on);
+}
+
+function messageMeta(m) {
+  if (m.from !== me) return fmtTime(m.created_at);
+  if (m.read_at) return `${fmtTime(m.created_at)} · ✓✓ ${t('readAt', { time: fmtTime(m.read_at) })}`;
+  return `${fmtTime(m.created_at)} · ✓`;
+}
+
+function renderMessages() {
+  const box = $('messages');
+  box.replaceChildren();
+  for (const m of cache.get(active) || []) {
+    const own = m.from === me;
+    box.append(el('div', { class: 'msg' + (own ? ' own' : ''), onclick: own ? () => deleteMessage(m) : null },
+      m.text,
+      el('span', { class: 'time' }, messageMeta(m))));
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+$('loginForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const nick = $('nick').value.trim();
+  const password = $('pass').value;
+  if (!NICK_RE.test(nick)) return setHint('errInvalidNick', true);
+  if (password.length < 4) return setHint('errShortPass', true);
+  setHint('nickHint');
+  const payload = { nick, password };
+  $('pass').value = '';
+  if (socket?.connected) socket.emit('login', payload, onLogin);
+  else if (!socket) { pending = payload; createSocket(); }
+  else pending = payload;
+});
+
+$('composer').addEventListener('submit', e => {
+  e.preventDefault();
+  const input = $('input');
+  const text = input.value.trim();
+  if (!text || !active) return;
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('message', { to: active, text }, res => {
+    if (!res?.ok) toast(t(res?.error === 'no_user' ? 'errNoUser' : 'messageFailed'));
+  });
+  input.value = ''; input.style.height = 'auto';
+  input.focus();
+});
+
+$('input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('composer').requestSubmit(); }
+});
+$('input').addEventListener('input', e => {
+  e.target.style.height = 'auto';
+  e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
+});
+
+let searchTimer;
+$('search').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    search = e.target.value.trim();
+    if (!search) { results = []; return renderList(); }
+    try {
+      const names = await (await fetch(`/api/users?q=${enc(search)}`)).json();
+      results = names.filter(n => n !== me);
+    } catch { results = []; }
+    renderList();
+  }, 250);
+});
+
+$('back').addEventListener('click', closeChat);
+
+$('renameBtn').addEventListener('click', () => {
+  const input = prompt(t('renamePrompt'), me);
+  if (input === null) return;
+  const nick = input.trim();
+  if (!NICK_RE.test(nick)) return toast(t('errInvalidNick'));
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('rename', { nick }, res => {
+    if (!res?.ok) return toast(t(res?.error === 'nick_taken' ? 'errNickTaken' : 'errInvalidNick'));
+    toast(t('renamed'));
+  });
+});
+
+$('deleteBtn').addEventListener('click', () => {
+  if (!confirm(t('confirmDelete'))) return;
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('delete', {}, res => { if (!res?.ok) toast(t('messageFailed')); });
+});
+
+$('logout').addEventListener('click', () => {
+  forget();
+  location.reload();
+});
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-set-lang]');
+  if (!b) return;
+  lang = b.dataset.setLang;
+  localStorage.setItem('gigi_lang', lang);
+  applyI18n();
+});
+
+applyI18n();
+setHint('nickHint');
+if (localStorage.getItem('gigi_token') && me) {
+  showApp();
+  createSocket();
+} else {
+  forget();
+  showLogin();
+  const flash = sessionStorage.getItem('gigi_flash');
+  if (flash) { sessionStorage.removeItem('gigi_flash'); setHint(flash); }
+}
+</script>
+</body>
+</html>
