@@ -25,6 +25,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .field:focus{border-color:var(--accent)}
 .btn{background:var(--accent);color:#0b1520;border:0;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer}
 .btn:hover{filter:brightness(1.08)}
+.btn.danger{background:var(--danger);color:#fff}
 .hint{font-size:12px;color:var(--muted);margin-top:8px;min-height:16px}
 .error .hint{color:var(--danger)}
 .lang{display:flex;gap:2px;background:var(--bg);border-radius:8px;padding:2px}
@@ -35,7 +36,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .app{height:100%;display:grid;grid-template-columns:320px 1fr}
 .sidebar{background:var(--panel);display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
 .side-top{padding:14px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
-.row{display:flex;align-items:center;gap:10px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .brand{font-weight:700;letter-spacing:-.01em;flex:1}
 .list{flex:1;overflow-y:auto;padding:6px}
 .item{display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;cursor:pointer;width:100%;background:none;border:0;text-align:left}
@@ -53,6 +54,8 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .chat{display:flex;flex-direction:column;min-height:0;background:var(--bg)}
 .chat-view{display:flex;flex-direction:column;flex:1;min-height:0}
 .chat-top{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.chat-top .meta{min-width:0}
+.call-btns{margin-left:auto;display:flex;gap:4px}
 .back{display:none}
 .messages{flex:1;overflow-y:auto;padding:18px clamp(12px,4vw,48px);display:flex;flex-direction:column;gap:6px}
 .msg{max-width:min(520px,80%);padding:8px 12px;border-radius:14px;background:var(--in);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.4;border-bottom-left-radius:4px}
@@ -63,7 +66,13 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .composer textarea{flex:1;resize:none;max-height:140px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;outline:none;line-height:1.4}
 .composer textarea:focus{border-color:var(--accent)}
 .placeholder{margin:auto;color:var(--muted);text-align:center;padding:24px}
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:9;max-width:90vw}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:30;max-width:90vw}
+.call{position:fixed;inset:0;background:#0b121a;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px}
+.remote{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+.local{position:absolute;right:16px;top:calc(16px + env(safe-area-inset-top,0px));width:120px;border-radius:12px;background:#000;z-index:1;transform:scaleX(-1)}
+.call-info{position:relative;z-index:1;text-align:center;background:rgba(14,22,33,.7);padding:12px 18px;border-radius:12px}
+.call-info .name{font-size:18px;white-space:normal}
+.call-actions{position:relative;z-index:1;display:flex;gap:12px;margin-top:auto;margin-bottom:calc(40px + env(safe-area-inset-bottom,0px));flex-wrap:wrap;justify-content:center}
 @media (max-width:760px){
   .app{grid-template-columns:1fr}
   .sidebar{border-right:0}
@@ -110,7 +119,8 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
     <div class="list" id="list"></div>
     <div class="side-top" style="border-top:1px solid var(--line);border-bottom:0">
       <div class="row">
-        <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <span class="status" id="meName" style="flex:1;min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button class="icon" id="pushBtn" data-i18n="pushBtn"></button>
         <button class="icon" id="renameBtn" data-i18n="renameBtn"></button>
         <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)"></button>
         <button class="icon" id="logout" data-i18n="logout"></button>
@@ -128,6 +138,10 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
           <div class="name" id="hName"></div>
           <div class="status" id="hStatus"></div>
         </div>
+        <div class="call-btns">
+          <button class="icon" id="callBtn" data-i18n="callBtn"></button>
+          <button class="icon" id="videoBtn" data-i18n="videoBtn"></button>
+        </div>
       </header>
       <div class="messages" id="messages"></div>
       <form class="composer" id="composer">
@@ -137,6 +151,20 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
     </div>
   </main>
 </section>
+
+<div id="call" class="call" hidden>
+  <video id="remote" class="remote" autoplay playsinline></video>
+  <video id="local" class="local" autoplay playsinline muted></video>
+  <div class="call-info">
+    <div id="callName" class="name"></div>
+    <div id="callStatus" class="status"></div>
+  </div>
+  <div class="call-actions">
+    <button id="acceptBtn" class="btn" data-i18n="accept" hidden></button>
+    <button id="muteBtn" class="icon" data-i18n="mute"></button>
+    <button id="endBtn" class="btn danger" data-i18n="endCall"></button>
+  </div>
+</div>
 
 <div id="toast" class="toast" role="status" hidden></div>
 
@@ -150,15 +178,22 @@ const I18N = {
     errTaken: 'This nickname is taken or the password is wrong', errSession: 'Session expired. Please log in again.',
     accountDeleted: 'Your account was deleted.',
     enter: 'Enter', logout: 'Log out', search: 'Search by nickname',
-    renameBtn: 'Rename', deleteBtn: 'Delete', renamePrompt: 'New nickname (3–20 characters)',
-    renamed: 'Nickname changed', errNickTaken: 'This nickname is taken',
+    renameBtn: 'Rename', deleteBtn: 'Delete', pushBtn: 'Alerts', renamePrompt: 'New nickname (3–20 characters)',
+    renamed: 'Nickname changed', errNickTaken: 'This nickname is taken', errInCall: 'Finish the current call first',
     confirmDelete: 'Delete your account and all your messages? This cannot be undone.',
     noChats: 'No chats yet. Search for a friend by nickname.', noResults: 'No one found',
     selectChat: 'Select a chat to start messaging', typeMessage: 'Write a message…', send: 'Send',
     online: 'online', offline: 'offline', errInvalidNick: 'Nickname: 3–20 letters, digits or _',
     errNoUser: 'This user does not exist', errNetwork: 'No connection. Reconnecting…',
     messageFailed: 'Message not sent', back: 'Back', newMessage: 'New message from {name}', you: 'You',
-    readAt: 'read {time}'
+    readAt: 'read {time}',
+    callBtn: 'Call', videoBtn: 'Video', calling: 'Calling…', connecting: 'Connecting…', connected: 'In call',
+    incoming: '{kind} from {name}', kindAudio: 'Voice call', kindVideo: 'Video call',
+    accept: 'Accept', decline: 'Decline', endCall: 'End', mute: 'Mute', unmute: 'Unmute',
+    callEnded: 'Call ended', callDeclined: 'Call declined', callMissed: 'No answer',
+    callBusy: 'User is busy', callUnavailable: 'Call is not available', callFailed: 'Could not connect',
+    noMedia: 'Allow camera and microphone to make calls',
+    pushOn: 'Alerts turned on', pushDenied: 'Notifications are blocked in settings', pushUnsupported: 'This browser does not support alerts'
   },
   uk: {
     tagline: 'Оберіть нікнейм і пароль, щоб почати спілкування',
@@ -167,15 +202,22 @@ const I18N = {
     errTaken: 'Цей нікнейм уже зайнятий або пароль невірний', errSession: 'Сеанс завершився. Увійдіть знову.',
     accountDeleted: 'Акаунт видалено.',
     enter: 'Увійти', logout: 'Вийти', search: 'Пошук за нікнеймом',
-    renameBtn: 'Нікнейм', deleteBtn: 'Видалити', renamePrompt: 'Новий нікнейм (3–20 символів)',
-    renamed: 'Нікнейм змінено', errNickTaken: 'Цей нікнейм уже зайнятий',
+    renameBtn: 'Нікнейм', deleteBtn: 'Видалити', pushBtn: 'Сповіщ.', renamePrompt: 'Новий нікнейм (3–20 символів)',
+    renamed: 'Нікнейм змінено', errNickTaken: 'Цей нікнейм уже зайнятий', errInCall: 'Спочатку завершіть дзвінок',
     confirmDelete: 'Видалити акаунт і всі ваші повідомлення? Це не можна скасувати.',
     noChats: 'Чатів ще немає. Знайдіть друга за нікнеймом.', noResults: 'Нікого не знайдено',
     selectChat: 'Оберіть чат, щоб почати листування', typeMessage: 'Напишіть повідомлення…', send: 'Надіслати',
     online: 'в мережі', offline: 'не в мережі', errInvalidNick: 'Нікнейм: 3–20 літер, цифр або _',
     errNoUser: 'Такого користувача не існує', errNetwork: 'Немає зв’язку. Перепідключення…',
     messageFailed: 'Повідомлення не надіслано', back: 'Назад', newMessage: 'Нове повідомлення від {name}', you: 'Ви',
-    readAt: 'прочитано {time}'
+    readAt: 'прочитано {time}',
+    callBtn: 'Дзвінок', videoBtn: 'Відео', calling: 'Дзвінок…', connecting: 'Підключення…', connected: 'У розмові',
+    incoming: '{kind} від {name}', kindAudio: 'Голосовий дзвінок', kindVideo: 'Відеодзвінок',
+    accept: 'Відповісти', decline: 'Відхилити', endCall: 'Завершити', mute: 'Вимкнути мікрофон', unmute: 'Увімкнути мікрофон',
+    callEnded: 'Дзвінок завершено', callDeclined: 'Дзвінок відхилено', callMissed: 'Немає відповіді',
+    callBusy: 'Користувач зайнятий', callUnavailable: 'Дзвінок недоступний', callFailed: 'Не вдалося з’єднатися',
+    noMedia: 'Дозвольте доступ до камери і мікрофона, щоб дзвонити',
+    pushOn: 'Сповіщення увімкнено', pushDenied: 'Сповіщення заблоковано в налаштуваннях', pushUnsupported: 'Цей браузер не підтримує сповіщення'
   },
   ru: {
     tagline: 'Выберите никнейм и пароль, чтобы начать общение',
@@ -184,19 +226,27 @@ const I18N = {
     errTaken: 'Этот никнейм уже занят или пароль неверный', errSession: 'Сеанс истёк. Войдите снова.',
     accountDeleted: 'Аккаунт удалён.',
     enter: 'Войти', logout: 'Выйти', search: 'Поиск по никнейму',
-    renameBtn: 'Никнейм', deleteBtn: 'Удалить', renamePrompt: 'Новый никнейм (3–20 символов)',
-    renamed: 'Никнейм изменён', errNickTaken: 'Этот никнейм уже занят',
+    renameBtn: 'Никнейм', deleteBtn: 'Удалить', pushBtn: 'Уведомл.', renamePrompt: 'Новый никнейм (3–20 символов)',
+    renamed: 'Никнейм изменён', errNickTaken: 'Этот никнейм уже занят', errInCall: 'Сначала завершите звонок',
     confirmDelete: 'Удалить аккаунт и все ваши сообщения? Это нельзя отменить.',
     noChats: 'Чатов пока нет. Найдите друга по никнейму.', noResults: 'Никого не найдено',
     selectChat: 'Выберите чат, чтобы начать переписку', typeMessage: 'Напишите сообщение…', send: 'Отправить',
     online: 'в сети', offline: 'не в сети', errInvalidNick: 'Никнейм: 3–20 букв, цифр или _',
     errNoUser: 'Такого пользователя не существует', errNetwork: 'Нет связи. Переподключение…',
     messageFailed: 'Сообщение не отправлено', back: 'Назад', newMessage: 'Новое сообщение от {name}', you: 'Вы',
-    readAt: 'прочитано {time}'
+    readAt: 'прочитано {time}',
+    callBtn: 'Звонок', videoBtn: 'Видео', calling: 'Вызов…', connecting: 'Подключение…', connected: 'В разговоре',
+    incoming: '{kind} от {name}', kindAudio: 'Голосовой звонок', kindVideo: 'Видеозвонок',
+    accept: 'Ответить', decline: 'Отклонить', endCall: 'Завершить', mute: 'Выключить микрофон', unmute: 'Включить микрофон',
+    callEnded: 'Звонок завершён', callDeclined: 'Звонок отклонён', callMissed: 'Нет ответа',
+    callBusy: 'Пользователь занят', callUnavailable: 'Звонок недоступен', callFailed: 'Не удалось соединиться',
+    noMedia: 'Разрешите доступ к камере и микрофону, чтобы звонить',
+    pushOn: 'Уведомления включены', pushDenied: 'Уведомления заблокированы в настройках', pushUnsupported: 'Этот браузер не поддерживает уведомления'
   }
 };
 const LOCALES = { en: 'en-US', uk: 'uk-UA', ru: 'ru-RU' };
 const NICK_RE = /^[\p{L}\p{N}_]{3,20}$/u;
+const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
 let lang = localStorage.getItem('gigi_lang') || (navigator.language || 'en').slice(0, 2);
 if (!I18N[lang]) lang = 'en';
@@ -211,6 +261,7 @@ let results = [];
 let search = '';
 let active = null;
 let netKey = null;
+let call = null; // { peer, kind, role, pc, stream, pending, active }
 
 const $ = id => document.getElementById(id);
 const enc = encodeURIComponent;
@@ -258,8 +309,8 @@ function showLogin() { $('app').hidden = true; $('login').hidden = false; }
 function showApp() {
   $('login').hidden = true; $('app').hidden = false;
   $('meName').textContent = me;
-  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
   loadChats();
+  if ('Notification' in window && Notification.permission === 'granted') enablePush(true);
 }
 function forget() {
   me = null;
@@ -280,7 +331,6 @@ function markRead(nick) {
   if (socket?.connected) socket.emit('read', { with: nick });
 }
 
-// Rename a contact everywhere on this page (chat list, cached messages, open chat).
 function renameLocal(from, to) {
   if (chats.has(from)) { const c = chats.get(from); chats.delete(from); chats.set(to, c); }
   if (cache.has(from)) { const list = cache.get(from); cache.delete(from); cache.set(to, list); }
@@ -295,6 +345,171 @@ function renameLocal(from, to) {
   if (active === from) active = to;
 }
 
+function b64ToBytes(b64) {
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+
+async function enablePush(silent = false) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    if (!silent) toast(t('pushUnsupported'));
+    return;
+  }
+  if (Notification.permission !== 'granted') {
+    if (silent) return;
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return toast(t('pushDenied'));
+  }
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      const { key } = await (await fetch('/api/push/key')).json();
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(key) });
+    }
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: localStorage.getItem('gigi_token'), subscription: sub.toJSON(), lang })
+    });
+    if (!silent) toast(t('pushOn'));
+  } catch (e) {
+    if (!silent) toast(t('pushUnsupported'));
+  }
+}
+
+/* ---------- calls ---------- */
+function showCall(name, status) {
+  $('call').hidden = false;
+  $('callName').textContent = name;
+  $('callStatus').textContent = status;
+}
+
+function setCallStatus(text) { $('callStatus').textContent = text; }
+
+function finishCall(msg) {
+  if (call) {
+    call.stream?.getTracks().forEach(tr => tr.stop());
+    call.pc?.close();
+  }
+  call = null;
+  $('remote').srcObject = null;
+  $('local').srcObject = null;
+  $('call').hidden = true;
+  $('acceptBtn').hidden = true;
+  $('muteBtn').textContent = t('mute');
+  if (msg) toast(msg);
+}
+
+function makePC() {
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+  pc.onicecandidate = e => { if (e.candidate) socket.emit('call:signal', { data: { candidate: e.candidate } }); };
+  pc.ontrack = e => {
+    $('remote').srcObject = e.streams[0];
+    setCallStatus(t('connected'));
+  };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'failed') {
+      socket.emit('call:end');
+      finishCall(t('callFailed'));
+    }
+  };
+  return pc;
+}
+
+function getMedia(kind) {
+  return navigator.mediaDevices.getUserMedia({ audio: true, video: kind === 'video' });
+}
+
+async function startCall(kind) {
+  if (!active) return;
+  if (call) return toast(t('errInCall'));
+  if (!socket?.connected) return toast(t('errNetwork'));
+  let stream;
+  try { stream = await getMedia(kind); }
+  catch { return toast(t('noMedia')); }
+  call = { peer: active, kind, role: 'caller', pc: null, stream, pending: [], active: false };
+  call.pc = makePC();
+  stream.getTracks().forEach(tr => call.pc.addTrack(tr, stream));
+  $('local').srcObject = stream;
+  $('local').hidden = kind !== 'video';
+  showCall(active, t('calling'));
+  socket.emit('call:invite', { to: active, kind }, res => {
+    if (res?.ok) return;
+    const key = res?.error === 'busy' ? 'callBusy' : 'callUnavailable';
+    finishCall(t(key));
+  });
+}
+
+async function acceptCall() {
+  if (!call || call.role !== 'callee') return;
+  let stream;
+  try { stream = await getMedia(call.kind); }
+  catch {
+    socket.emit('call:decline');
+    finishCall(t('noMedia'));
+    return;
+  }
+  call.stream = stream;
+  call.pc = makePC();
+  stream.getTracks().forEach(tr => call.pc.addTrack(tr, stream));
+  $('local').srcObject = stream;
+  $('local').hidden = call.kind !== 'video';
+  $('acceptBtn').hidden = true;
+  setCallStatus(t('connecting'));
+  socket.emit('call:accept');
+}
+
+function setupCallSocket() {
+  socket.on('call:incoming', ({ from, kind }) => {
+    if (call) { socket.emit('call:decline'); return; }
+    call = { peer: from, kind, role: 'callee', pc: null, stream: null, pending: [], active: false };
+    showCall(from, t('incoming', { kind: t(kind === 'video' ? 'kindVideo' : 'kindAudio'), name: from }));
+    $('acceptBtn').hidden = false;
+  });
+
+  socket.on('call:accepted', async () => {
+    if (!call || call.role !== 'caller' || !call.pc) return;
+    call.active = true;
+    setCallStatus(t('connecting'));
+    try {
+      const offer = await call.pc.createOffer();
+      await call.pc.setLocalDescription(offer);
+      socket.emit('call:signal', { data: { sdp: call.pc.localDescription } });
+    } catch {
+      socket.emit('call:end');
+      finishCall(t('callFailed'));
+    }
+  });
+
+  socket.on('call:signal', async ({ data }) => {
+    if (!call || !call.pc) return;
+    try {
+      if (data.sdp) {
+        await call.pc.setRemoteDescription(data.sdp);
+        if (data.sdp.type === 'offer') {
+          await call.pc.setLocalDescription(await call.pc.createAnswer());
+          socket.emit('call:signal', { data: { sdp: call.pc.localDescription } });
+        }
+        for (const c of call.pending) await call.pc.addIceCandidate(c);
+        call.pending = [];
+      } else if (data.candidate) {
+        if (call.pc.remoteDescription) await call.pc.addIceCandidate(data.candidate);
+        else call.pending.push(data.candidate);
+      }
+    } catch (e) { console.warn('signal', e); }
+  });
+
+  socket.on('call:ended', ({ reason }) => {
+    if (!call) return;
+    const keys = { declined: 'callDeclined', missed: 'callMissed', ended: 'callEnded', disconnected: 'callEnded' };
+    finishCall(t(keys[reason] || 'callEnded'));
+  });
+}
+
+/* ---------- socket ---------- */
 function createSocket() {
   socket = io();
   socket.on('connect', () => {
@@ -333,6 +548,7 @@ function createSocket() {
     forget();
     location.reload();
   });
+  setupCallSocket();
 }
 
 function onLogin(res) {
@@ -359,8 +575,6 @@ function onMessage(m) {
   if (m.from !== me && partner !== active) {
     c.unread = (c.unread || 0) + 1;
     toast(t('newMessage', { name: partner }));
-    if (document.hidden && 'Notification' in window && Notification.permission === 'granted')
-      new Notification('gigi chat', { body: t('newMessage', { name: partner }) });
   }
   chats.set(partner, c);
 
@@ -454,6 +668,8 @@ function renderMessages() {
   box.scrollTop = box.scrollHeight;
 }
 
+function b64Check() {}
+
 $('loginForm').addEventListener('submit', e => {
   e.preventDefault();
   const nick = $('nick').value.trim();
@@ -505,6 +721,28 @@ $('search').addEventListener('input', e => {
 
 $('back').addEventListener('click', closeChat);
 
+$('callBtn').addEventListener('click', () => startCall('audio'));
+$('videoBtn').addEventListener('click', () => startCall('video'));
+
+$('acceptBtn').addEventListener('click', acceptCall);
+
+$('muteBtn').addEventListener('click', () => {
+  if (!call?.stream) return;
+  const tracks = call.stream.getAudioTracks();
+  const nowOn = tracks.some(tr => tr.enabled);
+  tracks.forEach(tr => tr.enabled = !nowOn);
+  $('muteBtn').textContent = t(nowOn ? 'unmute' : 'mute');
+});
+
+$('endBtn').addEventListener('click', () => {
+  if (!call) return;
+  if (call.role === 'callee' && !call.active) socket.emit('call:decline');
+  else socket.emit('call:end');
+  finishCall(t('callEnded'));
+});
+
+$('pushBtn').addEventListener('click', () => enablePush(false));
+
 $('renameBtn').addEventListener('click', () => {
   const input = prompt(t('renamePrompt'), me);
   if (input === null) return;
@@ -512,8 +750,9 @@ $('renameBtn').addEventListener('click', () => {
   if (!NICK_RE.test(nick)) return toast(t('errInvalidNick'));
   if (!socket?.connected) return toast(t('errNetwork'));
   socket.emit('rename', { nick }, res => {
-    if (!res?.ok) return toast(t(res?.error === 'nick_taken' ? 'errNickTaken' : 'errInvalidNick'));
-    toast(t('renamed'));
+    if (res?.ok) return toast(t('renamed'));
+    const keys = { nick_taken: 'errNickTaken', in_call: 'errInCall' };
+    toast(t(keys[res?.error] || 'errInvalidNick'));
   });
 });
 
@@ -523,7 +762,19 @@ $('deleteBtn').addEventListener('click', () => {
   socket.emit('delete', {}, res => { if (!res?.ok) toast(t('messageFailed')); });
 });
 
-$('logout').addEventListener('click', () => {
+$('logout').addEventListener('click', async () => {
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
+    if (sub) {
+      await fetch('/api/push/unsubscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+        keepalive: true
+      });
+    }
+  } catch {}
   forget();
   location.reload();
 });
@@ -538,6 +789,7 @@ document.addEventListener('click', e => {
 
 applyI18n();
 setHint('nickHint');
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 if (localStorage.getItem('gigi_token') && me) {
   showApp();
   createSocket();
