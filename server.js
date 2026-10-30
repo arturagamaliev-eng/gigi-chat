@@ -1,5 +1,6 @@
 const path = require('path');
 const http = require('http');
+const crypto = require('crypto');
 const express = require('express');
 const { Server } = require('socket.io');
 const Database = require('better-sqlite3');
@@ -7,12 +8,21 @@ const Database = require('better-sqlite3');
 const PORT = process.env.PORT || 3000;
 const MAX_TEXT = 2000;
 const NICK_RE = /^[\p{L}\p{N}_]{3,20}$/u;
+const PASS_MIN = 4;
+const PASS_MAX = 100;
 
 const db = new Database(process.env.DB_FILE || path.join(__dirname, 'gigi.db'));
 db.pragma('journal_mode = WAL');
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     nickname TEXT PRIMARY KEY,
+    pass_salt TEXT NOT NULL,
+    pass_hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    nickname TEXT NOT NULL,
     created_at INTEGER NOT NULL
   );
   CREATE TABLE IF NOT EXISTS messages (
@@ -27,8 +37,10 @@ db.exec(`
 `);
 
 const q = {
-  insertUser: db.prepare('INSERT OR IGNORE INTO users (nickname, created_at) VALUES (?, ?)'),
-  getUser: db.prepare('SELECT nickname FROM users WHERE nickname = ? COLLATE NOCASE'),
+  getUser: db.prepare('SELECT nickname, pass_salt, pass_hash FROM users WHERE nickname = ? COLLATE NOCASE'),
+  insertUser: db.prepare('INSERT INTO users (nickname, pass_salt, pass_hash, created_at) VALUES (?, ?, ?, ?)'),
+  insertSession: db.prepare('INSERT INTO sessions (token, nickname, created_at) VALUES (?, ?, ?)'),
+  getSession: db.prepare('SELECT nickname FROM sessions WHERE token = ?'),
   searchUsers: db.prepare('SELECT nickname FROM users WHERE nickname LIKE ? ORDER BY nickname LIMIT 20'),
   insertMsg: db.prepare('INSERT INTO messages (from_nick, to_nick, text, created_at) VALUES (?, ?, ?, ?)'),
   lastMsg: db.prepare('SELECT * FROM messages WHERE id = ?'),
@@ -45,6 +57,42 @@ const q = {
 };
 
 const toMsg = r => ({ id: r.id, from: r.from_nick, to: r.to_nick, text: r.text, created_at: r.created_at });
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  return { salt, hash: crypto.scryptSync(password, salt, 64).toString('hex') };
+}
+
+function checkPassword(password, salt, hash) {
+  const a = Buffer.from(crypto.scryptSync(password, salt, 64).toString('hex'), 'hex');
+  const b = Buffer.from(hash, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function createSession(nick) {
+  const token = crypto.randomBytes(24).toString('hex');
+  q.insertSession.run(token, nick, Date.now());
+  return { ok: true, nick, token };
+}
+
+function authenticate(payload) {
+  if (payload?.token) {
+    const s = q.getSession.get(String(payload.token));
+    return s ? { ok: true, nick: s.nickname } : { ok: false, error: 'bad_session' };
+  }
+  const nick = typeof payload?.nick === 'string' ? payload.nick.trim() : '';
+  const password = typeof payload?.password === 'string' ? payload.password : '';
+  if (!NICK_RE.test(nick)) return { ok: false, error: 'invalid_nick' };
+  if (password.length < PASS_MIN || password.length > PASS_MAX) return { ok: false, error: 'invalid_password' };
+
+  const user = q.getUser.get(nick);
+  if (!user) {
+    const { salt, hash } = hashPassword(password);
+    q.insertUser.run(nick, salt, hash, Date.now());
+    return createSession(nick);
+  }
+  if (!checkPassword(password, user.pass_salt, user.pass_hash)) return { ok: false, error: 'nick_taken' };
+  return createSession(user.nickname);
+}
 
 const app = express();
 app.use(express.json());
@@ -75,8 +123,8 @@ app.get('/api/history', (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server);
 
-const online = new Map();      // nickname -> Set of socket ids
-const socketNick = new Map();  // socket id -> nickname
+const online = new Map();
+const socketNick = new Map();
 
 const onlineList = () => [...online.keys()];
 const broadcastPresence = () => io.emit('presence', onlineList());
@@ -97,21 +145,18 @@ function detach(socket) {
 io.on('connection', socket => {
   socket.emit('presence', onlineList());
 
-  socket.on('login', (nick, ack) => {
-    const wanted = typeof nick === 'string' ? nick.trim() : '';
-    if (!NICK_RE.test(wanted)) return ack?.({ ok: false, error: 'invalid_nick' });
-
-    q.insertUser.run(wanted, Date.now());
-    const canonical = q.getUser.get(wanted).nickname;
+  socket.on('login', (payload, ack) => {
+    const res = authenticate(payload);
+    if (!res.ok) return ack?.(res);
 
     detach(socket);
-    socketNick.set(socket.id, canonical);
-    if (!online.has(canonical)) online.set(canonical, new Set());
-    online.get(canonical).add(socket.id);
-    socket.join('u:' + canonical);
+    socketNick.set(socket.id, res.nick);
+    if (!online.has(res.nick)) online.set(res.nick, new Set());
+    online.get(res.nick).add(socket.id);
+    socket.join('u:' + res.nick);
 
     broadcastPresence();
-    ack?.({ ok: true, nick: canonical });
+    ack?.(res);
   });
 
   socket.on('message', (payload, ack) => {
