@@ -30,7 +30,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .lang{display:flex;gap:2px;background:var(--bg);border-radius:8px;padding:2px}
 .lang button{background:none;border:0;padding:4px 7px;border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;font-weight:600}
 .lang button[aria-pressed="true"]{background:var(--panel2);color:var(--text)}
-.icon{background:none;border:0;color:var(--muted);cursor:pointer;padding:6px 8px;border-radius:8px}
+.icon{background:none;border:0;color:var(--muted);cursor:pointer;padding:6px 8px;border-radius:8px;font-size:13px}
 .icon:hover{color:var(--text);background:var(--panel2)}
 .app{height:100%;display:grid;grid-template-columns:320px 1fr}
 .sidebar{background:var(--panel);display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
@@ -58,6 +58,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .msg{max-width:min(520px,80%);padding:8px 12px;border-radius:14px;background:var(--in);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.4;border-bottom-left-radius:4px}
 .msg.own{align-self:flex-end;background:var(--out);border-bottom-left-radius:14px;border-bottom-right-radius:4px}
 .time{display:block;font-size:11px;color:var(--muted);text-align:right;margin-top:3px}
+.msg.own .time{color:#a9c4de}
 .composer{display:flex;gap:10px;align-items:flex-end;padding:12px 16px;background:var(--panel);border-top:1px solid var(--line)}
 .composer textarea{flex:1;resize:none;max-height:140px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;outline:none;line-height:1.4}
 .composer textarea:focus{border-color:var(--accent)}
@@ -109,8 +110,9 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
     <div class="list" id="list"></div>
     <div class="side-top" style="border-top:1px solid var(--line);border-bottom:0">
       <div class="row">
-        <span class="status" id="meName"></span>
-        <span style="flex:1"></span>
+        <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button class="icon" id="renameBtn" data-i18n="renameBtn"></button>
+        <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)"></button>
         <button class="icon" id="logout" data-i18n="logout"></button>
       </div>
       <div class="hint" id="net"></div>
@@ -146,36 +148,51 @@ const I18N = {
     nickLabel: 'Nickname', nickHint: '3–20 characters: letters, digits or _',
     passLabel: 'Password', errShortPass: 'Password: at least 4 characters',
     errTaken: 'This nickname is taken or the password is wrong', errSession: 'Session expired. Please log in again.',
+    accountDeleted: 'Your account was deleted.',
     enter: 'Enter', logout: 'Log out', search: 'Search by nickname',
+    renameBtn: 'Rename', deleteBtn: 'Delete', renamePrompt: 'New nickname (3–20 characters)',
+    renamed: 'Nickname changed', errNickTaken: 'This nickname is taken',
+    confirmDelete: 'Delete your account and all your messages? This cannot be undone.',
     noChats: 'No chats yet. Search for a friend by nickname.', noResults: 'No one found',
     selectChat: 'Select a chat to start messaging', typeMessage: 'Write a message…', send: 'Send',
     online: 'online', offline: 'offline', errInvalidNick: 'Nickname: 3–20 letters, digits or _',
     errNoUser: 'This user does not exist', errNetwork: 'No connection. Reconnecting…',
-    messageFailed: 'Message not sent', back: 'Back', newMessage: 'New message from {name}', you: 'You'
+    messageFailed: 'Message not sent', back: 'Back', newMessage: 'New message from {name}', you: 'You',
+    readAt: 'read {time}'
   },
   uk: {
     tagline: 'Оберіть нікнейм і пароль, щоб почати спілкування',
     nickLabel: 'Нікнейм', nickHint: '3–20 символів: літери, цифри або _',
     passLabel: 'Пароль', errShortPass: 'Пароль: щонайменше 4 символи',
     errTaken: 'Цей нікнейм уже зайнятий або пароль невірний', errSession: 'Сеанс завершився. Увійдіть знову.',
+    accountDeleted: 'Акаунт видалено.',
     enter: 'Увійти', logout: 'Вийти', search: 'Пошук за нікнеймом',
+    renameBtn: 'Нікнейм', deleteBtn: 'Видалити', renamePrompt: 'Новий нікнейм (3–20 символів)',
+    renamed: 'Нікнейм змінено', errNickTaken: 'Цей нікнейм уже зайнятий',
+    confirmDelete: 'Видалити акаунт і всі ваші повідомлення? Це не можна скасувати.',
     noChats: 'Чатів ще немає. Знайдіть друга за нікнеймом.', noResults: 'Нікого не знайдено',
     selectChat: 'Оберіть чат, щоб почати листування', typeMessage: 'Напишіть повідомлення…', send: 'Надіслати',
     online: 'в мережі', offline: 'не в мережі', errInvalidNick: 'Нікнейм: 3–20 літер, цифр або _',
     errNoUser: 'Такого користувача не існує', errNetwork: 'Немає зв’язку. Перепідключення…',
-    messageFailed: 'Повідомлення не надіслано', back: 'Назад', newMessage: 'Нове повідомлення від {name}', you: 'Ви'
+    messageFailed: 'Повідомлення не надіслано', back: 'Назад', newMessage: 'Нове повідомлення від {name}', you: 'Ви',
+    readAt: 'прочитано {time}'
   },
   ru: {
     tagline: 'Выберите никнейм и пароль, чтобы начать общение',
     nickLabel: 'Никнейм', nickHint: '3–20 символов: буквы, цифры или _',
     passLabel: 'Пароль', errShortPass: 'Пароль: минимум 4 символа',
     errTaken: 'Этот никнейм уже занят или пароль неверный', errSession: 'Сеанс истёк. Войдите снова.',
+    accountDeleted: 'Аккаунт удалён.',
     enter: 'Войти', logout: 'Выйти', search: 'Поиск по никнейму',
+    renameBtn: 'Никнейм', deleteBtn: 'Удалить', renamePrompt: 'Новый никнейм (3–20 символов)',
+    renamed: 'Никнейм изменён', errNickTaken: 'Этот никнейм уже занят',
+    confirmDelete: 'Удалить аккаунт и все ваши сообщения? Это нельзя отменить.',
     noChats: 'Чатов пока нет. Найдите друга по никнейму.', noResults: 'Никого не найдено',
     selectChat: 'Выберите чат, чтобы начать переписку', typeMessage: 'Напишите сообщение…', send: 'Отправить',
     online: 'в сети', offline: 'не в сети', errInvalidNick: 'Никнейм: 3–20 букв, цифр или _',
     errNoUser: 'Такого пользователя не существует', errNetwork: 'Нет связи. Переподключение…',
-    messageFailed: 'Сообщение не отправлено', back: 'Назад', newMessage: 'Новое сообщение от {name}', you: 'Вы'
+    messageFailed: 'Сообщение не отправлено', back: 'Назад', newMessage: 'Новое сообщение от {name}', you: 'Вы',
+    readAt: 'прочитано {time}'
   }
 };
 const LOCALES = { en: 'en-US', uk: 'uk-UA', ru: 'ru-RU' };
@@ -211,6 +228,7 @@ const el = (tag, attrs = {}, ...kids) => {
   return n;
 };
 const unreadTotal = () => [...chats.values()].reduce((s, c) => s + (c.unread || 0), 0);
+const fmtTime = d => new Intl.DateTimeFormat(LOCALES[lang], { hour: '2-digit', minute: '2-digit' }).format(new Date(d));
 
 function applyI18n() {
   document.documentElement.lang = lang;
@@ -248,8 +266,34 @@ function forget() {
   localStorage.removeItem('gigi_nick');
   localStorage.removeItem('gigi_token');
 }
+function closeChat() {
+  active = null;
+  $('app').classList.remove('chat-open');
+  $('chatView').hidden = true;
+  $('placeholder').hidden = false;
+  renderList();
+}
 
 function setNet(ok) { netKey = ok ? null : 'errNetwork'; $('net').textContent = ok ? '' : t('errNetwork'); }
+
+function markRead(nick) {
+  if (socket?.connected) socket.emit('read', { with: nick });
+}
+
+// Rename a contact everywhere on this page (chat list, cached messages, open chat).
+function renameLocal(from, to) {
+  if (chats.has(from)) { const c = chats.get(from); chats.delete(from); chats.set(to, c); }
+  if (cache.has(from)) { const list = cache.get(from); cache.delete(from); cache.set(to, list); }
+  for (const list of cache.values()) for (const m of list) {
+    if (m.from === from) m.from = to;
+    if (m.to === from) m.to = to;
+  }
+  for (const c of chats.values()) if (c.last) {
+    if (c.last.from === from) c.last.from = to;
+    if (c.last.to === from) c.last.to = to;
+  }
+  if (active === from) active = to;
+}
 
 function createSocket() {
   socket = io();
@@ -263,6 +307,32 @@ function createSocket() {
   socket.on('disconnect', () => setNet(false));
   socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); });
   socket.on('message', onMessage);
+  socket.on('read', ({ by, at }) => {
+    let changed = false;
+    for (const m of cache.get(by) || []) {
+      if (m.from === me && !m.read_at) { m.read_at = at; changed = true; }
+    }
+    if (changed && active === by) renderMessages();
+  });
+  socket.on('renamed', ({ from, to }) => {
+    if (from === me) {
+      me = to;
+      localStorage.setItem('gigi_nick', me);
+      $('meName').textContent = me;
+    }
+    renameLocal(from, to);
+    renderList(); renderHeader(); if (active) renderMessages();
+  });
+  socket.on('user_deleted', ({ nick }) => {
+    chats.delete(nick); cache.delete(nick);
+    if (active === nick) closeChat();
+    renderList();
+  });
+  socket.on('account_deleted', () => {
+    sessionStorage.setItem('gigi_flash', 'accountDeleted');
+    forget();
+    location.reload();
+  });
 }
 
 function onLogin(res) {
@@ -294,7 +364,11 @@ function onMessage(m) {
   }
   chats.set(partner, c);
 
-  if (partner === active) { c.unread = 0; renderMessages(); }
+  if (partner === active) {
+    c.unread = 0;
+    renderMessages();
+    if (m.from !== me) markRead(partner);
+  }
   renderList();
   document.title = unreadTotal() ? `(${unreadTotal()}) gigi chat` : 'gigi chat';
 }
@@ -321,7 +395,7 @@ async function openChat(nick) {
   const existing = cache.get(nick) || [];
   const ids = new Set(rows.map(r => r.id));
   cache.set(nick, [...rows, ...existing.filter(m => !ids.has(m.id))]);
-  if (active === nick) renderMessages();
+  if (active === nick) { renderMessages(); markRead(nick); }
   $('input').focus();
 }
 
@@ -363,14 +437,19 @@ function renderHeader() {
   st.classList.toggle('on', on);
 }
 
+function messageMeta(m) {
+  if (m.from !== me) return fmtTime(m.created_at);
+  if (m.read_at) return `${fmtTime(m.created_at)} · ✓✓ ${t('readAt', { time: fmtTime(m.read_at) })}`;
+  return `${fmtTime(m.created_at)} · ✓`;
+}
+
 function renderMessages() {
   const box = $('messages');
   box.replaceChildren();
-  const fmt = new Intl.DateTimeFormat(LOCALES[lang], { hour: '2-digit', minute: '2-digit' });
   for (const m of cache.get(active) || []) {
     box.append(el('div', { class: 'msg' + (m.from === me ? ' own' : '') },
       m.text,
-      el('span', { class: 'time' }, fmt.format(new Date(m.created_at)))));
+      el('span', { class: 'time' }, messageMeta(m))));
   }
   box.scrollTop = box.scrollHeight;
 }
@@ -424,12 +503,24 @@ $('search').addEventListener('input', e => {
   }, 250);
 });
 
-$('back').addEventListener('click', () => {
-  active = null;
-  $('app').classList.remove('chat-open');
-  $('chatView').hidden = true;
-  $('placeholder').hidden = false;
-  renderList();
+$('back').addEventListener('click', closeChat);
+
+$('renameBtn').addEventListener('click', () => {
+  const input = prompt(t('renamePrompt'), me);
+  if (input === null) return;
+  const nick = input.trim();
+  if (!NICK_RE.test(nick)) return toast(t('errInvalidNick'));
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('rename', { nick }, res => {
+    if (!res?.ok) return toast(t(res?.error === 'nick_taken' ? 'errNickTaken' : 'errInvalidNick'));
+    toast(t('renamed'));
+  });
+});
+
+$('deleteBtn').addEventListener('click', () => {
+  if (!confirm(t('confirmDelete'))) return;
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('delete', {}, res => { if (!res?.ok) toast(t('messageFailed')); });
 });
 
 $('logout').addEventListener('click', () => {
@@ -453,6 +544,8 @@ if (localStorage.getItem('gigi_token') && me) {
 } else {
   forget();
   showLogin();
+  const flash = sessionStorage.getItem('gigi_flash');
+  if (flash) { sessionStorage.removeItem('gigi_flash'); setHint(flash); }
 }
 </script>
 </body>
