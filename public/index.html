@@ -16,7 +16,6 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-size:
 button,input,textarea{font:inherit;color:inherit}
 [hidden]{display:none!important}
 button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-
 .login{height:100%;display:grid;place-items:center;padding:24px}
 .card{width:min(360px,100%);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px}
 .card h1{margin:0 0 6px;font-size:22px;font-weight:650;letter-spacing:-.01em}
@@ -28,13 +27,11 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .btn:hover{filter:brightness(1.08)}
 .hint{font-size:12px;color:var(--muted);margin-top:8px;min-height:16px}
 .error .hint{color:var(--danger)}
-
 .lang{display:flex;gap:2px;background:var(--bg);border-radius:8px;padding:2px}
 .lang button{background:none;border:0;padding:4px 7px;border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;font-weight:600}
 .lang button[aria-pressed="true"]{background:var(--panel2);color:var(--text)}
 .icon{background:none;border:0;color:var(--muted);cursor:pointer;padding:6px 8px;border-radius:8px}
 .icon:hover{color:var(--text);background:var(--panel2)}
-
 .app{height:100%;display:grid;grid-template-columns:320px 1fr}
 .sidebar{background:var(--panel);display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
 .side-top{padding:14px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
@@ -53,7 +50,6 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .empty{color:var(--muted);text-align:center;padding:28px 16px;line-height:1.5}
 .status{font-size:13px;color:var(--muted)}
 .status.on{color:var(--online)}
-
 .chat{display:flex;flex-direction:column;min-height:0;background:var(--bg)}
 .chat-view{display:flex;flex-direction:column;flex:1;min-height:0}
 .chat-top{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
@@ -66,9 +62,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .composer textarea{flex:1;resize:none;max-height:140px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;outline:none;line-height:1.4}
 .composer textarea:focus{border-color:var(--accent)}
 .placeholder{margin:auto;color:var(--muted);text-align:center;padding:24px}
-
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:9;max-width:90vw}
-
 @media (max-width:760px){
   .app{grid-template-columns:1fr}
   .sidebar{border-right:0}
@@ -87,6 +81,8 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
     <p data-i18n="tagline"></p>
     <label for="nick" data-i18n="nickLabel"></label>
     <input id="nick" class="field" autocomplete="username" maxlength="20">
+    <label for="pass" data-i18n="passLabel" style="margin-top:14px"></label>
+    <input id="pass" class="field" type="password" autocomplete="current-password" maxlength="100">
     <div class="hint" id="loginHint"></div>
     <button class="btn" style="width:100%;margin-top:14px" data-i18n="enter"></button>
     <div class="lang" style="justify-content:center;margin-top:18px">
@@ -120,7 +116,6 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
       <div class="hint" id="net"></div>
     </div>
   </aside>
-
   <main class="chat" id="chat">
     <div class="placeholder" id="placeholder" data-i18n="selectChat"></div>
     <div class="chat-view" id="chatView" hidden>
@@ -147,8 +142,10 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 <script>
 const I18N = {
   en: {
-    tagline: 'Pick a nickname and start chatting',
+    tagline: 'Pick a nickname and password to start chatting',
     nickLabel: 'Nickname', nickHint: '3–20 characters: letters, digits or _',
+    passLabel: 'Password', errShortPass: 'Password: at least 4 characters',
+    errTaken: 'This nickname is taken or the password is wrong', errSession: 'Session expired. Please log in again.',
     enter: 'Enter', logout: 'Log out', search: 'Search by nickname',
     noChats: 'No chats yet. Search for a friend by nickname.', noResults: 'No one found',
     selectChat: 'Select a chat to start messaging', typeMessage: 'Write a message…', send: 'Send',
@@ -157,8 +154,10 @@ const I18N = {
     messageFailed: 'Message not sent', back: 'Back', newMessage: 'New message from {name}', you: 'You'
   },
   uk: {
-    tagline: 'Оберіть нікнейм і почніть спілкування',
+    tagline: 'Оберіть нікнейм і пароль, щоб почати спілкування',
     nickLabel: 'Нікнейм', nickHint: '3–20 символів: літери, цифри або _',
+    passLabel: 'Пароль', errShortPass: 'Пароль: щонайменше 4 символи',
+    errTaken: 'Цей нікнейм уже зайнятий або пароль невірний', errSession: 'Сеанс завершився. Увійдіть знову.',
     enter: 'Увійти', logout: 'Вийти', search: 'Пошук за нікнеймом',
     noChats: 'Чатів ще немає. Знайдіть друга за нікнеймом.', noResults: 'Нікого не знайдено',
     selectChat: 'Оберіть чат, щоб почати листування', typeMessage: 'Напишіть повідомлення…', send: 'Надіслати',
@@ -167,8 +166,10 @@ const I18N = {
     messageFailed: 'Повідомлення не надіслано', back: 'Назад', newMessage: 'Нове повідомлення від {name}', you: 'Ви'
   },
   ru: {
-    tagline: 'Выберите никнейм и начните общение',
+    tagline: 'Выберите никнейм и пароль, чтобы начать общение',
     nickLabel: 'Никнейм', nickHint: '3–20 символов: буквы, цифры или _',
+    passLabel: 'Пароль', errShortPass: 'Пароль: минимум 4 символа',
+    errTaken: 'Этот никнейм уже занят или пароль неверный', errSession: 'Сеанс истёк. Войдите снова.',
     enter: 'Войти', logout: 'Выйти', search: 'Поиск по никнейму',
     noChats: 'Чатов пока нет. Найдите друга по никнейму.', noResults: 'Никого не найдено',
     selectChat: 'Выберите чат, чтобы начать переписку', typeMessage: 'Напишите сообщение…', send: 'Отправить',
@@ -185,12 +186,14 @@ if (!I18N[lang]) lang = 'en';
 
 let me = localStorage.getItem('gigi_nick') || null;
 let socket = null;
+let pending = null;
 let online = new Set();
-let chats = new Map();   // nick -> { last, unread }
-let cache = new Map();   // nick -> messages[]
+let chats = new Map();
+let cache = new Map();
 let results = [];
 let search = '';
 let active = null;
+let netKey = null;
 
 const $ = id => document.getElementById(id);
 const enc = encodeURIComponent;
@@ -207,6 +210,7 @@ const el = (tag, attrs = {}, ...kids) => {
   n.append(...kids);
   return n;
 };
+const unreadTotal = () => [...chats.values()].reduce((s, c) => s + (c.unread || 0), 0);
 
 function applyI18n() {
   document.documentElement.lang = lang;
@@ -232,8 +236,6 @@ function toast(msg) {
   toast.timer = setTimeout(() => n.hidden = true, 2800);
 }
 
-const unreadTotal = () => [...chats.values()].reduce((s, c) => s + (c.unread || 0), 0);
-
 function showLogin() { $('app').hidden = true; $('login').hidden = false; }
 function showApp() {
   $('login').hidden = true; $('app').hidden = false;
@@ -241,33 +243,40 @@ function showApp() {
   if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
   loadChats();
 }
-
-/* ---------- socket ---------- */
-let netKey = null;
-function setNet(ok) { netKey = ok ? null : 'errNetwork'; $('net').textContent = ok ? '' : t('errNetwork'); }
-
-function login() {
-  socket.emit('login', me, res => {
-    if (!res?.ok) {
-      me = null; localStorage.removeItem('gigi_nick');
-      showLogin(); setHint('errInvalidNick', true);
-      return;
-    }
-    me = res.nick;
-    localStorage.setItem('gigi_nick', me);
-    $('meName').textContent = me;
-  });
+function forget() {
+  me = null;
+  localStorage.removeItem('gigi_nick');
+  localStorage.removeItem('gigi_token');
 }
 
-function connect(nick) {
-  me = nick;
-  if (!socket) {
-    socket = io();
-    socket.on('connect', () => { setNet(true); if (me) login(); });
-    socket.on('disconnect', () => setNet(false));
-    socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); });
-    socket.on('message', onMessage);
-  } else if (socket.connected) login();
+function setNet(ok) { netKey = ok ? null : 'errNetwork'; $('net').textContent = ok ? '' : t('errNetwork'); }
+
+function createSocket() {
+  socket = io();
+  socket.on('connect', () => {
+    setNet(true);
+    let payload = null;
+    if (pending) { payload = pending; pending = null; }
+    else if (localStorage.getItem('gigi_token')) payload = { token: localStorage.getItem('gigi_token') };
+    if (payload) socket.emit('login', payload, onLogin);
+  });
+  socket.on('disconnect', () => setNet(false));
+  socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); });
+  socket.on('message', onMessage);
+}
+
+function onLogin(res) {
+  if (!res?.ok) {
+    if (res?.error === 'bad_session') { forget(); showLogin(); setHint('errSession', true); return; }
+    showLogin();
+    const keys = { invalid_nick: 'errInvalidNick', invalid_password: 'errShortPass', nick_taken: 'errTaken' };
+    setHint(keys[res?.error] || 'errNetwork', true);
+    return;
+  }
+  me = res.nick;
+  localStorage.setItem('gigi_nick', me);
+  if (res.token) localStorage.setItem('gigi_token', res.token);
+  showApp();
 }
 
 function onMessage(m) {
@@ -285,12 +294,11 @@ function onMessage(m) {
   }
   chats.set(partner, c);
 
-  if (partner === active) { chats.get(partner).unread = 0; renderMessages(); }
+  if (partner === active) { c.unread = 0; renderMessages(); }
   renderList();
   document.title = unreadTotal() ? `(${unreadTotal()}) gigi chat` : 'gigi chat';
 }
 
-/* ---------- data ---------- */
 async function loadChats() {
   try {
     const rows = await (await fetch(`/api/chats?me=${enc(me)}`)).json();
@@ -317,7 +325,6 @@ async function openChat(nick) {
   $('input').focus();
 }
 
-/* ---------- rendering ---------- */
 function chatItem(nick) {
   const info = chats.get(nick) || {};
   const av = el('div', { class: 'avatar' }, nick[0].toUpperCase());
@@ -368,14 +375,18 @@ function renderMessages() {
   box.scrollTop = box.scrollHeight;
 }
 
-/* ---------- events ---------- */
 $('loginForm').addEventListener('submit', e => {
   e.preventDefault();
   const nick = $('nick').value.trim();
+  const password = $('pass').value;
   if (!NICK_RE.test(nick)) return setHint('errInvalidNick', true);
+  if (password.length < 4) return setHint('errShortPass', true);
   setHint('nickHint');
-  showApp();
-  connect(nick);
+  const payload = { nick, password };
+  $('pass').value = '';
+  if (socket?.connected) socket.emit('login', payload, onLogin);
+  else if (!socket) { pending = payload; createSocket(); }
+  else pending = payload;
 });
 
 $('composer').addEventListener('submit', e => {
@@ -422,7 +433,7 @@ $('back').addEventListener('click', () => {
 });
 
 $('logout').addEventListener('click', () => {
-  localStorage.removeItem('gigi_nick');
+  forget();
   location.reload();
 });
 
@@ -434,10 +445,15 @@ document.addEventListener('click', e => {
   applyI18n();
 });
 
-/* ---------- init ---------- */
 applyI18n();
 setHint('nickHint');
-if (me) { showApp(); connect(me); } else showLogin();
+if (localStorage.getItem('gigi_token') && me) {
+  showApp();
+  createSocket();
+} else {
+  forget();
+  showLogin();
+}
 </script>
 </body>
 </html>
