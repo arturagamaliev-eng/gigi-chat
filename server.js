@@ -70,6 +70,8 @@ const q = {
   renameTo: db.prepare('UPDATE messages SET to_nick = ? WHERE to_nick = ?'),
   deleteMsgs: db.prepare('DELETE FROM messages WHERE from_nick = ? OR to_nick = ?'),
   markRead: db.prepare('UPDATE messages SET read_at = ? WHERE from_nick = ? AND to_nick = ? AND read_at IS NULL'),
+  getMsg: db.prepare('SELECT id, from_nick, to_nick FROM messages WHERE id = ?'),
+  deleteMsg: db.prepare('DELETE FROM messages WHERE id = ?'),
   chats: db.prepare(`
     SELECT partner, MAX(id) AS last_id FROM (
       SELECT to_nick AS partner, id FROM messages WHERE from_nick = @me
@@ -226,6 +228,18 @@ io.on('connection', socket => {
     const now = Date.now();
     const info = q.markRead.run(now, partner, me);
     if (info.changes > 0) io.to('u:' + partner).emit('read', { by: me, at: now });
+  });
+
+  // Only the sender can delete a message; it disappears for both sides.
+  socket.on('msg_delete', (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id);
+    const row = Number.isInteger(id) ? q.getMsg.get(id) : null;
+    if (!row || row.from_nick !== me) return ack?.({ ok: false, error: 'forbidden' });
+    q.deleteMsg.run(id);
+    io.to('u:' + row.to_nick).to('u:' + me).emit('msg_deleted', { id, from: me, to: row.to_nick });
+    ack?.({ ok: true });
   });
 
   socket.on('rename', (payload, ack) => {
