@@ -135,7 +135,6 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
       <form class="composer" id="composer">
         <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn"></button>
         <input id="fileInput" type="file" accept="image/*,video/*" hidden>
-        <button type="button" class="icon" id="recBtn" data-i18n="recBtn"></button>
         <textarea id="input" rows="1" data-i18n-ph="typeMessage"></textarea>
         <button class="btn" data-i18n="send"></button>
       </form>
@@ -372,14 +371,12 @@ function mediaNode(m) {
   const stop = e => e.stopPropagation();
   if (m.kind === 'image') return el('img', { src: m.text, alt: '', class: 'media', onclick: e => { stop(e); window.open(m.text, '_blank'); } });
   if (m.kind === 'video') return el('video', { src: m.text, controls: '', playsinline: '', class: 'media', onclick: stop });
-  if (m.kind === 'audio') return el('audio', { src: m.text, controls: '', class: 'media', onclick: stop });
   return null;
 }
 
 function previewText(m) {
   if (m.kind === 'image') return '📷 ' + t('photoLabel');
   if (m.kind === 'video') return '🎬 ' + t('videoLabel');
-  if (m.kind === 'audio') return '🎤 ' + t('voiceLabel');
   return m.text;
 }
 
@@ -622,7 +619,6 @@ $('fileInput').addEventListener('change', e => {
   e.target.value = '';
   if (f) sendMedia(f);
 });
-$('recBtn').addEventListener('click', toggleRecord);
 
 $('back').addEventListener('click', closeChat);
 
