@@ -10,12 +10,14 @@ const MAX_TEXT = 2000;
 const NICK_RE = /^[\p{L}\p{N}_]{3,20}$/u;
 const PASS_MIN = 4;
 const PASS_MAX = 100;
+const keyOf = s => s.toLowerCase(); // works for Cyrillic too
 
 const db = new Database(process.env.DB_FILE || path.join(__dirname, 'gigi.db'));
 db.pragma('journal_mode = WAL');
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     nickname TEXT PRIMARY KEY,
+    key TEXT,
     pass_salt TEXT NOT NULL,
     pass_hash TEXT NOT NULL,
     created_at INTEGER NOT NULL
@@ -30,20 +32,44 @@ db.exec(`
     from_nick TEXT NOT NULL,
     to_nick TEXT NOT NULL,
     text TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    read_at INTEGER
   );
+`);
+
+// Upgrade databases created by earlier versions.
+const columnsOf = table => db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+if (!columnsOf('users').includes('key')) db.exec('ALTER TABLE users ADD COLUMN key TEXT');
+if (!columnsOf('messages').includes('read_at')) db.exec('ALTER TABLE messages ADD COLUMN read_at INTEGER');
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_key ON users(key);
   CREATE INDEX IF NOT EXISTS idx_msg_from ON messages(from_nick, id);
   CREATE INDEX IF NOT EXISTS idx_msg_to ON messages(to_nick, id);
 `);
+for (const u of db.prepare('SELECT nickname FROM users WHERE key IS NULL').all()) {
+  try {
+    db.prepare('UPDATE users SET key = ? WHERE nickname = ?').run(keyOf(u.nickname), u.nickname);
+  } catch {
+    db.prepare('UPDATE users SET key = ? WHERE nickname = ?').run('dup:' + u.nickname, u.nickname);
+  }
+}
 
 const q = {
-  getUser: db.prepare('SELECT nickname, pass_salt, pass_hash FROM users WHERE nickname = ? COLLATE NOCASE'),
-  insertUser: db.prepare('INSERT INTO users (nickname, pass_salt, pass_hash, created_at) VALUES (?, ?, ?, ?)'),
+  getUser: db.prepare('SELECT nickname, key, pass_salt, pass_hash FROM users WHERE key = ?'),
+  insertUser: db.prepare('INSERT INTO users (nickname, key, pass_salt, pass_hash, created_at) VALUES (?, ?, ?, ?, ?)'),
+  renameUser: db.prepare('UPDATE users SET nickname = ?, key = ? WHERE nickname = ?'),
+  deleteUser: db.prepare('DELETE FROM users WHERE nickname = ?'),
   insertSession: db.prepare('INSERT INTO sessions (token, nickname, created_at) VALUES (?, ?, ?)'),
   getSession: db.prepare('SELECT nickname FROM sessions WHERE token = ?'),
-  searchUsers: db.prepare('SELECT nickname FROM users WHERE nickname LIKE ? ORDER BY nickname LIMIT 20'),
+  renameSessions: db.prepare('UPDATE sessions SET nickname = ? WHERE nickname = ?'),
+  deleteSessions: db.prepare('DELETE FROM sessions WHERE nickname = ?'),
+  searchUsers: db.prepare('SELECT nickname FROM users WHERE key LIKE ? ORDER BY nickname LIMIT 20'),
   insertMsg: db.prepare('INSERT INTO messages (from_nick, to_nick, text, created_at) VALUES (?, ?, ?, ?)'),
   lastMsg: db.prepare('SELECT * FROM messages WHERE id = ?'),
+  renameFrom: db.prepare('UPDATE messages SET from_nick = ? WHERE from_nick = ?'),
+  renameTo: db.prepare('UPDATE messages SET to_nick = ? WHERE to_nick = ?'),
+  deleteMsgs: db.prepare('DELETE FROM messages WHERE from_nick = ? OR to_nick = ?'),
+  markRead: db.prepare('UPDATE messages SET read_at = ? WHERE from_nick = ? AND to_nick = ? AND read_at IS NULL'),
   chats: db.prepare(`
     SELECT partner, MAX(id) AS last_id FROM (
       SELECT to_nick AS partner, id FROM messages WHERE from_nick = @me
@@ -56,7 +82,21 @@ const q = {
     ORDER BY id DESC LIMIT 200`),
 };
 
-const toMsg = r => ({ id: r.id, from: r.from_nick, to: r.to_nick, text: r.text, created_at: r.created_at });
+const findUser = nick => q.getUser.get(keyOf(nick));
+const toMsg = r => ({ id: r.id, from: r.from_nick, to: r.to_nick, text: r.text, created_at: r.created_at, read_at: r.read_at ?? null });
+
+const renameAll = db.transaction((oldNick, newNick) => {
+  q.renameUser.run(newNick, keyOf(newNick), oldNick);
+  q.renameFrom.run(newNick, oldNick);
+  q.renameTo.run(newNick, oldNick);
+  q.renameSessions.run(newNick, oldNick);
+});
+
+const deleteAll = db.transaction(nick => {
+  q.deleteMsgs.run(nick, nick);
+  q.deleteSessions.run(nick);
+  q.deleteUser.run(nick);
+});
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   return { salt, hash: crypto.scryptSync(password, salt, 64).toString('hex') };
@@ -84,10 +124,10 @@ function authenticate(payload) {
   if (!NICK_RE.test(nick)) return { ok: false, error: 'invalid_nick' };
   if (password.length < PASS_MIN || password.length > PASS_MAX) return { ok: false, error: 'invalid_password' };
 
-  const user = q.getUser.get(nick);
+  const user = findUser(nick);
   if (!user) {
     const { salt, hash } = hashPassword(password);
-    q.insertUser.run(nick, salt, hash, Date.now());
+    q.insertUser.run(nick, keyOf(nick), salt, hash, Date.now());
     return createSession(nick);
   }
   if (!checkPassword(password, user.pass_salt, user.pass_hash)) return { ok: false, error: 'nick_taken' };
@@ -101,7 +141,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/api/users', (req, res) => {
   const term = String(req.query.q || '').replace(/[^\p{L}\p{N}_]/gu, '');
   if (!term) return res.json([]);
-  res.json(q.searchUsers.all(`%${term}%`).map(r => r.nickname));
+  res.json(q.searchUsers.all(`%${keyOf(term)}%`).map(r => r.nickname));
 });
 
 app.get('/api/chats', (req, res) => {
@@ -123,8 +163,8 @@ app.get('/api/history', (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server);
 
-const online = new Map();
-const socketNick = new Map();
+const online = new Map();      // nickname -> Set of socket ids
+const socketNick = new Map();  // socket id -> nickname
 
 const onlineList = () => [...online.keys()];
 const broadcastPresence = () => io.emit('presence', onlineList());
@@ -166,15 +206,72 @@ io.on('connection', socket => {
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
     if (!text || text.length > MAX_TEXT) return ack?.({ ok: false, error: 'invalid' });
 
-    const to = q.getUser.get(String(payload?.to || ''))?.nickname;
+    const to = findUser(String(payload?.to || ''))?.nickname;
     if (!to) return ack?.({ ok: false, error: 'no_user' });
 
     const now = Date.now();
     const info = q.insertMsg.run(me, to, text, now);
-    const msg = { id: Number(info.lastInsertRowid), from: me, to, text, created_at: now };
+    const msg = { id: Number(info.lastInsertRowid), from: me, to, text, created_at: now, read_at: null };
 
     io.to('u:' + to).to('u:' + me).emit('message', msg);
     ack?.({ ok: true, msg });
+  });
+
+  // Mark everything the partner sent me as read, and tell the partner.
+  socket.on('read', payload => {
+    const me = socketNick.get(socket.id);
+    if (!me) return;
+    const partner = findUser(String(payload?.with || ''))?.nickname;
+    if (!partner || partner === me) return;
+    const now = Date.now();
+    const info = q.markRead.run(now, partner, me);
+    if (info.changes > 0) io.to('u:' + partner).emit('read', { by: me, at: now });
+  });
+
+  socket.on('rename', (payload, ack) => {
+    const oldNick = socketNick.get(socket.id);
+    if (!oldNick) return ack?.({ ok: false, error: 'not_logged_in' });
+
+    const newNick = typeof payload?.nick === 'string' ? payload.nick.trim() : '';
+    if (!NICK_RE.test(newNick)) return ack?.({ ok: false, error: 'invalid_nick' });
+    if (newNick === oldNick) return ack?.({ ok: true, nick: oldNick });
+
+    const taken = findUser(newNick);
+    if (taken && taken.nickname !== oldNick) return ack?.({ ok: false, error: 'nick_taken' });
+
+    renameAll(oldNick, newNick);
+
+    const sockets = online.get(oldNick) || new Set();
+    online.delete(oldNick);
+    online.set(newNick, sockets);
+    for (const id of sockets) {
+      socketNick.set(id, newNick);
+      const s = io.sockets.sockets.get(id);
+      if (s) { s.leave('u:' + oldNick); s.join('u:' + newNick); }
+    }
+
+    io.emit('renamed', { from: oldNick, to: newNick });
+    broadcastPresence();
+    ack?.({ ok: true, nick: newNick });
+  });
+
+  socket.on('delete', (payload, ack) => {
+    const nick = socketNick.get(socket.id);
+    if (!nick) return ack?.({ ok: false, error: 'not_logged_in' });
+
+    deleteAll(nick);
+
+    const sockets = [...(online.get(nick) || [])];
+    online.delete(nick);
+    for (const id of sockets) {
+      socketNick.delete(id);
+      const s = io.sockets.sockets.get(id);
+      if (s) { s.leave('u:' + nick); s.emit('account_deleted'); }
+    }
+
+    io.emit('user_deleted', { nick });
+    broadcastPresence();
+    ack?.({ ok: true });
   });
 
   socket.on('disconnect', () => detach(socket));
