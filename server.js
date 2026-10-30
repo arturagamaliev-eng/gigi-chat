@@ -4,6 +4,10 @@ const crypto = require('crypto');
 const express = require('express');
 const { Server } = require('socket.io');
 const Database = require('better-sqlite3');
+const fs = require('fs');
+
+const UPLOAD_DIR = path.join(__dirname, 'uploads');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const PORT = process.env.PORT || 3000;
 const MAX_TEXT = 2000;
@@ -41,6 +45,7 @@ db.exec(`
 const columnsOf = table => db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
 if (!columnsOf('users').includes('key')) db.exec('ALTER TABLE users ADD COLUMN key TEXT');
 if (!columnsOf('messages').includes('read_at')) db.exec('ALTER TABLE messages ADD COLUMN read_at INTEGER');
+if (!columnsOf('messages').includes('kind')) db.exec("ALTER TABLE messages ADD COLUMN kind TEXT DEFAULT 'text'");
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_users_key ON users(key);
   CREATE INDEX IF NOT EXISTS idx_msg_from ON messages(from_nick, id);
@@ -64,13 +69,13 @@ const q = {
   renameSessions: db.prepare('UPDATE sessions SET nickname = ? WHERE nickname = ?'),
   deleteSessions: db.prepare('DELETE FROM sessions WHERE nickname = ?'),
   searchUsers: db.prepare('SELECT nickname FROM users WHERE key LIKE ? ORDER BY nickname LIMIT 20'),
-  insertMsg: db.prepare('INSERT INTO messages (from_nick, to_nick, text, created_at) VALUES (?, ?, ?, ?)'),
+  insertMsg: db.prepare('INSERT INTO messages (from_nick, to_nick, text, created_at, kind) VALUES (?, ?, ?, ?, ?)'),
   lastMsg: db.prepare('SELECT * FROM messages WHERE id = ?'),
   renameFrom: db.prepare('UPDATE messages SET from_nick = ? WHERE from_nick = ?'),
   renameTo: db.prepare('UPDATE messages SET to_nick = ? WHERE to_nick = ?'),
   deleteMsgs: db.prepare('DELETE FROM messages WHERE from_nick = ? OR to_nick = ?'),
   markRead: db.prepare('UPDATE messages SET read_at = ? WHERE from_nick = ? AND to_nick = ? AND read_at IS NULL'),
-  getMsg: db.prepare('SELECT id, from_nick, to_nick FROM messages WHERE id = ?'),
+  getMsg: db.prepare('SELECT id, from_nick, to_nick, kind, text FROM messages WHERE id = ?'),
   deleteMsg: db.prepare('DELETE FROM messages WHERE id = ?'),
   chats: db.prepare(`
     SELECT partner, MAX(id) AS last_id FROM (
@@ -85,7 +90,7 @@ const q = {
 };
 
 const findUser = nick => q.getUser.get(keyOf(nick));
-const toMsg = r => ({ id: r.id, from: r.from_nick, to: r.to_nick, text: r.text, created_at: r.created_at, read_at: r.read_at ?? null });
+const toMsg = r => ({ id: r.id, from: r.from_nick, to: r.to_nick, text: r.text, created_at: r.created_at, read_at: r.read_at ?? null, kind: r.kind || 'text' });
 
 const renameAll = db.transaction((oldNick, newNick) => {
   q.renameUser.run(newNick, keyOf(newNick), oldNick);
@@ -137,7 +142,8 @@ function authenticate(payload) {
 }
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
+app.use('/uploads', express.static(UPLOAD_DIR));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/users', (req, res) => {
@@ -160,6 +166,28 @@ app.get('/api/history', (req, res) => {
   const b = String(req.query.with || '');
   if (!NICK_RE.test(a) || !NICK_RE.test(b)) return res.status(400).json({ error: 'bad_nick' });
   res.json(q.history.all({ a, b }).reverse().map(toMsg));
+});
+
+const MEDIA = {
+  'image/jpeg': ['image', 'jpg'], 'image/png': ['image', 'png'], 'image/webp': ['image', 'webp'], 'image/gif': ['image', 'gif'],
+  'video/mp4': ['video', 'mp4'], 'video/webm': ['video', 'webm'],
+  'audio/webm': ['audio', 'webm'], 'audio/ogg': ['audio', 'ogg'], 'audio/mp4': ['audio', 'm4a'],
+  'audio/mpeg': ['audio', 'mp3'], 'audio/wav': ['audio', 'wav'],
+};
+const MAX_UPLOAD = 15 * 1024 * 1024;
+
+app.post('/api/upload', (req, res) => {
+  const s = q.getSession.get(String(req.body?.token || ''));
+  if (!s) return res.status(401).json({ error: 'bad_session' });
+  const m = /^data:([\w/+.-]+);base64,(.+)$/.exec(String(req.body?.data || ''));
+  const spec = m && MEDIA[m[1]];
+  if (!spec) return res.status(400).json({ error: 'bad_type' });
+  const buf = Buffer.from(m[2], 'base64');
+  if (!buf.length) return res.status(400).json({ error: 'empty' });
+  if (buf.length > MAX_UPLOAD) return res.status(413).json({ error: 'too_big' });
+  const name = crypto.randomBytes(16).toString('hex') + '.' + spec[1];
+  fs.writeFileSync(path.join(UPLOAD_DIR, name), buf);
+  res.json({ ok: true, url: '/uploads/' + name, kind: spec[0] });
 });
 
 const server = http.createServer(app);
@@ -206,14 +234,16 @@ io.on('connection', socket => {
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
 
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
-    if (!text || text.length > MAX_TEXT) return ack?.({ ok: false, error: 'invalid' });
+    const kind = ['image', 'video', 'audio'].includes(payload?.kind) ? payload.kind : 'text';
+    if (kind !== 'text' && !/^\/uploads\/[a-f0-9]{32}\.[a-z0-9]{2,4}$/.test(text)) return ack?.({ ok: false, error: 'invalid' });
+    if (!text || (kind === 'text' && text.length > MAX_TEXT)) return ack?.({ ok: false, error: 'invalid' });
 
     const to = findUser(String(payload?.to || ''))?.nickname;
     if (!to) return ack?.({ ok: false, error: 'no_user' });
 
     const now = Date.now();
-    const info = q.insertMsg.run(me, to, text, now);
-    const msg = { id: Number(info.lastInsertRowid), from: me, to, text, created_at: now, read_at: null };
+    const info = q.insertMsg.run(me, to, text, now, kind);
+    const msg = { id: Number(info.lastInsertRowid), from: me, to, text, created_at: now, read_at: null, kind };
 
     io.to('u:' + to).to('u:' + me).emit('message', msg);
     ack?.({ ok: true, msg });
@@ -237,6 +267,7 @@ io.on('connection', socket => {
     const id = Number(payload?.id);
     const row = Number.isInteger(id) ? q.getMsg.get(id) : null;
     if (!row || row.from_nick !== me) return ack?.({ ok: false, error: 'forbidden' });
+    if (row.kind && row.kind !== 'text') fs.unlink(path.join(UPLOAD_DIR, path.basename(row.text)), () => {});
     q.deleteMsg.run(id);
     io.to('u:' + row.to_nick).to('u:' + me).emit('msg_deleted', { id, from: me, to: row.to_nick });
     ack?.({ ok: true });
