@@ -171,8 +171,6 @@ app.get('/api/history', (req, res) => {
 const MEDIA = {
   'image/jpeg': ['image', 'jpg'], 'image/png': ['image', 'png'], 'image/webp': ['image', 'webp'], 'image/gif': ['image', 'gif'],
   'video/mp4': ['video', 'mp4'], 'video/webm': ['video', 'webm'],
-  'audio/webm': ['audio', 'webm'], 'audio/ogg': ['audio', 'ogg'], 'audio/mp4': ['audio', 'm4a'],
-  'audio/mpeg': ['audio', 'mp3'], 'audio/wav': ['audio', 'wav'],
 };
 const MAX_UPLOAD = 15 * 1024 * 1024;
 
@@ -234,7 +232,7 @@ io.on('connection', socket => {
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
 
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
-    const kind = ['image', 'video', 'audio'].includes(payload?.kind) ? payload.kind : 'text';
+    const kind = ['image', 'video'].includes(payload?.kind) ? payload.kind : 'text';
     if (kind !== 'text' && !/^\/uploads\/[a-f0-9]{32}\.[a-z0-9]{2,4}$/.test(text)) return ack?.({ ok: false, error: 'invalid' });
     if (!text || (kind === 'text' && text.length > MAX_TEXT)) return ack?.({ ok: false, error: 'invalid' });
 
