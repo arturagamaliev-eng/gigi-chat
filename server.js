@@ -76,6 +76,17 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS idx_msg_from ON messages(from_nick, id);
 CREATE INDEX IF NOT EXISTS idx_msg_to ON messages(to_nick, id);
+CREATE TABLE IF NOT EXISTS stories (
+  id SERIAL PRIMARY KEY,
+  text TEXT NOT NULL,
+  created_at DOUBLE PRECISION NOT NULL
+);
+CREATE TABLE IF NOT EXISTS stories (
+  id SERIAL PRIMARY KEY,
+  author TEXT NOT NULL,
+  text TEXT NOT NULL,
+  created_at DOUBLE PRECISION NOT NULL
+);
 `;
 
 const findUser = nick => db.one('SELECT nickname, key, pass_salt, pass_hash FROM users WHERE key = $1', [keyOf(nick)]);
@@ -250,6 +261,13 @@ function detach(socket) {
   broadcastPresence();
 }
 
+const STORY_MS = 24 * 3600 * 1000;
+
+async function recentStories() {
+  await db.run('DELETE FROM stories WHERE created_at < $1', [Date.now() - STORY_MS]);
+  return db.all('SELECT id, text, created_at FROM stories ORDER BY id DESC LIMIT 20');
+}
+
 async function avatarMap() {
   const rows = await db.all('SELECT nickname, avatar FROM users WHERE avatar IS NOT NULL');
   return Object.fromEntries(rows.map(r => [r.nickname, r.avatar]));
@@ -258,6 +276,10 @@ async function avatarMap() {
 io.on('connection', async socket => {
   socket.emit('presence', onlineList());
   try { socket.emit('avatars', await avatarMap()); } catch (e) { console.error('avatars:', e.message); }
+  try { socket.emit('stories', await recentStories()); } catch (e) { console.error('stories:', e.message); }
+  try {
+    socket.emit('stories', await db.all('SELECT id, author, text, created_at FROM stories ORDER BY id DESC LIMIT 20'));
+  } catch (e) { console.error('stories:', e.message); }
 
   // Wraps each handler so a database error never crashes the server.
   const on = (ev, fn) => socket.on(ev, async (...args) => {
@@ -267,6 +289,32 @@ io.on('connection', async socket => {
       const ack = args.find(a => typeof a === 'function');
       ack?.({ ok: false, error: 'server' });
     }
+  });
+
+  // Publishing a story requires the admin code (ADMIN_CODE in Render).
+  on('story_post', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const code = process.env.ADMIN_CODE;
+    if (!code || String(payload?.code || '') !== code) return ack?.({ ok: false, error: 'bad_code' });
+    const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
+    if (!text || text.length > 1000) return ack?.({ ok: false, error: 'invalid' });
+    const now = Date.now();
+    const row = await db.one(
+      'INSERT INTO stories (author, text, created_at) VALUES ($1, $2, $3) RETURNING id',
+      [me, text, now]);
+    io.emit('story', { id: row.id, author: me, text, created_at: now });
+    ack?.({ ok: true });
+  });
+
+  on('story_delete', async (payload, ack) => {
+    const code = process.env.ADMIN_CODE;
+    if (!code || String(payload?.code || '') !== code) return ack?.({ ok: false, error: 'bad_code' });
+    const id = Number(payload?.id);
+    if (!Number.isInteger(id)) return ack?.({ ok: false, error: 'invalid' });
+    await db.run('DELETE FROM stories WHERE id = $1', [id]);
+    io.emit('story_deleted', { id });
+    ack?.({ ok: true });
   });
 
   on('login', async (payload, ack) => {
@@ -398,6 +446,19 @@ io.on('connection', async socket => {
     }
     io.emit('user_deleted', { nick });
     broadcastPresence();
+    ack?.({ ok: true });
+  });
+
+  on('story_post', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const code = process.env.ADMIN_CODE;
+    if (!code || String(payload?.code || '') !== code) return ack?.({ ok: false, error: 'bad_code' });
+    const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
+    if (!text || text.length > 500) return ack?.({ ok: false, error: 'invalid' });
+    const now = Date.now();
+    const row = await db.one('INSERT INTO stories (text, created_at) VALUES ($1, $2) RETURNING id', [text, now]);
+    io.emit('story', { id: row.id, text, created_at: now });
     ack?.({ ok: true });
   });
 
