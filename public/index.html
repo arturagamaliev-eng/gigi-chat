@@ -167,6 +167,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
   <aside class="sidebar">
     <div class="side-top">
       <div class="row">
+        <button class="icon" id="myProfileBtn" aria-label="profile" title="Профіль">👤</button>
         <div class="brand">gigi chat</div>
         <div class="lang">
           <button type="button" data-set-lang="en">EN</button>
@@ -1573,6 +1574,7 @@ function openAdminStars() {
 }
 
 $('marketBtn').addEventListener('click', openMarket);
+$('myProfileBtn').addEventListener('click', () => { if (me) openProfile(me); });
 
 function applyAvatar(node, nick) {
   node.replaceChildren(nick[0].toUpperCase());
