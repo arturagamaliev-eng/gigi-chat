@@ -807,12 +807,15 @@ io.on('connection', async socket => {
     const title = typeof payload?.title === 'string' ? payload.title.trim() : '';
     const description = typeof payload?.description === 'string' ? payload.description.trim().slice(0, 200) : '';
     const price = Number(payload?.price);
+    const count = Number(payload?.count);
+    if (!Number.isInteger(count) || count < 1 || count > 100) return ack?.({ ok: false, error: 'invalid' });
     const image = String(payload?.image || '');
     if (!title || title.length > 40 || !Number.isInteger(price) || price < 1 || price > 1000000 || !isOurMedia(image, 'image')) {
       return ack?.({ ok: false, error: 'invalid' });
     }
-    await db.run('INSERT INTO gift_items (title, description, price, image, created_at) VALUES ($1, $2, $3, $4, $5)',
-      [title, description, price, image, Date.now()]);
+    await db.run(
+      'INSERT INTO gift_items (title, description, price, image, created_at) SELECT $1::text, $2::text, $3::int, $4::text, $5::double precision FROM generate_series(1, $6::int)',
+      [title, description, price, image, Date.now(), count]);
     await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [Date.now() + AVATAR_MS, mediaIdOf(image)]);
     ack?.({ ok: true });
   });
