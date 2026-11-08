@@ -19,6 +19,23 @@ const MEDIA_RE = /^\/media\/([a-f0-9]{32})$/;
 const mediaIdOf = url => { const m = MEDIA_RE.exec(String(url || '')); return m ? m[1] : null; };
 const isOurMedia = (url, kind) => kind === 'image' && typeof url === 'string' && mediaIdOf(url) !== null;
 const adminOk = code => Boolean(process.env.ADMIN_CODE) && String(code || '') === process.env.ADMIN_CODE;
+const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+
+// Returns Map: target id -> { emoji: [nicknames] }
+async function reactionsFor(type, ids) {
+  const out = new Map();
+  if (!ids.length) return out;
+  const rows = await db.all(
+    'SELECT target_id, emoji, nick FROM reactions WHERE target_type = $1 AND target_id = ANY($2::int[])',
+    [type, ids]);
+  for (const r of rows) {
+    if (!out.has(r.target_id)) out.set(r.target_id, {});
+    const o = out.get(r.target_id);
+    if (!o[r.emoji]) o[r.emoji] = [];
+    o[r.emoji].push(r.nick);
+  }
+  return out;
+}
 
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL is not set. Add it in Render → Environment.');
@@ -84,6 +101,13 @@ const EXTRA_SCHEMA = `
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS media TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen DOUBLE PRECISION;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+CREATE TABLE IF NOT EXISTS reactions (
+  target_type TEXT NOT NULL,
+  target_id INTEGER NOT NULL,
+  nick TEXT NOT NULL,
+  emoji TEXT NOT NULL,
+  PRIMARY KEY (target_type, target_id, nick, emoji)
+);
 CREATE TABLE IF NOT EXISTS media (
   id TEXT PRIMARY KEY,
   data TEXT NOT NULL,
@@ -138,11 +162,14 @@ async function cleanup() {
   await db.run("UPDATE messages SET kind = 'gone', text = '' WHERE kind = 'image' AND created_at < $1", [now - CHAT_MEDIA_MS]);
   await db.run('DELETE FROM stories WHERE created_at < $1', [now - STORY_MS]);
   await db.run('DELETE FROM media WHERE expires_at < $1', [now]);
+  await db.run("DELETE FROM reactions WHERE target_type = 'story' AND target_id NOT IN (SELECT id FROM stories)");
 }
 
 async function recentStories() {
-  return db.all('SELECT id, text, media, created_at FROM stories WHERE created_at > $1 ORDER BY id DESC LIMIT 20',
+  const rows = await db.all('SELECT id, text, media, created_at FROM stories WHERE created_at > $1 ORDER BY id DESC LIMIT 20',
     [Date.now() - STORY_MS]);
+  const reacts = await reactionsFor('story', rows.map(r => r.id));
+  return rows.map(r => ({ ...r, reactions: reacts.get(r.id) || {} }));
 }
 
 async function removeUser(nick) {
@@ -152,6 +179,7 @@ async function removeUser(nick) {
   if (u?.avatar) urls.push(u.avatar);
   await tx(async c => {
     await c.query('DELETE FROM messages WHERE from_nick = $1 OR to_nick = $1', [nick]);
+    await c.query("DELETE FROM reactions WHERE nick = $1 OR (target_type = 'msg' AND target_id NOT IN (SELECT id FROM messages))", [nick]);
     await c.query('DELETE FROM sessions WHERE nickname = $1', [nick]);
     await c.query('DELETE FROM users WHERE nickname = $1', [nick]);
   });
@@ -204,7 +232,8 @@ app.get('/api/history', route(async (req, res) => {
     SELECT * FROM messages
     WHERE (from_nick = $1 AND to_nick = $2) OR (from_nick = $2 AND to_nick = $1)
     ORDER BY id DESC LIMIT 200`, [a, b]);
-  res.json(rows.reverse().map(toMsg));
+  const reacts = await reactionsFor('msg', rows.map(r => r.id));
+  res.json(rows.reverse().map(r => ({ ...toMsg(r), reactions: reacts.get(r.id) || {} })));
 }));
 
 app.post('/api/upload', route(async (req, res) => {
@@ -325,6 +354,7 @@ io.on('connection', async socket => {
     const row = Number.isInteger(id) ? await db.one('SELECT id, from_nick, to_nick, kind, text FROM messages WHERE id = $1', [id]) : null;
     if (!row || row.from_nick !== me) return ack?.({ ok: false, error: 'forbidden' });
     await db.run('DELETE FROM messages WHERE id = $1', [id]);
+    await db.run("DELETE FROM reactions WHERE target_type = 'msg' AND target_id = $1", [id]);
     if (row.kind === 'image') {
       const mid = mediaIdOf(row.text);
       if (mid) await db.run('DELETE FROM media WHERE id = $1', [mid]);
@@ -396,6 +426,7 @@ io.on('connection', async socket => {
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     await tx(async c => {
       await c.query('DELETE FROM messages');
+      await c.query("DELETE FROM reactions WHERE target_type = 'msg'");
       await c.query('DELETE FROM sessions');
       await c.query('DELETE FROM users');
       await c.query('DELETE FROM media WHERE id NOT IN (SELECT substr(media, 8, 32) FROM stories WHERE media IS NOT NULL)');
@@ -493,9 +524,50 @@ io.on('connection', async socket => {
     const row = Number.isInteger(id) ? await db.one('SELECT id, media FROM stories WHERE id = $1', [id]) : null;
     if (!row) return ack?.({ ok: false, error: 'no_story' });
     await db.run('DELETE FROM stories WHERE id = $1', [id]);
+    await db.run("DELETE FROM reactions WHERE target_type = 'story' AND target_id = $1", [id]);
     const mid = mediaIdOf(row.media);
     if (mid) await db.run('DELETE FROM media WHERE id = $1', [mid]);
     io.emit('story_deleted', { id });
+    ack?.({ ok: true });
+  });
+
+  // Toggles one reaction. Messages: only the two people in the chat see it. Stories: everyone.
+  on('react', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const type = payload?.type === 'story' ? 'story' : payload?.type === 'msg' ? 'msg' : null;
+    const id = Number(payload?.id);
+    const emoji = String(payload?.emoji || '');
+    if (!type || !Number.isInteger(id) || !EMOJIS.includes(emoji)) return ack?.({ ok: false, error: 'invalid' });
+
+    let people = null;
+    if (type === 'msg') {
+      const m = await db.one('SELECT from_nick, to_nick FROM messages WHERE id = $1', [id]);
+      if (!m || (m.from_nick !== me && m.to_nick !== me)) return ack?.({ ok: false, error: 'forbidden' });
+      people = [m.from_nick, m.to_nick];
+    } else {
+      const s = await db.one('SELECT id FROM stories WHERE id = $1', [id]);
+      if (!s) return ack?.({ ok: false, error: 'no_story' });
+    }
+
+    const has = await db.one(
+      'SELECT 1 AS x FROM reactions WHERE target_type = $1 AND target_id = $2 AND nick = $3 AND emoji = $4',
+      [type, id, me, emoji]);
+    if (has) {
+      await db.run('DELETE FROM reactions WHERE target_type = $1 AND target_id = $2 AND nick = $3 AND emoji = $4',
+        [type, id, me, emoji]);
+    } else {
+      await db.run('INSERT INTO reactions (target_type, target_id, nick, emoji) VALUES ($1, $2, $3, $4)',
+        [type, id, me, emoji]);
+    }
+
+    const reactions = (await reactionsFor(type, [id])).get(id) || {};
+    const out = { type, id, reactions };
+    if (people) {
+      for (const p of new Set(people)) io.to('u:' + p).emit('reaction', out);
+    } else {
+      io.emit('reaction', out);
+    }
     ack?.({ ok: true });
   });
 
