@@ -106,6 +106,8 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .emoji-bar button{font-size:24px;background:none;border:0;cursor:pointer;padding:4px 6px;border-radius:10px}
 .emoji-bar button:hover{background:var(--panel2)}
 #storyReacts{margin-bottom:8px}
+.chan-note{padding:14px 16px;text-align:center;color:var(--muted);border-top:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;align-items:center;gap:10px}
+.chan-note .btn{min-width:160px}
 .stories{display:flex;gap:12px;padding:12px 14px;overflow-x:auto;border-bottom:1px solid var(--line)}
 .story{flex:none;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;cursor:pointer;color:var(--muted);font-size:11px;padding:0}
 .story-ring{width:52px;height:52px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#5ea8e0,#4fd18b);display:grid;place-items:center}
@@ -175,6 +177,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
         <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
         <button class="icon" id="photoBtn" data-i18n="photoBtn" hidden></button>
         <input id="avatarInput" type="file" accept="image/*" hidden>
+        <button class="icon" id="groupsBtn" data-i18n="groupsBtn"></button>
         <button class="icon" id="adminBtn" data-i18n="adminBtn"></button>
         <button class="icon" id="storyBtn" data-i18n="storyBtn"></button>
         <button class="icon" id="storyPhotoBtn" data-i18n="storyPhotoBtn"></button>
@@ -207,6 +210,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
         <textarea id="input" rows="1" data-i18n-ph="typeMessage"></textarea>
         <button class="btn" data-i18n="send"></button>
       </form>
+      <div id="chanNote" class="chan-note" hidden></div>
     </div>
   </main>
 </section>
@@ -272,6 +276,13 @@ const I18N = {
     editBio: 'Edit about', changePhoto: 'Change photo', removePhoto: 'Remove photo', writeMsg: 'Write a message',
     created: 'created', lastSeen: 'last seen {time}', deleteUserConfirm: 'Delete this account and all its messages?',
     photoRemoved: 'Photo removed', bioSaved: 'Saved', deleteMsgBtn: 'Delete message',
+    groupsBtn: 'Groups', newGroup: 'New group or channel', groupTitle: 'Name', kindGroup: 'Group', kindChannel: 'Channel',
+    createGroup: 'Create', groupCreated: 'Created', groupJoined: 'Joined', groupLeft: 'Left the group',
+    joinBtn: 'Join', leaveBtn: 'Leave', openBtn: 'Open', groupsTitle: 'Groups and channels', noGroups: 'No groups yet',
+    joinToWrite: 'Join to write messages', channelReadOnly: 'Only the owner can post in this channel',
+    groupInfo: '{n} members', channelInfo: '{n} subscribers', groupDeleteBtn: 'Delete',
+    groupDeleteConfirm: 'Delete this group and all its messages?', groupDeleted: 'Deleted',
+    newGroupMsg: 'New message in {title}', ownerCantLeave: 'The owner cannot leave',
     photoGone: 'Photo expired', storyAddPhoto: 'Add a photo to the story?', storyDelete: 'Delete story',
     storyDeleteConfirm: 'Delete this story for everyone?', storyDeleted: 'Story deleted',
     fileTooBig: 'File is too large (max 15 MB)', uploadFailed: 'Could not send the file',
@@ -308,6 +319,13 @@ const I18N = {
     editBio: 'Змінити опис', changePhoto: 'Змінити фото', removePhoto: 'Видалити фото', writeMsg: 'Написати',
     created: 'створено', lastSeen: 'був(ла) в мережі {time}', deleteUserConfirm: 'Видалити цей акаунт і всі його повідомлення?',
     photoRemoved: 'Фото видалено', bioSaved: 'Збережено', deleteMsgBtn: 'Видалити повідомлення',
+    groupsBtn: 'Групи', newGroup: 'Нова група або канал', groupTitle: 'Назва', kindGroup: 'Група', kindChannel: 'Канал',
+    createGroup: 'Створити', groupCreated: 'Створено', groupJoined: 'Приєднано', groupLeft: 'Вийшли з групи',
+    joinBtn: 'Приєднатися', leaveBtn: 'Вийти з групи', openBtn: 'Відкрити', groupsTitle: 'Групи та канали', noGroups: 'Груп ще немає',
+    joinToWrite: 'Приєднайтеся, щоб писати', channelReadOnly: 'Писати в цьому каналі може лише автор',
+    groupInfo: '{n} учасників', channelInfo: '{n} підписників', groupDeleteBtn: 'Видалити',
+    groupDeleteConfirm: 'Видалити цю групу або канал і всі повідомлення?', groupDeleted: 'Видалено',
+    newGroupMsg: 'Нове повідомлення в {title}', ownerCantLeave: 'Автор не може вийти',
     photoGone: 'Фото вже не доступне', storyAddPhoto: 'Додати фото до історії?', storyDelete: 'Видалити історію',
     storyDeleteConfirm: 'Видалити цю історію для всіх?', storyDeleted: 'Історію видалено',
     fileTooBig: 'Файл завеликий (максимум 15 МБ)', uploadFailed: 'Не вдалося надіслати файл',
@@ -344,6 +362,13 @@ const I18N = {
     editBio: 'Изменить описание', changePhoto: 'Изменить фото', removePhoto: 'Удалить фото', writeMsg: 'Написать',
     created: 'создан', lastSeen: 'был(а) в сети {time}', deleteUserConfirm: 'Удалить этот аккаунт и все его сообщения?',
     photoRemoved: 'Фото удалено', bioSaved: 'Сохранено', deleteMsgBtn: 'Удалить сообщение',
+    groupsBtn: 'Группы', newGroup: 'Новая группа или канал', groupTitle: 'Название', kindGroup: 'Группа', kindChannel: 'Канал',
+    createGroup: 'Создать', groupCreated: 'Создано', groupJoined: 'Присоединено', groupLeft: 'Вы вышли из группы',
+    joinBtn: 'Присоединиться', leaveBtn: 'Выйти из группы', openBtn: 'Открыть', groupsTitle: 'Группы и каналы', noGroups: 'Групп пока нет',
+    joinToWrite: 'Присоединитесь, чтобы писать', channelReadOnly: 'Писать в этом канале может только автор',
+    groupInfo: '{n} участников', channelInfo: '{n} подписчиков', groupDeleteBtn: 'Удалить',
+    groupDeleteConfirm: 'Удалить эту группу или канал и все сообщения?', groupDeleted: 'Удалено',
+    newGroupMsg: 'Новое сообщение в {title}', ownerCantLeave: 'Автор не может выйти',
     photoGone: 'Фото уже недоступно', storyAddPhoto: 'Добавить фото к истории?', storyDelete: 'Удалить историю',
     storyDeleteConfirm: 'Удалить эту историю для всех?', storyDeleted: 'История удалена',
     fileTooBig: 'Файл слишком большой (максимум 15 МБ)', uploadFailed: 'Не удалось отправить файл',
@@ -371,6 +396,9 @@ let stories = [];        // newest first
 const seenStories = new Set(JSON.parse(localStorage.getItem('gigi_seen') || '[]'));
 const userInfo = new Map();  // nick -> { online, lastSeen, avatar, bio }
 let adminCode = null;        // kept only while this page is open
+let groups = new Map();      // id -> group or channel summary
+let gcache = new Map();      // id -> messages of that group
+let activeGroup = null;      // id of the open group or channel (active is null then)
 
 const $ = id => document.getElementById(id);
 const enc = encodeURIComponent;
@@ -422,6 +450,7 @@ function showApp() {
   $('meName').textContent = me;
   if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
   loadChats();
+  refreshGroups();
 }
 function forget() {
   me = null;
@@ -430,6 +459,7 @@ function forget() {
 }
 function closeChat() {
   active = null;
+  activeGroup = null;
   $('app').classList.remove('chat-open');
   $('chatView').hidden = true;
   $('placeholder').hidden = false;
@@ -484,6 +514,11 @@ function createSocket() {
     if (nick === me && $('modal').hidden === false) openProfile(me);
   });
   socket.on('reaction', ({ type, id, reactions }) => {
+    if (type === 'gmsg') {
+      for (const list of gcache.values()) for (const m of list) if (m.id === id) m.reactions = reactions;
+      if (activeGroup) renderMessages();
+      return;
+    }
     if (type === 'msg') {
       for (const list of cache.values()) for (const m of list) if (m.id === id) m.reactions = reactions;
       if (active) renderMessages();
@@ -493,6 +528,33 @@ function createSocket() {
     if (s) s.reactions = reactions;
     renderStories();
     if (s && Number($('storyDelBtn').dataset.id) === id && !$('viewer').hidden) renderStoryReacts(s);
+  });
+  socket.on('gmessage', ({ chat, msg }) => {
+    const list = gcache.get(chat);
+    if (list && !list.some(x => x.id === msg.id)) list.push(msg);
+    const g = groups.get(chat);
+    if (g) {
+      g.last = msg;
+      if (msg.from !== me && activeGroup !== chat) {
+        g.unread = (g.unread || 0) + 1;
+        toast(t('newGroupMsg', { title: g.title }));
+      }
+      if (activeGroup === chat) g.unread = 0;
+    }
+    if (activeGroup === chat) renderMessages();
+    renderList();
+  });
+  socket.on('gmsg_deleted', ({ chat, id }) => {
+    const list = gcache.get(chat);
+    if (list) gcache.set(chat, list.filter(m => m.id !== id));
+    if (activeGroup === chat) renderMessages();
+    refreshGroups();
+  });
+  socket.on('group_deleted', ({ id }) => {
+    groups.delete(id);
+    gcache.delete(id);
+    if (activeGroup === id) closeChat();
+    renderList();
   });
   socket.on('all_deleted', () => {
     sessionStorage.setItem('gigi_flash', 'allDeleted');
@@ -566,7 +628,7 @@ function readAsDataURL(blob) {
 }
 
 async function sendMedia(blob) {
-  if (!active) return;
+  if (!active && !activeGroup) return;
   if (!socket?.connected) return toast(t('errNetwork'));
   if (blob.size > 15 * 1024 * 1024) return toast(t('fileTooBig'));
   const clean = new Blob([blob], { type: (blob.type || '').split(';')[0] });
@@ -585,9 +647,9 @@ async function sendMedia(blob) {
     const keys = { too_big: 'fileTooBig', bad_type: 'badFile' };
     return toast(t(keys[res?.error] || 'uploadFailed'));
   }
-  socket.emit('message', { to: active, text: res.url, kind: res.kind }, ack => {
-    if (!ack?.ok) toast(t('messageFailed'));
-  });
+  const done = res2 => { if (!res2?.ok) toast(t('messageFailed')); };
+  if (activeGroup) socket.emit('group_send', { id: activeGroup, text: res.url, kind: 'image' }, done);
+  else socket.emit('message', { to: active, text: res.url, kind: res.kind }, done);
 }
 
 let recorder = null;
@@ -619,7 +681,7 @@ function deleteMessage(m) {
   if (m.from !== me) return;
   if (!confirm(t('confirmDeleteMsg'))) return;
   if (!socket?.connected) return toast(t('errNetwork'));
-  socket.emit('msg_delete', { id: m.id }, res => { if (!res?.ok) toast(t('messageFailed')); });
+  socket.emit(activeGroup ? 'gmsg_delete' : 'msg_delete', { id: m.id }, res => { if (!res?.ok) toast(t('messageFailed')); });
 }
 
 function onMsgDeleted({ id, from, to }) {
@@ -668,13 +730,14 @@ async function loadChats() {
 
 async function openChat(nick) {
   active = nick;
+  activeGroup = null;
   if (!chats.has(nick)) chats.set(nick, { last: null, unread: 0 });
   chats.get(nick).unread = 0;
   if (search) { search = ''; results = []; $('search').value = ''; }
   $('placeholder').hidden = true;
   $('chatView').hidden = false;
   $('app').classList.add('chat-open');
-  renderHeader(); renderList(); renderMessages();
+  renderHeader(); renderList(); renderMessages(); renderComposer();
 
   const rows = await (await fetch(`/api/history?me=${enc(me)}&with=${enc(nick)}`)).json();
   const existing = cache.get(nick) || [];
@@ -704,14 +767,20 @@ function renderList() {
   const items = search
     ? results
     : [...chats.keys()].sort((a, b) => (chats.get(b).last?.created_at || 0) - (chats.get(a).last?.created_at || 0));
-  if (!items.length) {
+  if (!items.length && (search || ![...groups.values()].some(g => g.joined))) {
     list.append(el('div', { class: 'empty' }, t(search ? 'noResults' : 'noChats')));
     return;
   }
   for (const nick of items) list.append(chatItem(nick));
+  if (!search) {
+    const joined = [...groups.values()].filter(g => g.joined)
+      .sort((a, b) => (b.last?.created_at || 0) - (a.last?.created_at || 0));
+    for (const g of joined) list.append(groupItem(g));
+  }
 }
 
 function renderHeader() {
+  if (activeGroup) return renderGroupHeader();
   if (!active) return;
   const on = online.has(active);
   $('hName').textContent = active;
@@ -732,11 +801,12 @@ function messageMeta(m) {
 function renderMessages() {
   const box = $('messages');
   box.replaceChildren();
-  for (const m of cache.get(active) || []) {
+  const msgType = activeGroup ? 'gmsg' : 'msg';
+  for (const m of (activeGroup ? gcache.get(activeGroup) : cache.get(active)) || []) {
     const own = m.from === me;
-    box.append(el('div', { class: 'msg' + (own ? ' own' : ''), onclick: () => openMsgMenu(m) },
+    box.append(el('div', { class: 'msg' + (own ? ' own' : ''), onclick: () => openMsgMenu(m, msgType) },
       mediaNode(m) ?? m.text,
-      reactRow(m.reactions, 'msg', m.id),
+      reactRow(m.reactions, msgType, m.id),
       el('span', { class: 'time' }, messageMeta(m))));
   }
   box.scrollTop = box.scrollHeight;
@@ -760,11 +830,16 @@ $('composer').addEventListener('submit', e => {
   e.preventDefault();
   const input = $('input');
   const text = input.value.trim();
-  if (!text || !active) return;
+  if (!text || (!active && !activeGroup)) return;
   if (!socket?.connected) return toast(t('errNetwork'));
-  socket.emit('message', { to: active, text }, res => {
-    if (!res?.ok) toast(t(res?.error === 'no_user' ? 'errNoUser' : 'messageFailed'));
-  });
+  const done = res => {
+    if (res?.ok) return;
+    const key = res?.error === 'read_only' || res?.error === 'forbidden' ? 'channelReadOnly'
+      : res?.error === 'no_user' ? 'errNoUser' : 'messageFailed';
+    toast(t(key));
+  };
+  if (activeGroup) socket.emit('group_send', { id: activeGroup, text, kind: 'text' }, done);
+  else socket.emit('message', { to: active, text }, done);
   input.value = ''; input.style.height = 'auto';
   input.focus();
 });
@@ -1034,8 +1109,8 @@ $('adminBtn').addEventListener('click', () => {
 
 $('modalClose').addEventListener('click', closeModal);
 $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
-$('hName').addEventListener('click', () => { if (active) openProfile(active); });
-$('hAvatar').addEventListener('click', () => { if (active) openProfile(active); });
+$('hName').addEventListener('click', () => { if (activeGroup) openGroupInfo(activeGroup); else if (active) openProfile(active); });
+$('hAvatar').addEventListener('click', () => { if (activeGroup) openGroupInfo(activeGroup); else if (active) openProfile(active); });
 $('meName').addEventListener('click', () => { if (me) openProfile(me); });
 
 const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
@@ -1065,8 +1140,8 @@ function emojiBar(type, id, onPicked) {
     el('button', { onclick: () => { if (onPicked) onPicked(); toggleReact(type, id, emoji); } }, emoji)));
 }
 
-function openMsgMenu(m) {
-  const items = [emojiBar('msg', m.id, closeModal)];
+function openMsgMenu(m, type = 'msg') {
+  const items = [emojiBar(type, m.id, closeModal)];
   if (m.from === me) {
     items.push(el('button', { class: 'btn danger', style: 'width:100%', onclick: () => { closeModal(); deleteMessage(m); } }, t('deleteMsgBtn')));
   }
@@ -1076,6 +1151,178 @@ function openMsgMenu(m) {
 function renderStoryReacts(s) {
   $('storyReacts').replaceChildren(reactRow(s.reactions, 'story', s.id), emojiBar('story', s.id));
 }
+
+function refreshGroups(done) {
+  if (!socket?.connected) return;
+  socket.emit('group_list', {}, res => {
+    if (!res?.ok) return;
+    const unread = new Map([...groups].map(([id, g]) => [id, g.unread || 0]));
+    groups = new Map(res.chats.map(c => [c.id, { ...c, unread: unread.get(c.id) || 0 }]));
+    renderList();
+    renderHeader();
+    renderComposer();
+    if (done) done();
+  });
+}
+
+function groupItem(g) {
+  const av = el('div', { class: 'avatar' }, g.kind === 'channel' ? '📢' : '👥');
+  av.style.background = avatarBg(g.title);
+  const preview = g.last ? (g.last.from === me ? t('you') + ': ' : '') + previewText(g.last) : '';
+  const btn = el('button', { class: 'item' + (g.id === activeGroup ? ' active' : ''), onclick: () => openGroup(g.id) },
+    av,
+    el('div', { class: 'meta' }, el('div', { class: 'name' }, g.title), el('div', { class: 'preview' }, preview)));
+  if (g.unread) btn.append(el('span', { class: 'badge' }, String(g.unread)));
+  return btn;
+}
+
+function renderGroupHeader() {
+  const g = groups.get(activeGroup);
+  if (!g) return;
+  $('hName').textContent = g.title;
+  const av = $('hAvatar');
+  av.textContent = g.kind === 'channel' ? '📢' : '👥';
+  av.style.background = avatarBg(g.title);
+  const st = $('hStatus');
+  st.textContent = g.kind === 'channel' ? t('channelInfo', { n: g.members }) : t('groupInfo', { n: g.members });
+  st.classList.remove('on');
+}
+
+function renderComposer() {
+  const g = activeGroup ? groups.get(activeGroup) : null;
+  const note = $('chanNote');
+  const notMember = Boolean(g) && !g.joined;
+  const readOnly = Boolean(g) && g.kind === 'channel' && g.owner !== me;
+  $('composer').hidden = notMember || readOnly;
+  note.hidden = !(notMember || readOnly);
+  if (!note.hidden) {
+    note.replaceChildren(el('div', {}, notMember ? t('joinToWrite') : t('channelReadOnly')));
+    if (notMember) note.append(el('button', { class: 'btn', onclick: () => joinGroup(g.id) }, t('joinBtn')));
+  }
+}
+
+function openGroup(id) {
+  active = null;
+  activeGroup = id;
+  const g = groups.get(id);
+  if (g) g.unread = 0;
+  if (search) { search = ''; results = []; $('search').value = ''; }
+  $('placeholder').hidden = true;
+  $('chatView').hidden = false;
+  $('app').classList.add('chat-open');
+  renderHeader(); renderList(); renderMessages(); renderComposer();
+  socket.emit('group_history', { id }, res => {
+    if (!res?.ok) return;
+    const existing = gcache.get(id) || [];
+    const ids = new Set(res.messages.map(m => m.id));
+    gcache.set(id, [...res.messages, ...existing.filter(m => !ids.has(m.id))]);
+    if (activeGroup === id) renderMessages();
+  });
+  $('input').focus();
+}
+
+function joinGroup(id) {
+  socket.emit('group_join', { id }, res => {
+    if (!res?.ok) return toast(t('messageFailed'));
+    toast(t('groupJoined'));
+    refreshGroups(() => { if (activeGroup === id) openGroup(id); });
+  });
+}
+
+function leaveGroup(id) {
+  socket.emit('group_leave', { id }, res => {
+    if (!res?.ok) return toast(t(res?.error === 'owner' ? 'ownerCantLeave' : 'messageFailed'));
+    toast(t('groupLeft'));
+    gcache.delete(id);
+    if (activeGroup === id) closeChat();
+    refreshGroups();
+  });
+}
+
+function deleteGroup(id) {
+  if (!confirm(t('groupDeleteConfirm'))) return;
+  const payload = { id };
+  if (adminCode && groups.get(id)?.owner !== me) payload.code = adminCode;
+  socket.emit('group_delete', payload, res => {
+    closeModal();
+    if (!res?.ok) return toast(t(res?.error === 'forbidden' ? 'badCode' : 'messageFailed'));
+    toast(t('groupDeleted'));
+    refreshGroups();
+  });
+}
+
+function openGroupInfo(id) {
+  const g = groups.get(id);
+  if (!g) return;
+  const isOwner = g.owner === me;
+  const btns = [];
+  if (!g.joined) btns.push(el('button', { class: 'btn', onclick: () => { closeModal(); joinGroup(id); } }, t('joinBtn')));
+  else if (!isOwner) btns.push(el('button', { class: 'btn ghost', onclick: () => { closeModal(); leaveGroup(id); } }, t('leaveBtn')));
+  if (isOwner || adminCode) btns.push(el('button', { class: 'btn danger', onclick: () => deleteGroup(id) }, t('groupDeleteBtn')));
+  const head = el('div', { class: 'pf-avatar' }, g.kind === 'channel' ? '📢' : '👥');
+  head.style.background = avatarBg(g.title);
+  openModal([
+    el('div', { class: 'pf-head' }, head, el('div', { class: 'pf-name' }, g.title)),
+    el('div', { class: 'pf-status' }, (g.kind === 'channel' ? t('kindChannel') : t('kindGroup')) + ' · ' +
+      (g.kind === 'channel' ? t('channelInfo', { n: g.members }) : t('groupInfo', { n: g.members }))),
+    el('div', { class: 'pf-actions' }, ...btns),
+  ]);
+}
+
+function openCreateGroup() {
+  let kind = 'group';
+  const title = el('input', { class: 'field', maxlength: '40', placeholder: t('groupTitle') });
+  const kindBox = el('div', { class: 'pf-actions' });
+  const drawKind = () => kindBox.replaceChildren(
+    el('button', { class: 'btn' + (kind === 'group' ? '' : ' ghost'), onclick: () => { kind = 'group'; drawKind(); } }, t('kindGroup')),
+    el('button', { class: 'btn' + (kind === 'channel' ? '' : ' ghost'), onclick: () => { kind = 'channel'; drawKind(); } }, t('kindChannel')));
+  drawKind();
+  openModal([
+    el('div', { class: 'acc-head' }, t('newGroup')),
+    kindBox,
+    el('div', { style: 'height:10px' }),
+    title,
+    el('div', { class: 'pf-actions acc-foot' }, el('button', { class: 'btn', onclick: () => {
+      const name = title.value.trim();
+      if (!name) return toast(t('groupTitle'));
+      socket.emit('group_create', { kind, title: name }, res => {
+        if (!res?.ok) return toast(t('messageFailed'));
+        toast(t('groupCreated'));
+        refreshGroups(() => { closeModal(); openGroup(res.id); });
+      });
+    } }, t('createGroup'))),
+  ]);
+}
+
+function openGroupsModal() {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('group_list', {}, res => {
+    if (!res?.ok) return toast(t('messageFailed'));
+    const unread = new Map([...groups].map(([id, g]) => [id, g.unread || 0]));
+    groups = new Map(res.chats.map(c => [c.id, { ...c, unread: unread.get(c.id) || 0 }]));
+    renderList();
+    const rows = res.chats.map(c => {
+      const av = el('div', { class: 'avatar', style: `width:40px;height:40px;background:${avatarBg(c.title)}` }, c.kind === 'channel' ? '📢' : '👥');
+      const sub = (c.kind === 'channel' ? t('kindChannel') : t('kindGroup')) + ' · ' +
+        (c.kind === 'channel' ? t('channelInfo', { n: c.members }) : t('groupInfo', { n: c.members }));
+      const btn = c.joined
+        ? el('button', { class: 'btn', onclick: () => { closeModal(); openGroup(c.id); } }, t('openBtn'))
+        : el('button', { class: 'btn', onclick: () => joinGroup(c.id) }, t('joinBtn'));
+      return el('div', { class: 'acc-row' }, av,
+        el('div', { class: 'meta', onclick: () => { closeModal(); openGroupInfo(c.id); } },
+          el('div', { class: 'name' }, c.title), el('div', { class: 'sub' }, sub)),
+        btn);
+    });
+    openModal([
+      el('div', { class: 'acc-head' }, t('groupsTitle')),
+      el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
+        el('button', { class: 'btn', onclick: () => { closeModal(); openCreateGroup(); } }, t('newGroup'))),
+      ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noGroups'))]),
+    ]);
+  });
+}
+
+$('groupsBtn').addEventListener('click', openGroupsModal);
 
 function applyAvatar(node, nick) {
   node.replaceChildren(nick[0].toUpperCase());
