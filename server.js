@@ -255,3 +255,4 @@ io.on('connection', socket => {
 db.run(SCHEMA).then(() => {
   server.listen(PORT, () => console.log('gigi chat працює на порту ' + PORT));
 });
+.
