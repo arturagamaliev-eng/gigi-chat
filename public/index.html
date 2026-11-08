@@ -74,6 +74,10 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .viewer-box{background:var(--panel);border-radius:16px;padding:32px 28px 28px;max-width:420px;width:100%;position:relative;white-space:pre-wrap;overflow-wrap:anywhere;font-size:18px;line-height:1.5}
 .viewer-title{font-size:13px;color:var(--muted);margin-bottom:12px}
 .viewer-close{position:absolute;top:8px;right:10px}
+.viewer-img{width:100%;border-radius:12px;margin-bottom:12px;display:block}
+.viewer-img[hidden]{display:none!important}
+#storyDelBtn{margin-top:16px;width:100%;text-align:center}
+.gone{color:var(--muted);font-style:italic}
 .stories{display:flex;gap:12px;padding:12px 14px;overflow-x:auto;border-bottom:1px solid var(--line)}
 .story{flex:none;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;cursor:pointer;color:var(--muted);font-size:11px;padding:0}
 .story-ring{width:52px;height:52px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#5ea8e0,#4fd18b);display:grid;place-items:center}
@@ -135,6 +139,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
       <input id="search" class="field" type="search" autocomplete="off" data-i18n-ph="search">
     </div>
     <div class="stories" id="stories"></div>
+    <input id="storyPhoto" type="file" accept="image/*" hidden>
     <div class="stories" id="stories" hidden></div>
     <div class="list" id="list"></div>
     <div class="side-top" style="border-top:1px solid var(--line);border-bottom:0">
@@ -167,8 +172,8 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
       </div>
       <div class="messages" id="messages"></div>
       <form class="composer" id="composer">
-        <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn" hidden></button>
-        <input id="fileInput" type="file" accept="image/*,video/*" hidden>
+        <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn"></button>
+        <input id="fileInput" type="file" accept="image/*" hidden>
         <textarea id="input" rows="1" data-i18n-ph="typeMessage"></textarea>
         <button class="btn" data-i18n="send"></button>
       </form>
@@ -187,7 +192,9 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
   <div class="viewer-box">
     <button class="icon viewer-close" id="viewerClose">✕</button>
     <div class="viewer-title" id="viewerTitle"></div>
+    <img id="viewerImg" class="viewer-img" alt="" hidden>
     <div id="viewerText"></div>
+    <button id="storyDelBtn" class="menu-item" data-i18n="storyDelete"></button>
   </div>
 </div>
 
@@ -220,6 +227,8 @@ const I18N = {
     adminDone: 'Account deleted', badCode: 'Wrong code',
     storyBtn: 'Story', storyPrompt: 'Story text (up to 500 characters)', storyPosted: 'Story published',
     storyTitle: 'gigi chat', newStory: 'New story from gigi chat',
+    photoGone: 'Photo expired', storyAddPhoto: 'Add a photo to the story?', storyDelete: 'Delete story',
+    storyDeleteConfirm: 'Delete this story for everyone?', storyDeleted: 'Story deleted',
     fileTooBig: 'File is too large (max 15 MB)', uploadFailed: 'Could not send the file',
     micDenied: 'Allow microphone access to send voice messages', badFile: 'This file type is not supported'
   },
@@ -247,6 +256,8 @@ const I18N = {
     adminDone: 'Акаунт видалено', badCode: 'Невірний код',
     storyBtn: 'Історія', storyPrompt: 'Текст історії (до 500 символів)', storyPosted: 'Історію опубліковано',
     storyTitle: 'gigi chat', newStory: 'Нова історія від gigi chat',
+    photoGone: 'Фото вже не доступне', storyAddPhoto: 'Додати фото до історії?', storyDelete: 'Видалити історію',
+    storyDeleteConfirm: 'Видалити цю історію для всіх?', storyDeleted: 'Історію видалено',
     fileTooBig: 'Файл завеликий (максимум 15 МБ)', uploadFailed: 'Не вдалося надіслати файл',
     micDenied: 'Дозвольте доступ до мікрофона, щоб надсилати голосові', badFile: 'Цей тип файлу не підтримується'
   },
@@ -274,6 +285,8 @@ const I18N = {
     adminDone: 'Аккаунт удалён', badCode: 'Неверный код',
     storyBtn: 'История', storyPrompt: 'Текст истории (до 500 символов)', storyPosted: 'История опубликована',
     storyTitle: 'gigi chat', newStory: 'Новая история от gigi chat',
+    photoGone: 'Фото уже недоступно', storyAddPhoto: 'Добавить фото к истории?', storyDelete: 'Удалить историю',
+    storyDeleteConfirm: 'Удалить эту историю для всех?', storyDeleted: 'История удалена',
     fileTooBig: 'Файл слишком большой (максимум 15 МБ)', uploadFailed: 'Не удалось отправить файл',
     micDenied: 'Разрешите доступ к микрофону, чтобы отправлять голосовые', badFile: 'Этот тип файла не поддерживается'
   }
@@ -396,6 +409,11 @@ function createSocket() {
   socket.on('msg_deleted', onMsgDeleted);
   socket.on('stories', list => { stories = list || []; renderStories(); });
   socket.on('story', s => { stories.unshift(s); renderStories(); toast(t('newStory')); });
+  socket.on('story_deleted', ({ id }) => {
+    stories = stories.filter(s => s.id !== id);
+    renderStories();
+    if (Number($('storyDelBtn').dataset.id) === id) $('viewer').hidden = true;
+  });
   socket.on('avatars', obj => { avatars = new Map(Object.entries(obj || {})); renderList(); renderHeader(); });
   socket.on('avatar', ({ nick, url }) => { avatars.set(nick, url); renderList(); renderHeader(); });
   socket.on('read', ({ by, at }) => {
@@ -441,6 +459,7 @@ function onLogin(res) {
 }
 
 function mediaNode(m) {
+  if (m.kind === 'gone') return el('span', { class: 'gone' }, t('photoGone'));
   if (!m.kind || m.kind === 'text') return null;
   const stop = e => e.stopPropagation();
   if (m.kind === 'image') return el('img', { src: m.text, alt: '', class: 'media', onclick: e => { stop(e); window.open(m.text, '_blank'); } });
@@ -691,7 +710,7 @@ $('attachBtn').addEventListener('click', () => $('fileInput').click());
 $('fileInput').addEventListener('change', e => {
   const f = e.target.files?.[0];
   e.target.value = '';
-  if (f) sendMedia(f);
+  if (f) compressImage(f).then(sendMedia).catch(() => toast(t('uploadFailed')));
 });
 
 function renderStories() {
@@ -707,7 +726,10 @@ function renderStories() {
 
 function openStory(s) {
   $('viewerTitle').textContent = t('storyTitle');
-  $('viewerText').textContent = s.text;
+  $('viewerText').textContent = s.text || '';
+  $('viewerImg').hidden = !s.media;
+  if (s.media) $('viewerImg').src = s.media;
+  $('storyDelBtn').dataset.id = String(s.id);
   $('viewer').hidden = false;
   seenStories.add(s.id);
   localStorage.setItem('gigi_seen', JSON.stringify([...seenStories].slice(-200)));
@@ -717,14 +739,79 @@ function openStory(s) {
 $('viewerClose').addEventListener('click', () => { $('viewer').hidden = true; });
 $('viewer').addEventListener('click', e => { if (e.target.id === 'viewer') $('viewer').hidden = true; });
 
+let pendingStory = null;
+
+// Shrinks a photo to at most 1280 px and JPEG quality 75%, so it stays small.
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale);
+      c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      c.toBlob(b => (b ? resolve(b) : reject(new Error('blob'))), 'image/jpeg', 0.75);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+async function uploadBlob(blob) {
+  const data = await readAsDataURL(blob);
+  const res = await (await fetch('/api/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: localStorage.getItem('gigi_token'), data })
+  })).json();
+  if (!res?.ok) throw new Error(res?.error || 'upload');
+  return res.url;
+}
+
+function postStory(code, text, media) {
+  socket.emit('story_post', { code, text, media }, res => {
+    if (res?.ok) return toast(t('storyPosted'));
+    toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
+  });
+}
+
 $('storyBtn').addEventListener('click', () => {
   if (!socket?.connected) return toast(t('errNetwork'));
   const code = prompt(t('adminCodePrompt'));
   if (!code) return;
-  const text = prompt(t('storyPrompt'));
-  if (!text || !text.trim()) return;
-  socket.emit('story_post', { code, text }, res => {
-    if (res?.ok) return toast(t('storyPosted'));
+  const text = (prompt(t('storyPrompt')) || '').trim();
+  if (confirm(t('storyAddPhoto'))) {
+    pendingStory = { code, text };
+    $('storyPhoto').click();
+    return;
+  }
+  if (!text) return;
+  postStory(code, text, null);
+});
+
+$('storyPhoto').addEventListener('change', async e => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  const p = pendingStory;
+  pendingStory = null;
+  if (!f || !p) return;
+  try {
+    const media = await uploadBlob(await compressImage(f));
+    postStory(p.code, p.text, media);
+  } catch {
+    toast(t('uploadFailed'));
+  }
+});
+
+$('storyDelBtn').addEventListener('click', () => {
+  const id = Number($('storyDelBtn').dataset.id);
+  if (!confirm(t('storyDeleteConfirm'))) return;
+  const code = prompt(t('adminCodePrompt'));
+  if (!code) return;
+  socket.emit('story_delete', { id, code }, res => {
+    if (res?.ok) { $('viewer').hidden = true; return toast(t('storyDeleted')); }
     toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
   });
 });
