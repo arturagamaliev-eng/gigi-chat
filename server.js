@@ -198,7 +198,7 @@ async function authenticate(payload) {
   }
   const nick = typeof payload?.nick === 'string' ? payload.nick.trim() : '';
   const password = typeof payload?.password === 'string' ? payload.password : '';
-  if (!NICK_RE.test(nick)) return { ok: false, error: 'invalid_nick' };
+  if (!NICK_RE.test(nick) || keyOf(nick) === 'gigi_chat') return { ok: false, error: 'invalid_nick' };
   if (password.length < PASS_MIN || password.length > PASS_MAX) return { ok: false, error: 'invalid_password' };
 
   const user = await findUser(nick);
@@ -528,7 +528,7 @@ io.on('connection', async socket => {
     const oldNick = socketNick.get(socket.id);
     if (!oldNick) return ack?.({ ok: false, error: 'not_logged_in' });
     const newNick = typeof payload?.nick === 'string' ? payload.nick.trim() : '';
-    if (!NICK_RE.test(newNick)) return ack?.({ ok: false, error: 'invalid_nick' });
+    if (!NICK_RE.test(newNick) || keyOf(newNick) === 'gigi_chat') return ack?.({ ok: false, error: 'invalid_nick' });
     if (newNick === oldNick) return ack?.({ ok: true, nick: oldNick });
     const taken = await findUser(newNick);
     if (taken && taken.nickname !== oldNick) return ack?.({ ok: false, error: 'nick_taken' });
@@ -793,7 +793,7 @@ io.on('connection', async socket => {
     if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     const amount = Number(payload?.amount);
-    if (!Number.isInteger(amount) || amount < 1 || amount > 1000000) return ack?.({ ok: false, error: 'invalid' });
+    if (!Number.isInteger(amount) || amount < 1 || amount > 1000000000) return ack?.({ ok: false, error: 'invalid' });
     const target = (await findUser(String(payload?.nick || '')))?.nickname;
     if (!target) return ack?.({ ok: false, error: 'no_user' });
     await db.run('UPDATE users SET stars = stars + $1 WHERE nickname = $2', [amount, target]);
@@ -830,6 +830,30 @@ io.on('connection', async socket => {
     await db.run('UPDATE gift_items SET owner = $1, on_shelf = false WHERE id = $2', [target, id]);
     await sendGiftMessage(me, target, item);
     ack?.({ ok: true });
+  });
+
+  // Admin only: give copies of a market gift to every user, sent from the gigi_chat account.
+  on('admin_gift_broadcast', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const id = Number(payload?.id);
+    const count = Number(payload?.count);
+    const item = Number.isInteger(id) ? await db.one('SELECT id, title, description, price, image FROM gift_items WHERE id = $1', [id]) : null;
+    if (!item) return ack?.({ ok: false, error: 'no_gift' });
+    if (!Number.isInteger(count) || count < 1 || count > 100) return ack?.({ ok: false, error: 'invalid' });
+    const users = await db.all('SELECT nickname FROM users');
+    const text = JSON.stringify({ id: item.id, title: item.title, description: item.description, price: item.price, image: item.image, count });
+    for (const u of users) {
+      await db.run(
+        'INSERT INTO gift_items (title, description, price, image, owner, created_at) SELECT $1::text, $2::text, $3::int, $4::text, $5::text, $6::double precision FROM generate_series(1, $7::int)',
+        [item.title, item.description, item.price, item.image, u.nickname, Date.now(), count]);
+      const now = Date.now();
+      const row = await db.one(
+        "INSERT INTO messages (from_nick, to_nick, text, kind, created_at) VALUES ('gigi_chat', $1, $2, 'gift', $3) RETURNING id",
+        [u.nickname, text, now]);
+      io.to('u:' + u.nickname).emit('message', { id: row.id, from: 'gigi_chat', to: u.nickname, text, created_at: now, read_at: null, kind: 'gift' });
+    }
+    ack?.({ ok: true, users: users.length });
   });
 
   // Admin only: delete a gift from the market (gift cards already in chats stay).
