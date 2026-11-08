@@ -46,6 +46,7 @@ const columnsOf = table => db.prepare(`PRAGMA table_info(${table})`).all().map(c
 if (!columnsOf('users').includes('key')) db.exec('ALTER TABLE users ADD COLUMN key TEXT');
 if (!columnsOf('messages').includes('read_at')) db.exec('ALTER TABLE messages ADD COLUMN read_at INTEGER');
 if (!columnsOf('messages').includes('kind')) db.exec("ALTER TABLE messages ADD COLUMN kind TEXT DEFAULT 'text'");
+if (!columnsOf('users').includes('avatar')) db.exec('ALTER TABLE users ADD COLUMN avatar TEXT');
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_users_key ON users(key);
   CREATE INDEX IF NOT EXISTS idx_msg_from ON messages(from_nick, id);
@@ -64,6 +65,8 @@ const q = {
   insertUser: db.prepare('INSERT INTO users (nickname, key, pass_salt, pass_hash, created_at) VALUES (?, ?, ?, ?, ?)'),
   renameUser: db.prepare('UPDATE users SET nickname = ?, key = ? WHERE nickname = ?'),
   deleteUser: db.prepare('DELETE FROM users WHERE nickname = ?'),
+  setAvatar: db.prepare('UPDATE users SET avatar = ? WHERE nickname = ?'),
+  allAvatars: db.prepare('SELECT nickname, avatar FROM users WHERE avatar IS NOT NULL'),
   insertSession: db.prepare('INSERT INTO sessions (token, nickname, created_at) VALUES (?, ?, ?)'),
   getSession: db.prepare('SELECT nickname FROM sessions WHERE token = ?'),
   renameSessions: db.prepare('UPDATE sessions SET nickname = ? WHERE nickname = ?'),
@@ -104,6 +107,18 @@ const deleteAll = db.transaction(nick => {
   q.deleteSessions.run(nick);
   q.deleteUser.run(nick);
 });
+
+const filesOf = db.prepare("SELECT text FROM messages WHERE (from_nick = ? OR to_nick = ?) AND kind != 'text'");
+const avatarOf = db.prepare('SELECT avatar FROM users WHERE nickname = ?');
+
+// Deletes an account, its messages and every uploaded file that belonged to it.
+function removeUser(nick) {
+  const names = filesOf.all(nick, nick).map(r => r.text);
+  const av = avatarOf.get(nick)?.avatar;
+  if (av) names.push(av);
+  for (const u of names) fs.unlink(path.join(UPLOAD_DIR, path.basename(u)), () => {});
+  deleteAll(nick);
+}
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   return { salt, hash: crypto.scryptSync(password, salt, 64).toString('hex') };
@@ -212,6 +227,7 @@ function detach(socket) {
 
 io.on('connection', socket => {
   socket.emit('presence', onlineList());
+  socket.emit('avatars', Object.fromEntries(q.allAvatars.all().map(r => [r.nickname, r.avatar])));
 
   socket.on('login', (payload, ack) => {
     const res = authenticate(payload);
@@ -271,6 +287,38 @@ io.on('connection', socket => {
     ack?.({ ok: true });
   });
 
+  socket.on('set_avatar', (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const url = String(payload?.url || '');
+    if (!/^\/uploads\/[a-f0-9]{32}\.(jpg|png|webp|gif)$/.test(url)) return ack?.({ ok: false, error: 'invalid' });
+    q.setAvatar.run(url, me);
+    io.emit('avatar', { nick: me, url });
+    ack?.({ ok: true });
+  });
+
+  // Only the owner of the server knows ADMIN_CODE (set in Render's Environment settings).
+  socket.on('admin_delete', (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const code = process.env.ADMIN_CODE;
+    if (!code || String(payload?.code || '') !== code) return ack?.({ ok: false, error: 'bad_code' });
+    const target = findUser(String(payload?.nick || ''))?.nickname;
+    if (!target) return ack?.({ ok: false, error: 'no_user' });
+
+    removeUser(target);
+    const sockets = [...(online.get(target) || [])];
+    online.delete(target);
+    for (const id of sockets) {
+      socketNick.delete(id);
+      const s = io.sockets.sockets.get(id);
+      if (s) { s.leave('u:' + target); s.emit('account_deleted'); }
+    }
+    io.emit('user_deleted', { nick: target });
+    broadcastPresence();
+    ack?.({ ok: true });
+  });
+
   socket.on('rename', (payload, ack) => {
     const oldNick = socketNick.get(socket.id);
     if (!oldNick) return ack?.({ ok: false, error: 'not_logged_in' });
@@ -302,7 +350,7 @@ io.on('connection', socket => {
     const nick = socketNick.get(socket.id);
     if (!nick) return ack?.({ ok: false, error: 'not_logged_in' });
 
-    deleteAll(nick);
+    removeUser(nick);
 
     const sockets = [...(online.get(nick) || [])];
     online.delete(nick);
