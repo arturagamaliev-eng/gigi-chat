@@ -208,6 +208,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
           <div class="name" id="hName"></div>
           <div class="status" id="hStatus"></div>
         </div>
+        <button class="icon" id="giftChatBtn" title="Подарунок">🎁</button>
         <button class="icon" id="moreBtn" aria-label="menu">⋮</button>
       </header>
       <div id="chatMenu" class="menu" hidden>
@@ -305,6 +306,8 @@ const I18N = {
     giftDeleteConfirm: 'Delete this gift from the market?', giftDeleted: 'Gift deleted', noMyGifts: 'You have no gifts yet',
     giftLabel: 'Gift', giftSold: 'Sold', giftBought: 'Purchased',
     noStars: 'Not enough stars', soldOut: 'This gift was already bought',
+    broadcastBtn: 'Send to all users', broadcastTitle: 'Send to all users', broadcastCountQ: 'How many of this gift for each user (1–100)',
+    broadcastConfirm: 'Send this gift to every user?', broadcastDone: 'Sent to all users', giftChatTitle: 'Send a gift',
     photoGone: 'Photo expired', storyAddPhoto: 'Add a photo to the story?', storyDelete: 'Delete story',
     storyDeleteConfirm: 'Delete this story for everyone?', storyDeleted: 'Story deleted',
     fileTooBig: 'File is too large (max 15 MB)', uploadFailed: 'Could not send the file',
@@ -360,6 +363,8 @@ const I18N = {
     giftDeleteConfirm: 'Видалити цей подарунок з маркету?', giftDeleted: 'Подарунок видалено', noMyGifts: 'Подарунків ще немає',
     giftLabel: 'Подарунок', giftSold: 'Продано', giftBought: 'Куплено',
     noStars: 'Недостатньо зірок', soldOut: 'Цей подарунок уже куплено',
+    broadcastBtn: 'Відправити всім користувачам', broadcastTitle: 'Відправити всім користувачам', broadcastCountQ: 'Скільки таких подарунків кожному (1–100)',
+    broadcastConfirm: 'Надіслати цей подарунок усім користувачам?', broadcastDone: 'Надіслано всім користувачам', giftChatTitle: 'Надіслати подарунок',
     photoGone: 'Фото вже не доступне', storyAddPhoto: 'Додати фото до історії?', storyDelete: 'Видалити історію',
     storyDeleteConfirm: 'Видалити цю історію для всіх?', storyDeleted: 'Історію видалено',
     fileTooBig: 'Файл завеликий (максимум 15 МБ)', uploadFailed: 'Не вдалося надіслати файл',
@@ -415,6 +420,8 @@ const I18N = {
     giftDeleteConfirm: 'Удалить этот подарок из маркета?', giftDeleted: 'Подарок удалён', noMyGifts: 'Подарков пока нет',
     giftLabel: 'Подарок', giftSold: 'Продано', giftBought: 'Куплено',
     noStars: 'Недостаточно звёзд', soldOut: 'Этот подарок уже куплен',
+    broadcastBtn: 'Отправить всем пользователям', broadcastTitle: 'Отправить всем пользователям', broadcastCountQ: 'Сколько таких подарков каждому (1–100)',
+    broadcastConfirm: 'Отправить этот подарок всем пользователям?', broadcastDone: 'Отправлено всем пользователям', giftChatTitle: 'Отправить подарок',
     photoGone: 'Фото уже недоступно', storyAddPhoto: 'Добавить фото к истории?', storyDelete: 'Удалить историю',
     storyDeleteConfirm: 'Удалить эту историю для всех?', storyDeleted: 'История удалена',
     fileTooBig: 'Файл слишком большой (максимум 15 МБ)', uploadFailed: 'Не удалось отправить файл',
@@ -660,7 +667,7 @@ function mediaNode(m) {
       el('img', { src: g.image, alt: '' }),
       el('div', { class: 'gift-title' }, g.title),
       g.description ? el('div', { class: 'gift-desc' }, g.description) : el('span', { hidden: '' }),
-      el('div', { class: 'gift-price' }, '⭐ ' + g.price));
+      el('div', { class: 'gift-price' }, '⭐ ' + g.price + (g.count > 1 ? '  × ' + g.count : '')));
   }
   if (!m.kind || m.kind === 'text') return null;
   const stop = e => e.stopPropagation();
@@ -816,7 +823,7 @@ function chatItem(nick) {
   const preview = info.last ? (info.last.from === me ? t('you') + ': ' : '') + previewText(info.last) : '';
   const btn = el('button', { class: 'item' + (nick === active ? ' active' : ''), onclick: () => openChat(nick) },
     av,
-    el('div', { class: 'meta' }, el('div', { class: 'name' }, nick), el('div', { class: 'preview' }, preview)));
+    el('div', { class: 'meta' }, el('div', { class: 'name' }, displayName(nick)), el('div', { class: 'preview' }, preview)));
   if (info.unread) btn.append(el('span', { class: 'badge' }, String(info.unread)));
   return btn;
 }
@@ -845,7 +852,7 @@ function renderHeader() {
   if (activeGroup) return renderGroupHeader();
   if (!active) return;
   const on = online.has(active);
-  $('hName').textContent = active;
+  $('hName').textContent = displayName(active);
   const av = $('hAvatar');
   applyAvatar(av, active);
   av.style.background = avatarBg(active);
@@ -1397,6 +1404,44 @@ function openGroupsModal() {
 
 $('groupsBtn').addEventListener('click', openGroupsModal);
 
+const displayName = n => (n === 'gigi_chat' ? 'gigi chat' : n);
+
+// Opens the list of your gifts; one tap sends that gift to the open chat's person.
+function openSendGiftToChat(nick) {
+  socket.emit('gifts_mine', {}, res => {
+    if (!res?.ok) return toast(t('messageFailed'));
+    if (!res.items.length) return toast(t('noMyGifts'));
+    openModal([
+      el('div', { class: 'acc-head' }, t('giftChatTitle') + ' → ' + displayName(nick)),
+      ...res.items.map(it => el('div', { class: 'acc-row' },
+        el('img', { src: it.image, alt: '', style: 'width:48px;height:48px;border-radius:12px;object-fit:cover' }),
+        el('div', { class: 'meta' }, el('div', { class: 'name' }, it.title), el('div', { class: 'sub' }, '⭐ ' + it.price)),
+        el('button', { class: 'btn', onclick: () => socket.emit('gift_send', { id: it.id, to: nick }, r => {
+          if (!r?.ok) return toast(t(r?.error === 'no_user' ? 'errNoUser' : r?.error === 'self' ? 'giftNoSelf' : 'messageFailed'));
+          closeModal();
+          toast(t('giftSent'));
+        }) }, t('giftSendBtn')))),
+    ]);
+  });
+}
+
+function openBroadcast(it) {
+  const count = el('input', { class: 'field', type: 'number', min: '1', max: '100', value: '1' });
+  openModal([
+    el('div', { class: 'acc-head' }, t('broadcastTitle')),
+    el('div', { class: 'sub' }, t('broadcastCountQ')),
+    count,
+    el('div', { class: 'pf-actions acc-foot' }, el('button', { class: 'btn', onclick: () => {
+      const n = Number(count.value);
+      if (!Number.isInteger(n) || n < 1 || n > 100) return toast(t('broadcastCountQ'));
+      if (!confirm(t('broadcastConfirm'))) return;
+      adminCall('admin_gift_broadcast', { id: it.id, count: n }, () => { closeModal(); toast(t('broadcastDone')); });
+    } }, t('broadcastBtn'))),
+  ]);
+}
+
+$('giftChatBtn').addEventListener('click', () => { if (active) openSendGiftToChat(active); });
+
 function shelfNode(items) {
   if (!items || !items.length) return el('span', { hidden: '' });
   return el('div', { class: 'shelf' }, ...items.map(g => el('img', { src: g.image, alt: g.title, title: g.title })));
@@ -1468,13 +1513,13 @@ function openMyGifts() {
 function openGiftDetail(it, mine) {
   const btns = [];
   if (mine) {
-    btns.push(el('button', { class: 'btn', onclick: () => sendGift(it) }, t('giftSendBtn')));
     btns.push(el('button', { class: 'btn ghost', onclick: () => toggleShelf(it) }, it.on_shelf ? t('shelfOff') : t('shelfOn')));
     btns.push(el('button', { class: 'btn ghost', onclick: () => sellGift(it) }, t('sellBtn', { n: Math.floor(it.price * 0.8) })));
   } else {
     btns.push(el('button', { class: 'btn', onclick: () => buyGift(it) }, t('buyBtn')));
   }
   btns.push(el('button', { class: 'btn ghost', onclick: () => adminGiveGift(it) }, t('adminGiveBtn')));
+  btns.push(el('button', { class: 'btn', onclick: () => openBroadcast(it) }, t('broadcastBtn')));
   btns.push(el('button', { class: 'btn danger', onclick: () => adminDeleteGift(it) }, t('adminDeleteBtn')));
   openModal([
     el('img', { src: it.image, alt: '', style: 'width:100%;border-radius:14px;max-height:340px;object-fit:cover' }),
@@ -1558,7 +1603,7 @@ function openCreateGift() {
 }
 
 function openAdminStars() {
-  const nick = el('input', { class: 'field', placeholder: t('giftNick'), maxlength: '20' });
+  const nick = el('input', { class: 'field', placeholder: t('giftNick'), maxlength: '20', value: me || '' });
   const amount = el('input', { class: 'field', type: 'number', min: '1', placeholder: t('starsAmount') });
   openModal([
     el('div', { class: 'acc-head' }, t('adminStarsBtn')),
