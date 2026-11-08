@@ -1,257 +1,363 @@
-const path = require('path');
-const http = require('http');
-const crypto = require('crypto');
-const express = require('express');
-const { Server } = require('socket.io');
-const { Pool } = require('pg');
-
-const PORT = process.env.PORT || 3000;
-const NICK_RE = /^[a-zA-Z0-9_]{3,20}$/;
-const keyOf = s => s.toLowerCase();
-
-if (!process.env.DATABASE_URL) {
-  console.error('DATABASE_URL не знайдено!');
-  process.exit(1);
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>gigi chat</title>
+<style>
+:root{
+  --bg:#0e1621; --panel:#17212b; --panel2:#1e2c3a; --line:#243447;
+  --out:#2b5278; --in:#182533; --accent:#5ea8e0; --text:#e6edf3; --muted:#7d8b99;
+  --online:#4fd18b; --danger:#e5736b;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+html[data-theme="light"] {
+  --bg:#f0f2f5; --panel:#ffffff; --panel2:#e4e6eb; --line:#d8dadf;
+  --out:#eeffde; --in:#ffffff; --accent:#2abee8; --text:#050505; --muted:#65676b;
+  --online:#31a24c; --danger:#fa383e;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-size:15px;overscroll-behavior:none;touch-action:pan-x pan-y}
+button,input,textarea{font:inherit;color:inherit}
+[hidden]{display:none!important}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.login{height:100%;display:grid;place-items:center;padding:24px}
+.card{width:min(360px,100%);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px}
+.card h1{margin:0 0 6px;font-size:22px;font-weight:650;letter-spacing:-.01em}
+.card p{margin:0 0 20px;color:var(--muted);line-height:1.5}
+label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+.field{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;outline:none}
+.field:focus{border-color:var(--accent)}
+.btn{background:var(--accent);color:#0b1520;border:0;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.hint{font-size:12px;color:var(--muted);margin-top:8px;min-height:16px}
+.error .hint{color:var(--danger)}
+.lang{display:flex;gap:2px;background:var(--bg);border-radius:8px;padding:2px}
+.lang button{background:none;border:0;padding:4px 7px;border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;font-weight:600}
+.lang button[aria-pressed="true"]{background:var(--panel2);color:var(--text)}
+.icon{background:none;border:0;color:var(--muted);cursor:pointer;padding:6px 8px;border-radius:8px;font-size:13px}
+.icon:hover{color:var(--text);background:var(--panel2)}
+.app{height:100%;display:grid;grid-template-columns:320px 1fr}
+.sidebar{background:var(--panel);display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+.side-top{padding:14px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+.row{display:flex;align-items:center;gap:10px}
+.brand{font-weight:700;letter-spacing:-.01em;flex:1}
+.list{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:6px}
+.item{display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;cursor:pointer;width:100%;background:none;border:0;text-align:left}
+.item:hover{background:var(--panel2)}
+.item.active{background:var(--out)}
+.avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:600;flex:none;position:relative;color:#fff}
+.dot{position:absolute;right:0;bottom:0;width:11px;height:11px;border-radius:50%;background:var(--online);border:2px solid var(--panel)}
+.meta{min-width:0;flex:1}
+.name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.preview{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.badge{background:var(--accent);color:#0b1520;border-radius:999px;font-size:12px;font-weight:700;padding:1px 7px;min-width:20px;text-align:center}
+.empty{color:var(--muted);text-align:center;padding:28px 16px;line-height:1.5}
+.status{font-size:13px;color:var(--muted)}
+.status.on{color:var(--online)}
+.chat{display:flex;flex-direction:column;min-height:0;background:var(--bg)}
+.chat-view{display:flex;flex-direction:column;flex:1;min-height:0}
+.chat-top{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.back{display:none}
+.messages{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:18px clamp(12px,4vw,48px);display:flex;flex-direction:column;gap:6px}
+.msg{max-width:min(520px,80%);padding:8px 12px;border-radius:14px;background:var(--in);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.4;border-bottom-left-radius:4px}
+.msg.own{align-self:flex-end;background:var(--out);border-bottom-left-radius:14px;border-bottom-right-radius:4px}
+.time{display:block;font-size:11px;color:var(--muted);text-align:right;margin-top:3px}
+.msg.own .time{color:#a9c4de}
+.composer{display:flex;gap:10px;align-items:flex-end;padding:12px 16px;background:var(--panel);border-top:1px solid var(--line)}
+.composer textarea{flex:1;resize:none;max-height:140px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;outline:none;line-height:1.4}
+.composer textarea:focus{border-color:var(--accent)}
+.placeholder{margin:auto;color:var(--muted);text-align:center;padding:24px}
+.stories{display:flex;gap:12px;padding:10px 14px;overflow-x:auto;border-bottom:1px solid var(--line)}
+.stories[hidden]{display:none!important}
+.story{display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;cursor:pointer;color:var(--text);font-size:12px;flex:none}
+.story .ring{width:56px;height:56px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#5ea8e0,#4fd18b)}
+.story.seen .ring{background:var(--line)}
+.story .ring span{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;background:var(--bg);font-weight:700;font-size:18px}
+.viewer{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:25;display:flex;align-items:center;justify-content:center;padding:24px}
+.viewer[hidden]{display:none!important}
+.viewer-box{background:var(--panel);border-radius:16px;padding:32px 28px 28px;max-width:420px;width:100%;position:relative;white-space:pre-wrap;overflow-wrap:anywhere;font-size:18px;line-height:1.5;max-height:90vh;overflow-y:auto}
+.viewer-title{font-size:13px;color:var(--muted);margin-bottom:12px}
+.viewer-close{position:absolute;top:8px;right:10px}
+.viewer-img{width:100%;max-height:55vh;object-fit:contain;border-radius:12px;margin-bottom:12px;display:block}
+.viewer-img[hidden]{display:none!important}
+#storyDelBtn{margin-top:16px;width:100%;text-align:center}
+.gone{color:var(--muted);font-style:italic}
+.modal-box{max-height:85vh;overflow-y:auto;max-width:460px;font-size:15px;line-height:1.4}
+.pf-head{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:18px}
+.pf-avatar{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;font-size:36px;font-weight:700;color:#fff;position:relative;overflow:hidden}
+.pf-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pf-name{font-size:20px;font-weight:650}
+.pf-status{font-size:13px;color:var(--muted)}
+.pf-status.on{color:var(--online)}
+.pf-bio{background:var(--bg);border-radius:12px;padding:12px 14px;margin:12px 0;color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
+.pf-bio.empty{color:var(--muted);font-style:italic}
+.pf-actions{display:flex;flex-direction:column;gap:8px}
+.pf-actions .btn{width:100%}
+.pf-actions .btn.ghost{background:var(--panel2);color:var(--text)}
+.pf-actions .btn.danger{background:var(--danger);color:#fff}
+.acc-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.acc-row .meta{min-width:0;flex:1}
+.acc-row .sub{font-size:12px;color:var(--muted)}
+.acc-row .sub.on{color:var(--online)}
+.acc-row .btn{padding:7px 10px;font-size:13px}
+.acc-head{font-size:18px;font-weight:650;margin-bottom:6px}
+.acc-foot{margin-top:18px}
+.reacts{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.react{background:var(--panel2);border:0;border-radius:999px;padding:2px 9px;font-size:13px;color:var(--text);cursor:pointer}
+.react.mine{background:var(--accent);color:#0b1520}
+.emoji-bar{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.emoji-bar button{font-size:24px;background:none;border:0;cursor:pointer;padding:4px 6px;border-radius:10px}
+.emoji-bar button:hover{background:var(--panel2)}
+#storyReacts{margin-bottom:8px}
+.chan-note{padding:14px 16px;text-align:center;color:var(--muted);border-top:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;align-items:center;gap:10px}
+.chan-note .btn{min-width:160px}
+.gift-card{display:flex;flex-direction:column;gap:6px;width:240px;max-width:100%}
+.gift-card img{width:100%;max-height:240px;object-fit:cover;border-radius:12px;display:block}
+.gift-title{font-weight:650}
+.gift-desc{font-size:13px;color:var(--muted);white-space:pre-wrap}
+.gift-price{color:#f5c542;font-weight:600}
+.shelf{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.shelf img{width:60px;height:60px;border-radius:12px;object-fit:cover;border:1px solid var(--line)}
+.avatar img{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover}
+.chat-top{position:relative}
+.menu{position:absolute;right:12px;top:58px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:15;min-width:200px;padding:6px}
+.menu-item{display:block;width:100%;background:none;border:0;text-align:left;padding:10px 12px;border-radius:8px;cursor:pointer;color:var(--text)}
+.menu-item.danger{color:var(--danger)}
+.menu-item:hover{background:var(--panel)}
+.msg img.media,.msg video.media{display:block;max-width:100%;max-height:320px;border-radius:10px;cursor:pointer}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:99;max-width:90vw}
+.badge-prem{background:linear-gradient(135deg,#f5c542,#e5736b);color:#000;font-size:11px;padding:2px 6px;border-radius:6px;font-weight:700;margin-left:4px}
+@media (max-width:760px){
+  .app{grid-template-columns:1fr}
+  .sidebar{border-right:0}
+  .app.chat-open .sidebar{display:none}
+  .app:not(.chat-open) .chat{display:none}
+  .back{display:inline-flex}
+}
+</style>
+</head>
+<body>
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+<section id="login" class="login" hidden>
+  <form class="card" id="loginForm" novalidate>
+    <h1>gigi chat</h1>
+    <p>Вкажіть унікальний юзернейм і пароль</p>
+    <label for="nick">Юзернейм (@username)</label>
+    <input id="nick" class="field" autocomplete="username" placeholder="only_english_123" maxlength="20">
+    <label for="pass" style="margin-top:14px">Пароль</label>
+    <input id="pass" class="field" type="password" autocomplete="current-password" maxlength="100">
+    <div class="hint" id="loginHint"></div>
+    <button class="btn" style="width:100%;margin-top:14px">Увійти</button>
+    <div class="lang" style="justify-content:center;margin-top:18px">
+      <button type="button" data-set-lang="en">EN</button>
+      <button type="button" data-set-lang="uk">УК</button>
+      <button type="button" data-set-lang="ru">РУ</button>
+    </div>
+  </form>
+</section>
 
-const db = {
-  one: async (sql, p = []) => (await pool.query(sql, p)).rows[0],
-  all: async (sql, p = []) => (await pool.query(sql, p)).rows,
-  run: (sql, p = []) => pool.query(sql, p),
+<section id="app" class="app" hidden>
+  <aside class="sidebar">
+    <div class="side-top">
+      <div class="row">
+        <button class="icon" id="myProfileBtn" title="Профіль">👤</button>
+        <div class="brand">gigi chat</div>
+        <button class="icon" id="settingsBtn" title="Налаштування">⚙️</button>
+        <button class="icon" id="inviteBtn" title="Запросити">🔗</button>
+        <button class="icon" id="logout" title="Вийти">⎋</button>
+      </div>
+      <input id="search" class="field" type="search" placeholder="Пошук за @username">
+    </div>
+    <div class="stories" id="stories" hidden></div>
+    <input id="storyPhoto" type="file" accept="image/*" hidden>
+    <div class="list" id="list"></div>
+    <div class="side-top" style="border-top:1px solid var(--line);border-bottom:0">
+      <div class="row">
+        <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button class="icon" id="photoBtn" hidden></button>
+        <input id="avatarInput" type="file" accept="image/*" hidden>
+        <button class="icon" id="marketBtn" title="Маркет">🛍️</button>
+        <button class="icon" id="groupsBtn" title="Групи">👥</button>
+        <button class="icon" id="adminBtn" title="Адмін">🛡️</button>
+      </div>
+      <div class="hint" id="net"></div>
+    </div>
+  </aside>
+  <main class="chat" id="chat">
+    <div class="placeholder" id="placeholder">Оберіть чат, щоб почати листування</div>
+    <div class="chat-view" id="chatView" hidden>
+      <header class="chat-top">
+        <button class="icon back" id="back">←</button>
+        <div class="avatar" id="hAvatar" style="width:40px;height:40px;font-size:15px"></div>
+        <div class="meta">
+          <div class="name" id="hName"></div>
+          <div class="status" id="hStatus"></div>
+        </div>
+        <button class="icon" id="giftChatBtn" title="Подарунок">🎁</button>
+        <button class="icon" id="moreBtn">⋮</button>
+      </header>
+      <div id="chatMenu" class="menu" hidden>
+        <button id="blockUserBtn" class="menu-item danger">Заблокувати</button>
+        <button id="adminDelBtn" class="menu-item danger" hidden>Видалити акаунт</button>
+      </div>
+      <div class="messages" id="messages"></div>
+      <form class="composer" id="composer">
+        <button type="button" class="icon" id="attachBtn">📎</button>
+        <input id="fileInput" type="file" accept="image/*" hidden>
+        <textarea id="input" rows="1" placeholder="Напишіть повідомлення…"></textarea>
+        <button class="btn">Надіслати</button>
+      </form>
+      <div id="chanNote" class="chan-note" hidden></div>
+    </div>
+  </main>
+</section>
+
+<div id="viewer" class="viewer" hidden>
+  <div class="viewer-box">
+    <button class="icon viewer-close" id="viewerClose">✕</button>
+    <div class="viewer-title" id="viewerTitle">Історія</div>
+    <img id="viewerImg" class="viewer-img" alt="" hidden>
+    <div id="viewerText"></div>
+    <div id="storyReacts"></div>
+    <button id="storyDelBtn" class="menu-item danger" hidden>Видалити історію</button>
+  </div>
+</div>
+
+<div id="modal" class="viewer" hidden>
+  <div class="viewer-box modal-box">
+    <button class="icon viewer-close" id="modalClose">✕</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const NICK_RE = /^[a-zA-Z0-9_]{3,20}$/;
+
+let me = localStorage.getItem('gigi_nick') || null;
+let socket = null;
+let pending = null;
+let online = new Set();
+let chats = new Map();
+let cache = new Map();
+let results = [];
+let search = '';
+let active = null;
+let avatars = new Map();
+let stories = [];
+const seenStories = new Set(JSON.parse(localStorage.getItem('gigi_seen') || '[]'));
+const userInfo = new Map();
+let adminCode = null;
+let groups = new Map();
+let gcache = new Map();
+let activeGroup = null;
+let groupResults = [];
+let myBlocks = new Set();
+let isPrem = false;
+
+const $ = id => document.getElementById(id);
+const enc = encodeURIComponent;
+const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % 360; };
+const avatarBg = nick => `hsl(${hue(nick)} 45% 42%)`;
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n[k] = v;
+    else n.setAttribute(k, v);
+  }
+  n.append(...kids);
+  return n;
 };
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS users (
-  nickname TEXT PRIMARY KEY,
-  key TEXT UNIQUE NOT NULL,
-  pass_salt TEXT NOT NULL,
-  pass_hash TEXT NOT NULL,
-  avatar TEXT,
-  bio TEXT,
-  stars INTEGER DEFAULT 0,
-  premium_until DOUBLE PRECISION DEFAULT 0,
-  created_at DOUBLE PRECISION NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS blocks (
-  blocker TEXT NOT NULL,
-  blocked TEXT NOT NULL,
-  PRIMARY KEY (blocker, blocked)
-);
-
-CREATE TABLE IF NOT EXISTS sessions (
-  token TEXT PRIMARY KEY,
-  nickname TEXT NOT NULL,
-  created_at DOUBLE PRECISION NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS messages (
-  id SERIAL PRIMARY KEY,
-  from_nick TEXT NOT NULL,
-  to_nick TEXT NOT NULL,
-  text TEXT NOT NULL,
-  kind TEXT NOT NULL DEFAULT 'text',
-  created_at DOUBLE PRECISION NOT NULL,
-  read_at DOUBLE PRECISION
-);
-
-CREATE TABLE IF NOT EXISTS stories (
-  id SERIAL PRIMARY KEY,
-  author TEXT NOT NULL,
-  text TEXT NOT NULL,
-  media TEXT,
-  created_at DOUBLE PRECISION NOT NULL
-);
-`;
-
-function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
-  return { salt, hash: crypto.scryptSync(password, salt, 64).toString('hex') };
+function toast(msg) {
+  const n = $('toast');
+  n.textContent = msg; n.hidden = false;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => n.hidden = true, 2800);
 }
 
-function checkPassword(password, salt, hash) {
-  const a = Buffer.from(crypto.scryptSync(password, salt, 64).toString('hex'), 'hex');
-  const b = Buffer.from(hash, 'hex');
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+function applyTheme() {
+  const th = localStorage.getItem('gigi_theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', th);
+}
+applyTheme();
+
+function showLogin() { $('app').hidden = true; $('login').hidden = false; }
+function showApp() {
+  $('login').hidden = true; $('app').hidden = false;
+  $('meName').textContent = '@' + me;
+  loadChats();
+  refreshGroups();
+}
+function forget() {
+  me = null;
+  localStorage.removeItem('gigi_nick');
+  localStorage.removeItem('gigi_token');
+}
+function closeChat() {
+  active = null; activeGroup = null;
+  $('app').classList.remove('chat-open');$('chatView').hidden = true;
+  $('placeholder').hidden = false;
+  renderList();
 }
 
-const app = express();
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.get('/api/users', async (req, res) => {
-  const q = String(req.query.q || '').toLowerCase();
-  if (!q) return res.json([]);
-  const rows = await db.all('SELECT nickname FROM users WHERE key LIKE $1 LIMIT 20', [`%${q}%`]);
-  res.json(rows.map(r => r.nickname));
-});
-
-app.get('/api/chats', async (req, res) => {
-  const me = String(req.query.me || '');
-  const rows = await db.all(`
-    SELECT partner, MAX(id) AS last_id FROM (
-      SELECT to_nick AS partner, id FROM messages WHERE from_nick = $1
-      UNION ALL
-      SELECT from_nick AS partner, id FROM messages WHERE to_nick = $1
-    ) t GROUP BY partner ORDER BY last_id DESC`, [me]);
-  const out = [];
-  for (const r of rows) {
-    const last = await db.one('SELECT * FROM messages WHERE id = $1', [r.last_id]);
-    out.push({ nick: r.partner, last });
-  }
-  res.json(out);
-});
-
-app.get('/api/history', async (req, res) => {
-  const { me, with: partner } = req.query;
-  const rows = await db.all(`
-    SELECT * FROM messages 
-    WHERE (from_nick = $1 AND to_nick = $2) OR (from_nick = $2 AND to_nick = $1) 
-    ORDER BY id ASC LIMIT 200`, [me, partner]);
-  res.json(rows);
-});
-
-const server = http.createServer(app);
-const io = new Server(server);
-
-const online = new Map();
-const socketNick = new Map();
-
-io.on('connection', socket => {
-
-  socket.on('login', async (payload, ack) => {
-    let nick = payload?.nick?.trim();
-    const pass = payload?.password;
-    if (payload?.token) {
-      const s = await db.one('SELECT nickname FROM sessions WHERE token = $1', [payload.token]);
-      if (s) nick = s.nickname;
-    }
-    if (!nick || !NICK_RE.test(nick)) return ack?.({ ok: false, error: 'invalid' });
-
-    let user = await db.one('SELECT * FROM users WHERE key = $1', [keyOf(nick)]);
-    if (!user && pass) {
-      const { salt, hash } = hashPassword(pass);
-      await db.run('INSERT INTO users (nickname, key, pass_salt, pass_hash, created_at) VALUES ($1, $2, $3, $4, $5)',
-        [nick, keyOf(nick), salt, hash, Date.now()]);
-      user = { nickname: nick };
-    } else if (user && pass && !checkPassword(pass, user.pass_salt, user.pass_hash)) {
-      return ack?.({ ok: false, error: 'wrong_pass' });
-    }
-
-    const token = crypto.randomBytes(24).toString('hex');
-    await db.run('INSERT INTO sessions (token, nickname, created_at) VALUES ($1, $2, $3)', [token, user.nickname, Date.now()]);
-    
-    socketNick.set(socket.id, user.nickname);
-    online.set(user.nickname, socket.id);
-    socket.join('u:' + user.nickname);
-
-    const blocks = await db.all('SELECT blocked FROM blocks WHERE blocker = $1', [user.nickname]);
-    socket.emit('blocks_list', blocks.map(b => b.blocked));
-    
-    const isPrem = user.premium_until > Date.now();
-    socket.emit('premium_status', { active: isPrem });
-
-    io.emit('presence', [...online.keys()]);
-    ack?.({ ok: true, nick: user.nickname, token });
+function createSocket() {
+  socket = io();
+  socket.on('connect', () => {
+    let payload = pending || (localStorage.getItem('gigi_token') ? { token: localStorage.getItem('gigi_token') } : null);
+    if (payload) socket.emit('login', payload, onLogin);
   });
+  socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); });
+  socket.on('message', onMessage);
+  socket.on('msg_deleted', onMsgDeleted);
+  socket.on('stories', list => { stories = list || []; renderStories(); });
+  socket.on('story', s => { stories.unshift(s); renderStories(); toast("Нова історія!"); });
+  socket.on('story_deleted', ({ id }) => { stories = stories.filter(s => s.id !== id); renderStories(); });
+  socket.on('avatars', obj => { avatars = new Map(Object.entries(obj || {})); renderList(); renderHeader(); });
+  socket.on('blocks_list', list => { myBlocks = new Set(list); renderList(); });
+  socket.on('premium_status', ({ active }) => { isPrem = active; });
+}
 
-  socket.on('message', async ({ to, text, kind = 'text' }) => {
-    const me = socketNick.get(socket.id);
-    if (!me) return;
+function onLogin(res) {
+  if (!res?.ok) { forget(); showLogin(); return toast("Помилка входу"); }
+  me = res.nick;
+  localStorage.setItem('gigi_nick', me);
+  if (res.token) localStorage.setItem('gigi_token', res.token);
+  showApp();
+}
 
-    // Перевірка на блокування
-    const blocked = await db.one('SELECT 1 FROM blocks WHERE (blocker = $1 AND blocked = $2) OR (blocker = $2 AND blocked = $1)', [to, me]);
-    if (blocked) return; // Повідомлення тихо відкидається
+function previewText(m) {
+  if (m.kind === 'gift') return '🎁 Подарунок';
+  if (m.kind === 'image') return '📷 Фото';
+  return m.text;
+}
 
-    const now = Date.now();
-    const row = await db.one('INSERT INTO messages (from_nick, to_nick, text, kind, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-      [me, to, text, kind, now]);
-    
-    const msg = { id: row.id, from: me, to, text, kind, created_at: now };
-    io.to('u:' + to).to('u:' + me).emit('message', msg);
-  });
+function onMessage(m) {
+  const partner = m.from === me ? m.to : m.from;
+  if (myBlocks.has(partner)) return; // ігноруємо заблокованих
+  const list = cache.get(partner) || [];
+  if (!list.some(x => x.id === m.id)) list.push(m);
+  cache.set(partner, list);
 
-  socket.on('msg_delete', async ({ id }) => {
-    const me = socketNick.get(socket.id);
-    const m = await db.one('SELECT * FROM messages WHERE id = $1', [id]);
-    if (!m) return;
-    
-    const u = await db.one('SELECT premium_until FROM users WHERE nickname = $1', [me]);
-    const isPrem = u?.premium_until > Date.now();
+  const c = chats.get(partner) || { last: null, unread: 0 };
+  c.last = m;
+  if (m.from !== me && partner !== active) c.unread = (c.unread || 0) + 1;
+  chats.set(partner, c);
 
-    // Видаляти може власник АБО юзер з Преміумом
-    if (m.from_nick === me || isPrem) {
-      await db.run('DELETE FROM messages WHERE id = $1', [id]);
-      io.to('u:' + m.from_nick).to('u:' + m.to_nick).emit('msg_deleted', { id, from: m.from_nick, to: m.to_nick });
-    }
-  });
+  if (partner === active) { c.unread = 0; renderMessages(); }
+  renderList();
+}
 
-  socket.on('block_user', async ({ nick }, ack) => {
-    const me = socketNick.get(socket.id);
-    await db.run('INSERT INTO blocks (blocker, blocked) VALUES ($1, $2) ON CONFLICT DO NOTHING', [me, nick]);
-    const blocks = await db.all('SELECT blocked FROM blocks WHERE blocker = $1', [me]);
-    socket.emit('blocks_list', blocks.map(b => b.blocked));
-    ack?.({ ok: true });
-  });
+function onMsgDeleted({ id, from, to }) {
+  const partner = from === me ? to : from;
+  const list = cache.get(partner);
+  if (list) cache.set(partner, list.filter(m => m.id !== id));
+  if (active === partner) renderMessages();
+  renderList();
+}
 
-  socket.on('unblock_user', async ({ nick }, ack) => {
-    const me = socketNick.get(socket.id);
-    await db.run('DELETE FROM blocks WHERE blocker = $1 AND blocked = $2', [me, nick]);
-    const blocks = await db.all('SELECT blocked FROM blocks WHERE blocker = $1', [me]);
-    socket.emit('blocks_list', blocks.map(b => b.blocked));
-    ack?.({ ok: true });
-  });
-
-  socket.on('buy_premium', async ({ cost, days }, ack) => {
-    const me = socketNick.get(socket.id);
-    const u = await db.one('SELECT stars, premium_until FROM users WHERE nickname = $1', [me]);
-    if (u.stars < cost) return ack?.({ ok: false, error: 'no_stars' });
-
-    const base = Math.max(Date.now(), u.premium_until || 0);
-    const newUntil = base + (days * 24 * 3600 * 1000);
-
-    await db.run('UPDATE users SET stars = stars - $1, premium_until = $2 WHERE nickname = $3', [cost, newUntil, me]);
-    socket.emit('premium_status', { active: true });
-    ack?.({ ok: true });
-  });
-
-  socket.on('story_post', async ({ text, media }) => {
-    const me = socketNick.get(socket.id);
-    const u = await db.one('SELECT premium_until FROM users WHERE nickname = $1', [me]);
-    if (u?.premium_until <= Date.now()) return; // Тільки для Преміум
-
-    const row = await db.one('INSERT INTO stories (author, text, media, created_at) VALUES ($1, $2, $3, $4) RETURNING id',
-      [me, text, media, Date.now()]);
-    
-    // Відправляємо історію тільки тим, у кого є чат з автором
-    const contacts = await db.all(`
-      SELECT DISTINCT partner FROM (
-        SELECT to_nick AS partner FROM messages WHERE from_nick = $1
-        UNION
-        SELECT from_nick AS partner FROM messages WHERE to_nick = $1
-      ) t`, [me]);
-
-    for (const c of contacts) {
-      io.to('u:' + c.partner).emit('story', { id: row.id, author: me, text, media });
-    }
-  });
-
-  socket.on('user_info', async ({ nick }, ack) => {
-    const u = await db.one('SELECT nickname, stars, premium_until FROM users WHERE nickname = $1', [nick]);
-    ack?.({ ok: true, info: u });
-  });
-
-  socket.on('disconnect', () => {
-    const me = socketNick.get(socket.id);
-    if (me) {
-      online.delete(me);
-      socketNick.delete(socket.id);
-      io.emit('presence', [...online.keys()]);
-    }
-  });
-});
-
-db.run(SCHEMA).then(() => {
-  server.listen(PORT, () => console.log('gigi chat працює на порту ' + PORT));
-});
+async function loadChats() {
