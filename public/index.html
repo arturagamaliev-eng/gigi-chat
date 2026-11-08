@@ -148,6 +148,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
         <button class="icon" id="photoBtn" data-i18n="photoBtn" hidden></button>
         <input id="avatarInput" type="file" accept="image/*" hidden>
         <button class="icon" id="storyBtn" data-i18n="storyBtn"></button>
+        <button class="icon" id="storyPhotoBtn" data-i18n="storyPhotoBtn"></button>
         <button class="icon" id="renameBtn" data-i18n="renameBtn"></button>
         <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)"></button>
         <button class="icon" id="logout" data-i18n="logout"></button>
@@ -226,7 +227,7 @@ const I18N = {
     adminConfirm: 'Delete this account and all its messages forever?', adminCodePrompt: 'Enter the admin code',
     adminDone: 'Account deleted', badCode: 'Wrong code',
     storyBtn: 'Story', storyPrompt: 'Story text (up to 500 characters)', storyPosted: 'Story published',
-    storyTitle: 'gigi chat', newStory: 'New story from gigi chat',
+    storyTitle: 'gigi chat', newStory: 'New story from gigi chat', storyPhotoBtn: 'Photo story',
     photoGone: 'Photo expired', storyAddPhoto: 'Add a photo to the story?', storyDelete: 'Delete story',
     storyDeleteConfirm: 'Delete this story for everyone?', storyDeleted: 'Story deleted',
     fileTooBig: 'File is too large (max 15 MB)', uploadFailed: 'Could not send the file',
@@ -255,7 +256,7 @@ const I18N = {
     adminConfirm: 'Видалити цей акаунт і всі його повідомлення назавжди?', adminCodePrompt: 'Введіть код адміністратора',
     adminDone: 'Акаунт видалено', badCode: 'Невірний код',
     storyBtn: 'Історія', storyPrompt: 'Текст історії (до 500 символів)', storyPosted: 'Історію опубліковано',
-    storyTitle: 'gigi chat', newStory: 'Нова історія від gigi chat',
+    storyTitle: 'gigi chat', newStory: 'Нова історія від gigi chat', storyPhotoBtn: 'Фото-історія',
     photoGone: 'Фото вже не доступне', storyAddPhoto: 'Додати фото до історії?', storyDelete: 'Видалити історію',
     storyDeleteConfirm: 'Видалити цю історію для всіх?', storyDeleted: 'Історію видалено',
     fileTooBig: 'Файл завеликий (максимум 15 МБ)', uploadFailed: 'Не вдалося надіслати файл',
@@ -284,7 +285,7 @@ const I18N = {
     adminConfirm: 'Удалить этот аккаунт и все его сообщения навсегда?', adminCodePrompt: 'Введите код администратора',
     adminDone: 'Аккаунт удалён', badCode: 'Неверный код',
     storyBtn: 'История', storyPrompt: 'Текст истории (до 500 символов)', storyPosted: 'История опубликована',
-    storyTitle: 'gigi chat', newStory: 'Новая история от gigi chat',
+    storyTitle: 'gigi chat', newStory: 'Новая история от gigi chat', storyPhotoBtn: 'Фото-история',
     photoGone: 'Фото уже недоступно', storyAddPhoto: 'Добавить фото к истории?', storyDelete: 'Удалить историю',
     storyDeleteConfirm: 'Удалить эту историю для всех?', storyDeleted: 'История удалена',
     fileTooBig: 'Файл слишком большой (максимум 15 МБ)', uploadFailed: 'Не удалось отправить файл',
@@ -782,24 +783,26 @@ $('storyBtn').addEventListener('click', () => {
   const code = prompt(t('adminCodePrompt'));
   if (!code) return;
   const text = (prompt(t('storyPrompt')) || '').trim();
-  if (confirm(t('storyAddPhoto'))) {
-    pendingStory = { code, text };
-    $('storyPhoto').click();
-    return;
-  }
   if (!text) return;
   postStory(code, text, null);
+});
+
+// Opened directly by the tap, so the browser allows the file picker.
+$('storyPhotoBtn').addEventListener('click', () => {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  $('storyPhoto').click();
 });
 
 $('storyPhoto').addEventListener('change', async e => {
   const f = e.target.files?.[0];
   e.target.value = '';
-  const p = pendingStory;
-  pendingStory = null;
-  if (!f || !p) return;
+  if (!f) return;
+  const code = prompt(t('adminCodePrompt'));
+  if (!code) return;
+  const text = (prompt(t('storyPrompt')) || '').trim();
   try {
     const media = await uploadBlob(await compressImage(f));
-    postStory(p.code, p.text, media);
+    postStory(code, text, media);
   } catch {
     toast(t('uploadFailed'));
   }
