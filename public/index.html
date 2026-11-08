@@ -99,6 +99,13 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .acc-head{font-size:18px;font-weight:650;margin-bottom:6px}
 .acc-foot{margin-top:18px}
 .clickable{cursor:pointer}
+.reacts{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.react{background:var(--panel2);border:0;border-radius:999px;padding:2px 9px;font-size:13px;color:var(--text);cursor:pointer}
+.react.mine{background:var(--accent);color:#0b1520}
+.emoji-bar{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.emoji-bar button{font-size:24px;background:none;border:0;cursor:pointer;padding:4px 6px;border-radius:10px}
+.emoji-bar button:hover{background:var(--panel2)}
+#storyReacts{margin-bottom:8px}
 .stories{display:flex;gap:12px;padding:12px 14px;overflow-x:auto;border-bottom:1px solid var(--line)}
 .story{flex:none;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;cursor:pointer;color:var(--muted);font-size:11px;padding:0}
 .story-ring{width:52px;height:52px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#5ea8e0,#4fd18b);display:grid;place-items:center}
@@ -217,6 +224,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
     <div class="viewer-title" id="viewerTitle"></div>
     <img id="viewerImg" class="viewer-img" alt="" hidden>
     <div id="viewerText"></div>
+    <div id="storyReacts"></div>
     <button id="storyDelBtn" class="menu-item" data-i18n="storyDelete"></button>
   </div>
 </div>
@@ -263,7 +271,7 @@ const I18N = {
     profileTitle: 'Profile', aboutLabel: 'About', noBio: 'No description yet', bioPrompt: 'About you (up to 200 characters)',
     editBio: 'Edit about', changePhoto: 'Change photo', removePhoto: 'Remove photo', writeMsg: 'Write a message',
     created: 'created', lastSeen: 'last seen {time}', deleteUserConfirm: 'Delete this account and all its messages?',
-    photoRemoved: 'Photo removed', bioSaved: 'Saved',
+    photoRemoved: 'Photo removed', bioSaved: 'Saved', deleteMsgBtn: 'Delete message',
     photoGone: 'Photo expired', storyAddPhoto: 'Add a photo to the story?', storyDelete: 'Delete story',
     storyDeleteConfirm: 'Delete this story for everyone?', storyDeleted: 'Story deleted',
     fileTooBig: 'File is too large (max 15 MB)', uploadFailed: 'Could not send the file',
@@ -299,7 +307,7 @@ const I18N = {
     profileTitle: 'Профіль', aboutLabel: 'Про себе', noBio: 'Опису ще немає', bioPrompt: 'Про себе (до 200 символів)',
     editBio: 'Змінити опис', changePhoto: 'Змінити фото', removePhoto: 'Видалити фото', writeMsg: 'Написати',
     created: 'створено', lastSeen: 'був(ла) в мережі {time}', deleteUserConfirm: 'Видалити цей акаунт і всі його повідомлення?',
-    photoRemoved: 'Фото видалено', bioSaved: 'Збережено',
+    photoRemoved: 'Фото видалено', bioSaved: 'Збережено', deleteMsgBtn: 'Видалити повідомлення',
     photoGone: 'Фото вже не доступне', storyAddPhoto: 'Додати фото до історії?', storyDelete: 'Видалити історію',
     storyDeleteConfirm: 'Видалити цю історію для всіх?', storyDeleted: 'Історію видалено',
     fileTooBig: 'Файл завеликий (максимум 15 МБ)', uploadFailed: 'Не вдалося надіслати файл',
@@ -335,7 +343,7 @@ const I18N = {
     profileTitle: 'Профиль', aboutLabel: 'О себе', noBio: 'Описания пока нет', bioPrompt: 'О себе (до 200 символов)',
     editBio: 'Изменить описание', changePhoto: 'Изменить фото', removePhoto: 'Удалить фото', writeMsg: 'Написать',
     created: 'создан', lastSeen: 'был(а) в сети {time}', deleteUserConfirm: 'Удалить этот аккаунт и все его сообщения?',
-    photoRemoved: 'Фото удалено', bioSaved: 'Сохранено',
+    photoRemoved: 'Фото удалено', bioSaved: 'Сохранено', deleteMsgBtn: 'Удалить сообщение',
     photoGone: 'Фото уже недоступно', storyAddPhoto: 'Добавить фото к истории?', storyDelete: 'Удалить историю',
     storyDeleteConfirm: 'Удалить эту историю для всех?', storyDeleted: 'История удалена',
     fileTooBig: 'Файл слишком большой (максимум 15 МБ)', uploadFailed: 'Не удалось отправить файл',
@@ -474,6 +482,17 @@ function createSocket() {
     if (url) avatars.set(nick, url); else avatars.delete(nick);
     renderList(); renderHeader();
     if (nick === me && $('modal').hidden === false) openProfile(me);
+  });
+  socket.on('reaction', ({ type, id, reactions }) => {
+    if (type === 'msg') {
+      for (const list of cache.values()) for (const m of list) if (m.id === id) m.reactions = reactions;
+      if (active) renderMessages();
+      return;
+    }
+    const s = stories.find(x => x.id === id);
+    if (s) s.reactions = reactions;
+    renderStories();
+    if (s && Number($('storyDelBtn').dataset.id) === id && !$('viewer').hidden) renderStoryReacts(s);
   });
   socket.on('all_deleted', () => {
     sessionStorage.setItem('gigi_flash', 'allDeleted');
@@ -715,8 +734,9 @@ function renderMessages() {
   box.replaceChildren();
   for (const m of cache.get(active) || []) {
     const own = m.from === me;
-    box.append(el('div', { class: 'msg' + (own ? ' own' : ''), onclick: own ? () => deleteMessage(m) : null },
+    box.append(el('div', { class: 'msg' + (own ? ' own' : ''), onclick: () => openMsgMenu(m) },
       mediaNode(m) ?? m.text,
+      reactRow(m.reactions, 'msg', m.id),
       el('span', { class: 'time' }, messageMeta(m))));
   }
   box.scrollTop = box.scrollHeight;
@@ -795,6 +815,7 @@ function openStory(s) {
   $('viewerImg').hidden = !s.media;
   if (s.media) $('viewerImg').src = s.media;
   $('storyDelBtn').dataset.id = String(s.id);
+  renderStoryReacts(s);
   $('viewer').hidden = false;
   seenStories.add(s.id);
   localStorage.setItem('gigi_seen', JSON.stringify([...seenStories].slice(-200)));
@@ -1016,6 +1037,45 @@ $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeMo
 $('hName').addEventListener('click', () => { if (active) openProfile(active); });
 $('hAvatar').addEventListener('click', () => { if (active) openProfile(active); });
 $('meName').addEventListener('click', () => { if (me) openProfile(me); });
+
+const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+
+function toggleReact(type, id, emoji) {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('react', { type, id, emoji }, res => {
+    if (!res?.ok) toast(t(res?.error === 'forbidden' ? 'errNoUser' : 'messageFailed'));
+  });
+}
+
+// Shows the counts under a message or story; a tap on a chip toggles your own reaction.
+function reactRow(reactions, type, id) {
+  const keys = Object.keys(reactions || {});
+  if (!keys.length) return el('span', { hidden: '' });
+  return el('div', { class: 'reacts' }, ...keys.map(emoji => {
+    const users = reactions[emoji];
+    return el('button', {
+      class: 'react' + (users.includes(me) ? ' mine' : ''),
+      onclick: e => { e.stopPropagation(); toggleReact(type, id, emoji); },
+    }, emoji + ' ' + users.length);
+  }));
+}
+
+function emojiBar(type, id, onPicked) {
+  return el('div', { class: 'emoji-bar' }, ...EMOJIS.map(emoji =>
+    el('button', { onclick: () => { if (onPicked) onPicked(); toggleReact(type, id, emoji); } }, emoji)));
+}
+
+function openMsgMenu(m) {
+  const items = [emojiBar('msg', m.id, closeModal)];
+  if (m.from === me) {
+    items.push(el('button', { class: 'btn danger', style: 'width:100%', onclick: () => { closeModal(); deleteMessage(m); } }, t('deleteMsgBtn')));
+  }
+  openModal(items);
+}
+
+function renderStoryReacts(s) {
+  $('storyReacts').replaceChildren(reactRow(s.reactions, 'story', s.id), emojiBar('story', s.id));
+}
 
 function applyAvatar(node, nick) {
   node.replaceChildren(nick[0].toUpperCase());
