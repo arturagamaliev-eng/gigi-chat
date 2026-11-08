@@ -13,10 +13,12 @@ const PASS_MAX = 100;
 const MAX_IMAGE_CHARS = 2000000;              // base64 size, about 1.5 MB
 const CHAT_MEDIA_MS = 7 * 24 * 3600 * 1000;   // chat photos are kept 7 days
 const STORY_MS = 24 * 3600 * 1000;            // stories are kept 24 hours
+const AVATAR_MS = 365 * 24 * 3600 * 1000;     // profile photo stays until removed
 const keyOf = s => s.toLowerCase();
 const MEDIA_RE = /^\/media\/([a-f0-9]{32})$/;
 const mediaIdOf = url => { const m = MEDIA_RE.exec(String(url || '')); return m ? m[1] : null; };
 const isOurMedia = (url, kind) => kind === 'image' && typeof url === 'string' && mediaIdOf(url) !== null;
+const adminOk = code => Boolean(process.env.ADMIN_CODE) && String(code || '') === process.env.ADMIN_CODE;
 
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL is not set. Add it in Render → Environment.');
@@ -80,6 +82,8 @@ CREATE TABLE IF NOT EXISTS stories (
 
 const EXTRA_SCHEMA = `
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS media TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen DOUBLE PRECISION;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
 CREATE TABLE IF NOT EXISTS media (
   id TEXT PRIMARY KEY,
   data TEXT NOT NULL,
@@ -243,7 +247,10 @@ function detach(socket) {
   const set = online.get(nick);
   if (set) {
     set.delete(socket.id);
-    if (set.size === 0) online.delete(nick);
+    if (set.size === 0) {
+      online.delete(nick);
+      db.run('UPDATE users SET last_seen = $1 WHERE nickname = $2', [Date.now(), nick]).catch(() => {});
+    }
   }
   broadcastPresence();
 }
@@ -326,25 +333,83 @@ io.on('connection', async socket => {
     ack?.({ ok: true });
   });
 
+  // Profile photo: send a photo URL to set it, or an empty value to remove it.
   on('set_avatar', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
-    const url = String(payload?.url || '');
-    if (!isOurMedia(url, 'image')) return ack?.({ ok: false, error: 'invalid' });
     const old = (await db.one('SELECT avatar FROM users WHERE nickname = $1', [me]))?.avatar;
-    await db.run('UPDATE users SET avatar = $1 WHERE nickname = $2', [url, me]);
     const oldId = mediaIdOf(old);
+    const raw = payload?.url;
+    if (raw === null || raw === '' || raw === undefined) {
+      await db.run('UPDATE users SET avatar = NULL WHERE nickname = $1', [me]);
+      if (oldId) await db.run('DELETE FROM media WHERE id = $1', [oldId]);
+      io.emit('avatar', { nick: me, url: null });
+      return ack?.({ ok: true });
+    }
+    const url = String(raw);
+    if (!isOurMedia(url, 'image')) return ack?.({ ok: false, error: 'invalid' });
+    await db.run('UPDATE users SET avatar = $1 WHERE nickname = $2', [url, me]);
+    await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [Date.now() + AVATAR_MS, mediaIdOf(url)]);
     if (oldId && old !== url) await db.run('DELETE FROM media WHERE id = $1', [oldId]);
     io.emit('avatar', { nick: me, url });
     ack?.({ ok: true });
   });
 
-  // Only the owner of the server knows ADMIN_CODE (set in Render's Environment settings).
+  on('set_bio', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const bio = typeof payload?.bio === 'string' ? payload.bio.trim().slice(0, 200) : '';
+    await db.run('UPDATE users SET bio = $1 WHERE nickname = $2', [bio || null, me]);
+    ack?.({ ok: true });
+  });
+
+  // Public profile of any user: online status, last seen, photo and about text.
+  on('user_info', async (payload, ack) => {
+    const u = await findUser(String(payload?.nick || ''));
+    if (!u) return ack?.({ ok: false, error: 'no_user' });
+    const row = await db.one('SELECT nickname, avatar, bio, last_seen FROM users WHERE nickname = $1', [u.nickname]);
+    ack?.({ ok: true, info: {
+      nick: row.nickname,
+      online: online.has(row.nickname),
+      lastSeen: row.last_seen,
+      avatar: row.avatar,
+      bio: row.bio,
+    } });
+  });
+
+  // Admin only: every account, including ones with no chats yet.
+  on('admin_list', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const rows = await db.all('SELECT nickname, avatar, bio, last_seen, created_at FROM users ORDER BY nickname');
+    ack?.({ ok: true, users: rows.map(r => ({
+      nick: r.nickname,
+      online: online.has(r.nickname),
+      lastSeen: r.last_seen,
+      created: r.created_at,
+    })) });
+  });
+
+  // Admin only: deletes every account and every message. Stories are kept.
+  on('admin_delete_all', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    await tx(async c => {
+      await c.query('DELETE FROM messages');
+      await c.query('DELETE FROM sessions');
+      await c.query('DELETE FROM users');
+      await c.query('DELETE FROM media WHERE id NOT IN (SELECT substr(media, 8, 32) FROM stories WHERE media IS NOT NULL)');
+    });
+    online.clear();
+    socketNick.clear();
+    io.emit('all_deleted');
+    ack?.({ ok: true });
+  });
+
   on('admin_delete', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
-    const code = process.env.ADMIN_CODE;
-    if (!code || String(payload?.code || '') !== code) return ack?.({ ok: false, error: 'bad_code' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     const target = (await findUser(String(payload?.nick || '')))?.nickname;
     if (!target) return ack?.({ ok: false, error: 'no_user' });
     await removeUser(target);
@@ -408,8 +473,7 @@ io.on('connection', async socket => {
   on('story_post', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
-    const code = process.env.ADMIN_CODE;
-    if (!code || String(payload?.code || '') !== code) return ack?.({ ok: false, error: 'bad_code' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
     const media = typeof payload?.media === 'string' && payload.media ? payload.media : null;
     if (media && !isOurMedia(media, 'image')) return ack?.({ ok: false, error: 'invalid' });
@@ -424,8 +488,7 @@ io.on('connection', async socket => {
   on('story_delete', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
-    const code = process.env.ADMIN_CODE;
-    if (!code || String(payload?.code || '') !== code) return ack?.({ ok: false, error: 'bad_code' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     const id = Number(payload?.id);
     const row = Number.isInteger(id) ? await db.one('SELECT id, media FROM stories WHERE id = $1', [id]) : null;
     if (!row) return ack?.({ ok: false, error: 'no_story' });
