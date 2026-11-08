@@ -20,6 +20,17 @@ const mediaIdOf = url => { const m = MEDIA_RE.exec(String(url || '')); return m 
 const isOurMedia = (url, kind) => kind === 'image' && typeof url === 'string' && mediaIdOf(url) !== null;
 const adminOk = code => Boolean(process.env.ADMIN_CODE) && String(code || '') === process.env.ADMIN_CODE;
 const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+const SELL_PERCENT = 0.8; // a gift sold back to the market returns 80% of its price
+
+// Sends a gift as a chat message. The text holds a snapshot, so the card still works later.
+async function sendGiftMessage(from, to, item) {
+  const text = JSON.stringify({ id: item.id, title: item.title, description: item.description, price: item.price, image: item.image });
+  const now = Date.now();
+  const row = await db.one(
+    "INSERT INTO messages (from_nick, to_nick, text, kind, created_at) VALUES ($1, $2, $3, 'gift', $4) RETURNING id",
+    [from, to, text, now]);
+  io.to('u:' + to).to('u:' + from).emit('message', { id: row.id, from, to, text, created_at: now, read_at: null, kind: 'gift' });
+}
 
 const isMember = async (id, nick) => Boolean(await db.one('SELECT 1 AS x FROM chat_members WHERE chat_id = $1 AND nick = $2', [id, nick]));
 const membersOf = async id => (await db.all('SELECT nick FROM chat_members WHERE chat_id = $1', [id])).map(r => r.nick);
@@ -135,6 +146,17 @@ CREATE TABLE IF NOT EXISTS gmessages (
   created_at DOUBLE PRECISION NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_gmsg_chat ON gmessages(chat_id, id);
+CREATE TABLE IF NOT EXISTS gift_items (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  price INTEGER NOT NULL,
+  image TEXT NOT NULL,
+  owner TEXT,
+  on_shelf BOOLEAN NOT NULL DEFAULT false,
+  created_at DOUBLE PRECISION NOT NULL
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS stars INTEGER NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS reactions (
   target_type TEXT NOT NULL,
   target_id INTEGER NOT NULL,
@@ -220,6 +242,7 @@ async function removeUser(nick) {
     await c.query('DELETE FROM gmessages WHERE chat_id IN (SELECT id FROM chats WHERE owner = $1) OR from_nick = $1', [nick]);
     await c.query('DELETE FROM chat_members WHERE nick = $1 OR chat_id IN (SELECT id FROM chats WHERE owner = $1)', [nick]);
     await c.query('DELETE FROM chats WHERE owner = $1', [nick]);
+    await c.query('UPDATE gift_items SET owner = NULL, on_shelf = false WHERE owner = $1', [nick]);
     await c.query('DELETE FROM users WHERE nickname = $1', [nick]);
   });
   for (const url of urls) {
@@ -443,6 +466,7 @@ io.on('connection', async socket => {
       lastSeen: row.last_seen,
       avatar: row.avatar,
       bio: row.bio,
+      shelf: await db.all('SELECT id, title, image FROM gift_items WHERE owner = $1 AND on_shelf = true', [row.nickname]),
     } });
   });
 
@@ -471,6 +495,7 @@ io.on('connection', async socket => {
       await c.query('DELETE FROM gmessages');
       await c.query('DELETE FROM chat_members');
       await c.query('DELETE FROM chats');
+      await c.query('DELETE FROM gift_items WHERE owner IS NOT NULL');
       await c.query('DELETE FROM users');
       await c.query('DELETE FROM media WHERE id NOT IN (SELECT substr(media, 8, 32) FROM stories WHERE media IS NOT NULL)');
     });
@@ -685,6 +710,135 @@ io.on('connection', async socket => {
       if (mid) await db.run('DELETE FROM media WHERE id = $1', [mid]);
     }
     io.emit('group_deleted', { id });
+    ack?.({ ok: true });
+  });
+
+  // ---- Stars and gifts ----
+
+  on('market_list', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    const items = await db.all('SELECT id, title, description, price, image FROM gift_items WHERE owner IS NULL ORDER BY price DESC, id DESC LIMIT 200');
+    ack?.({ ok: true, items });
+  });
+
+  on('gifts_mine', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const u = await db.one('SELECT stars FROM users WHERE nickname = $1', [me]);
+    const items = await db.all('SELECT id, title, description, price, image, on_shelf FROM gift_items WHERE owner = $1 ORDER BY id DESC', [me]);
+    ack?.({ ok: true, stars: u?.stars || 0, items });
+  });
+
+  on('gift_buy', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id);
+    const item = Number.isInteger(id) ? await db.one('SELECT id, price FROM gift_items WHERE id = $1 AND owner IS NULL', [id]) : null;
+    if (!item) return ack?.({ ok: false, error: 'not_for_sale' });
+    let error = null;
+    try {
+      await tx(async c => {
+        const pay = await c.query('UPDATE users SET stars = stars - $1 WHERE nickname = $2 AND stars >= $1', [item.price, me]);
+        if (pay.rowCount === 0) throw Object.assign(new Error('no_stars'), { code: 'no_stars' });
+        const got = await c.query('UPDATE gift_items SET owner = $1 WHERE id = $2 AND owner IS NULL', [me, id]);
+        if (got.rowCount === 0) throw Object.assign(new Error('sold_out'), { code: 'sold_out' });
+      });
+    } catch (e) {
+      error = e.code || 'server';
+    }
+    if (error) return ack?.({ ok: false, error });
+    ack?.({ ok: true });
+  });
+
+  on('gift_sell', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id);
+    const item = Number.isInteger(id) ? await db.one('SELECT id, price, owner FROM gift_items WHERE id = $1', [id]) : null;
+    if (!item || item.owner !== me) return ack?.({ ok: false, error: 'forbidden' });
+    const amount = Math.floor(item.price * SELL_PERCENT);
+    await tx(async c => {
+      await c.query('UPDATE gift_items SET owner = NULL, on_shelf = false WHERE id = $1', [id]);
+      await c.query('UPDATE users SET stars = stars + $1 WHERE nickname = $2', [amount, me]);
+    });
+    ack?.({ ok: true, amount });
+  });
+
+  on('gift_shelf', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id);
+    const item = Number.isInteger(id) ? await db.one('SELECT id, owner FROM gift_items WHERE id = $1', [id]) : null;
+    if (!item || item.owner !== me) return ack?.({ ok: false, error: 'forbidden' });
+    await db.run('UPDATE gift_items SET on_shelf = $1 WHERE id = $2', [payload?.on === true, id]);
+    ack?.({ ok: true });
+  });
+
+  on('gift_send', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const to = (await findUser(String(payload?.to || '')))?.nickname;
+    if (!to) return ack?.({ ok: false, error: 'no_user' });
+    if (to === me) return ack?.({ ok: false, error: 'self' });
+    const id = Number(payload?.id);
+    const item = Number.isInteger(id) ? await db.one('SELECT id, title, description, price, image, owner FROM gift_items WHERE id = $1', [id]) : null;
+    if (!item || item.owner !== me) return ack?.({ ok: false, error: 'forbidden' });
+    await db.run('UPDATE gift_items SET owner = $1, on_shelf = false WHERE id = $2', [to, id]);
+    await sendGiftMessage(me, to, item);
+    ack?.({ ok: true });
+  });
+
+  // Admin only: give stars to any user, including yourself.
+  on('admin_stars', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const amount = Number(payload?.amount);
+    if (!Number.isInteger(amount) || amount < 1 || amount > 1000000) return ack?.({ ok: false, error: 'invalid' });
+    const target = (await findUser(String(payload?.nick || '')))?.nickname;
+    if (!target) return ack?.({ ok: false, error: 'no_user' });
+    await db.run('UPDATE users SET stars = stars + $1 WHERE nickname = $2', [amount, target]);
+    ack?.({ ok: true });
+  });
+
+  // Admin only: create a gift for the market.
+  on('admin_gift_create', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const title = typeof payload?.title === 'string' ? payload.title.trim() : '';
+    const description = typeof payload?.description === 'string' ? payload.description.trim().slice(0, 200) : '';
+    const price = Number(payload?.price);
+    const image = String(payload?.image || '');
+    if (!title || title.length > 40 || !Number.isInteger(price) || price < 1 || price > 1000000 || !isOurMedia(image, 'image')) {
+      return ack?.({ ok: false, error: 'invalid' });
+    }
+    await db.run('INSERT INTO gift_items (title, description, price, image, created_at) VALUES ($1, $2, $3, $4, $5)',
+      [title, description, price, image, Date.now()]);
+    await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [Date.now() + AVATAR_MS, mediaIdOf(image)]);
+    ack?.({ ok: true });
+  });
+
+  // Admin only: give a gift to a user as a chat message from the admin account.
+  on('admin_gift_give', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const id = Number(payload?.id);
+    const item = Number.isInteger(id) ? await db.one('SELECT id, title, description, price, image FROM gift_items WHERE id = $1', [id]) : null;
+    if (!item) return ack?.({ ok: false, error: 'no_gift' });
+    const target = (await findUser(String(payload?.nick || '')))?.nickname;
+    if (!target) return ack?.({ ok: false, error: 'no_user' });
+    await db.run('UPDATE gift_items SET owner = $1, on_shelf = false WHERE id = $2', [target, id]);
+    await sendGiftMessage(me, target, item);
+    ack?.({ ok: true });
+  });
+
+  // Admin only: delete a gift from the market (gift cards already in chats stay).
+  on('admin_gift_delete', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const id = Number(payload?.id);
+    if (!Number.isInteger(id)) return ack?.({ ok: false, error: 'no_gift' });
+    await db.run('DELETE FROM gift_items WHERE id = $1', [id]);
     ack?.({ ok: true });
   });
 
