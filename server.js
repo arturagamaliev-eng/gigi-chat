@@ -10,18 +10,13 @@ const MAX_TEXT = 2000;
 const NICK_RE = /^[\p{L}\p{N}_]{3,20}$/u;
 const PASS_MIN = 4;
 const PASS_MAX = 100;
-const MAX_UPLOAD = 15 * 1024 * 1024;
+const MAX_IMAGE_CHARS = 2000000;              // base64 size, about 1.5 MB
+const CHAT_MEDIA_MS = 7 * 24 * 3600 * 1000;   // chat photos are kept 7 days
+const STORY_MS = 24 * 3600 * 1000;            // stories are kept 24 hours
 const keyOf = s => s.toLowerCase();
-
-const CLOUD = process.env.CLOUDINARY_CLOUD_NAME || '';
-const CKEY = process.env.CLOUDINARY_API_KEY || '';
-const CSECRET = process.env.CLOUDINARY_API_SECRET || '';
-const MEDIA_ON = false; // photos and videos are not stored
-const STORAGE_OK = MEDIA_ON && Boolean(CLOUD && CKEY && CSECRET);
-const MEDIA = {
-  'image/jpeg': ['image', 'jpg'], 'image/png': ['image', 'png'], 'image/webp': ['image', 'webp'], 'image/gif': ['image', 'gif'],
-  'video/mp4': ['video', 'mp4'], 'video/webm': ['video', 'webm'],
-};
+const MEDIA_RE = /^\/media\/([a-f0-9]{32})$/;
+const mediaIdOf = url => { const m = MEDIA_RE.exec(String(url || '')); return m ? m[1] : null; };
+const isOurMedia = (url, kind) => kind === 'image' && typeof url === 'string' && mediaIdOf(url) !== null;
 
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL is not set. Add it in Render → Environment.');
@@ -81,11 +76,15 @@ CREATE TABLE IF NOT EXISTS stories (
   text TEXT NOT NULL,
   created_at DOUBLE PRECISION NOT NULL
 );
-CREATE TABLE IF NOT EXISTS stories (
-  id SERIAL PRIMARY KEY,
-  author TEXT NOT NULL,
-  text TEXT NOT NULL,
-  created_at DOUBLE PRECISION NOT NULL
+`;
+
+const EXTRA_SCHEMA = `
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS media TEXT;
+CREATE TABLE IF NOT EXISTS media (
+  id TEXT PRIMARY KEY,
+  data TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  expires_at DOUBLE PRECISION NOT NULL
 );
 `;
 
@@ -129,54 +128,33 @@ async function authenticate(payload) {
   return createSession(user.nickname);
 }
 
-// ---- Cloudinary: photos and videos ----
-
-const sign = params => {
-  const str = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join('&') + CSECRET;
-  return crypto.createHash('sha1').update(str).digest('hex');
-};
-
-async function cloudUpload(dataUrl, resourceType, publicId) {
-  const timestamp = Math.floor(Date.now() / 1000);
-  const form = new FormData();
-  form.append('file', dataUrl);
-  form.append('api_key', CKEY);
-  form.append('timestamp', String(timestamp));
-  form.append('public_id', publicId);
-  form.append('signature', sign({ public_id: publicId, timestamp }));
-  const r = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD}/${resourceType}/upload`, { method: 'POST', body: form });
-  const j = await r.json();
-  if (!r.ok || !j.secure_url) throw new Error('cloudinary upload failed: ' + (j.error?.message || r.status));
-  return j.secure_url;
+// Removes expired photos, old messages' photos and old stories.
+async function cleanup() {
+  const now = Date.now();
+  await db.run("UPDATE messages SET kind = 'gone', text = '' WHERE kind = 'image' AND created_at < $1", [now - CHAT_MEDIA_MS]);
+  await db.run('DELETE FROM stories WHERE created_at < $1', [now - STORY_MS]);
+  await db.run('DELETE FROM media WHERE expires_at < $1', [now]);
 }
 
-async function cloudDestroy(url) {
-  const m = /^https:\/\/res\.cloudinary\.com\/([^/]+)\/(image|video)\/upload\/(?:v\d+\/)?(.+)\.[a-z0-9]+$/i.exec(String(url));
-  if (!m || m[1] !== CLOUD) return;
-  const timestamp = Math.floor(Date.now() / 1000);
-  const form = new FormData();
-  form.append('public_id', m[3]);
-  form.append('api_key', CKEY);
-  form.append('timestamp', String(timestamp));
-  form.append('signature', sign({ public_id: m[3], timestamp }));
-  await fetch(`https://api.cloudinary.com/v1_1/${CLOUD}/${m[2]}/destroy`, { method: 'POST', body: form }).catch(() => {});
+async function recentStories() {
+  return db.all('SELECT id, text, media, created_at FROM stories WHERE created_at > $1 ORDER BY id DESC LIMIT 20',
+    [Date.now() - STORY_MS]);
 }
-
-const isOurMedia = (url, kind) =>
-  STORAGE_OK && typeof url === 'string' && url.length < 500 &&
-  url.startsWith(`https://res.cloudinary.com/${CLOUD}/${kind}/upload/`);
 
 async function removeUser(nick) {
-  const files = (await db.all("SELECT text FROM messages WHERE (from_nick = $1 OR to_nick = $1) AND kind <> 'text'", [nick]))
+  const urls = (await db.all("SELECT text FROM messages WHERE (from_nick = $1 OR to_nick = $1) AND kind = 'image'", [nick]))
     .map(r => r.text);
   const u = await db.one('SELECT avatar FROM users WHERE nickname = $1', [nick]);
-  if (u?.avatar) files.push(u.avatar);
+  if (u?.avatar) urls.push(u.avatar);
   await tx(async c => {
     await c.query('DELETE FROM messages WHERE from_nick = $1 OR to_nick = $1', [nick]);
     await c.query('DELETE FROM sessions WHERE nickname = $1', [nick]);
     await c.query('DELETE FROM users WHERE nickname = $1', [nick]);
   });
-  for (const f of files) await cloudDestroy(f);
+  for (const url of urls) {
+    const id = mediaIdOf(url);
+    if (id) await db.run('DELETE FROM media WHERE id = $1', [id]);
+  }
 }
 
 // ---- HTTP ----
@@ -228,13 +206,22 @@ app.get('/api/history', route(async (req, res) => {
 app.post('/api/upload', route(async (req, res) => {
   const s = await db.one('SELECT nickname FROM sessions WHERE token = $1', [String(req.body?.token || '')]);
   if (!s) return res.status(401).json({ error: 'bad_session' });
-  if (!STORAGE_OK) return res.status(503).json({ error: 'storage_off' });
-  const m = /^data:([\w/+.-]+);base64,(.+)$/.exec(String(req.body?.data || ''));
-  const spec = m && MEDIA[m[1]];
-  if (!spec) return res.status(400).json({ error: 'bad_type' });
-  if (Math.floor(m[2].length * 3 / 4) > MAX_UPLOAD) return res.status(413).json({ error: 'too_big' });
-  const url = await cloudUpload(req.body.data, spec[0], 'gigi/' + crypto.randomBytes(16).toString('hex'));
-  res.json({ ok: true, url, kind: spec[0] });
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.data || ''));
+  if (!m) return res.status(400).json({ error: 'bad_type' });
+  if (m[2].length > MAX_IMAGE_CHARS) return res.status(413).json({ error: 'too_big' });
+  const id = crypto.randomBytes(16).toString('hex');
+  await db.run('INSERT INTO media (id, data, mime, expires_at) VALUES ($1, $2, $3, $4)',
+    [id, m[2], m[1], Date.now() + CHAT_MEDIA_MS]);
+  res.json({ ok: true, url: '/media/' + id, kind: 'image' });
+}));
+
+app.get('/media/:id', route(async (req, res) => {
+  if (!/^[a-f0-9]{32}$/.test(req.params.id)) return res.status(404).end();
+  const row = await db.one('SELECT data, mime, expires_at FROM media WHERE id = $1', [req.params.id]);
+  if (!row || row.expires_at < Date.now()) return res.status(404).end();
+  res.set('Content-Type', row.mime);
+  res.set('Cache-Control', 'private, max-age=86400');
+  res.send(Buffer.from(row.data, 'base64'));
 }));
 
 // ---- Realtime ----
@@ -261,13 +248,6 @@ function detach(socket) {
   broadcastPresence();
 }
 
-const STORY_MS = 24 * 3600 * 1000;
-
-async function recentStories() {
-  await db.run('DELETE FROM stories WHERE created_at < $1', [Date.now() - STORY_MS]);
-  return db.all('SELECT id, text, created_at FROM stories ORDER BY id DESC LIMIT 20');
-}
-
 async function avatarMap() {
   const rows = await db.all('SELECT nickname, avatar FROM users WHERE avatar IS NOT NULL');
   return Object.fromEntries(rows.map(r => [r.nickname, r.avatar]));
@@ -277,9 +257,6 @@ io.on('connection', async socket => {
   socket.emit('presence', onlineList());
   try { socket.emit('avatars', await avatarMap()); } catch (e) { console.error('avatars:', e.message); }
   try { socket.emit('stories', await recentStories()); } catch (e) { console.error('stories:', e.message); }
-  try {
-    socket.emit('stories', await db.all('SELECT id, author, text, created_at FROM stories ORDER BY id DESC LIMIT 20'));
-  } catch (e) { console.error('stories:', e.message); }
 
   // Wraps each handler so a database error never crashes the server.
   const on = (ev, fn) => socket.on(ev, async (...args) => {
@@ -289,32 +266,6 @@ io.on('connection', async socket => {
       const ack = args.find(a => typeof a === 'function');
       ack?.({ ok: false, error: 'server' });
     }
-  });
-
-  // Publishing a story requires the admin code (ADMIN_CODE in Render).
-  on('story_post', async (payload, ack) => {
-    const me = socketNick.get(socket.id);
-    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
-    const code = process.env.ADMIN_CODE;
-    if (!code || String(payload?.code || '') !== code) return ack?.({ ok: false, error: 'bad_code' });
-    const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
-    if (!text || text.length > 1000) return ack?.({ ok: false, error: 'invalid' });
-    const now = Date.now();
-    const row = await db.one(
-      'INSERT INTO stories (author, text, created_at) VALUES ($1, $2, $3) RETURNING id',
-      [me, text, now]);
-    io.emit('story', { id: row.id, author: me, text, created_at: now });
-    ack?.({ ok: true });
-  });
-
-  on('story_delete', async (payload, ack) => {
-    const code = process.env.ADMIN_CODE;
-    if (!code || String(payload?.code || '') !== code) return ack?.({ ok: false, error: 'bad_code' });
-    const id = Number(payload?.id);
-    if (!Number.isInteger(id)) return ack?.({ ok: false, error: 'invalid' });
-    await db.run('DELETE FROM stories WHERE id = $1', [id]);
-    io.emit('story_deleted', { id });
-    ack?.({ ok: true });
   });
 
   on('login', async (payload, ack) => {
@@ -332,9 +283,9 @@ io.on('connection', async socket => {
   on('message', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
-    const kind = ['image', 'video'].includes(payload?.kind) ? payload.kind : 'text';
+    const kind = payload?.kind === 'image' ? 'image' : 'text';
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
-    if (kind !== 'text' && !isOurMedia(text, kind)) return ack?.({ ok: false, error: 'invalid' });
+    if (kind === 'image' && !isOurMedia(text, 'image')) return ack?.({ ok: false, error: 'invalid' });
     if (!text || (kind === 'text' && text.length > MAX_TEXT)) return ack?.({ ok: false, error: 'invalid' });
 
     const to = (await findUser(String(payload?.to || '')))?.nickname;
@@ -344,6 +295,7 @@ io.on('connection', async socket => {
     const row = await db.one(
       'INSERT INTO messages (from_nick, to_nick, text, kind, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING id',
       [me, to, text, kind, now]);
+    if (kind === 'image') await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + CHAT_MEDIA_MS, mediaIdOf(text)]);
     const msg = { id: row.id, from: me, to, text, created_at: now, read_at: null, kind };
     io.to('u:' + to).to('u:' + me).emit('message', msg);
     ack?.({ ok: true, msg });
@@ -366,7 +318,10 @@ io.on('connection', async socket => {
     const row = Number.isInteger(id) ? await db.one('SELECT id, from_nick, to_nick, kind, text FROM messages WHERE id = $1', [id]) : null;
     if (!row || row.from_nick !== me) return ack?.({ ok: false, error: 'forbidden' });
     await db.run('DELETE FROM messages WHERE id = $1', [id]);
-    if (row.kind !== 'text') await cloudDestroy(row.text);
+    if (row.kind === 'image') {
+      const mid = mediaIdOf(row.text);
+      if (mid) await db.run('DELETE FROM media WHERE id = $1', [mid]);
+    }
     io.to('u:' + row.to_nick).to('u:' + me).emit('msg_deleted', { id, from: me, to: row.to_nick });
     ack?.({ ok: true });
   });
@@ -378,7 +333,8 @@ io.on('connection', async socket => {
     if (!isOurMedia(url, 'image')) return ack?.({ ok: false, error: 'invalid' });
     const old = (await db.one('SELECT avatar FROM users WHERE nickname = $1', [me]))?.avatar;
     await db.run('UPDATE users SET avatar = $1 WHERE nickname = $2', [url, me]);
-    if (old && old !== url) await cloudDestroy(old);
+    const oldId = mediaIdOf(old);
+    if (oldId && old !== url) await db.run('DELETE FROM media WHERE id = $1', [oldId]);
     io.emit('avatar', { nick: me, url });
     ack?.({ ok: true });
   });
@@ -455,10 +411,28 @@ io.on('connection', async socket => {
     const code = process.env.ADMIN_CODE;
     if (!code || String(payload?.code || '') !== code) return ack?.({ ok: false, error: 'bad_code' });
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
-    if (!text || text.length > 500) return ack?.({ ok: false, error: 'invalid' });
+    const media = typeof payload?.media === 'string' && payload.media ? payload.media : null;
+    if (media && !isOurMedia(media, 'image')) return ack?.({ ok: false, error: 'invalid' });
+    if ((!text && !media) || text.length > 500) return ack?.({ ok: false, error: 'invalid' });
     const now = Date.now();
-    const row = await db.one('INSERT INTO stories (text, created_at) VALUES ($1, $2) RETURNING id', [text, now]);
-    io.emit('story', { id: row.id, text, created_at: now });
+    const row = await db.one('INSERT INTO stories (text, media, created_at) VALUES ($1, $2, $3) RETURNING id', [text, media, now]);
+    if (media) await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + STORY_MS, mediaIdOf(media)]);
+    io.emit('story', { id: row.id, text, media, created_at: now });
+    ack?.({ ok: true });
+  });
+
+  on('story_delete', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const code = process.env.ADMIN_CODE;
+    if (!code || String(payload?.code || '') !== code) return ack?.({ ok: false, error: 'bad_code' });
+    const id = Number(payload?.id);
+    const row = Number.isInteger(id) ? await db.one('SELECT id, media FROM stories WHERE id = $1', [id]) : null;
+    if (!row) return ack?.({ ok: false, error: 'no_story' });
+    await db.run('DELETE FROM stories WHERE id = $1', [id]);
+    const mid = mediaIdOf(row.media);
+    if (mid) await db.run('DELETE FROM media WHERE id = $1', [mid]);
+    io.emit('story_deleted', { id });
     ack?.({ ok: true });
   });
 
@@ -467,6 +441,9 @@ io.on('connection', async socket => {
 
 async function main() {
   await pool.query(SCHEMA);
+  await pool.query(EXTRA_SCHEMA);
+  await cleanup().catch(e => console.error('cleanup:', e.message));
+  setInterval(() => cleanup().catch(e => console.error('cleanup:', e.message)), 10 * 60 * 1000);
   server.listen(PORT, () => console.log(`gigi chat running on port ${PORT}`));
 }
 
