@@ -118,7 +118,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
     <div class="side-top" style="border-top:1px solid var(--line);border-bottom:0">
       <div class="row">
         <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-        <button class="icon" id="photoBtn" data-i18n="photoBtn"></button>
+        <button class="icon" id="photoBtn" data-i18n="photoBtn" hidden></button>
         <input id="avatarInput" type="file" accept="image/*" hidden>
         <button class="icon" id="renameBtn" data-i18n="renameBtn"></button>
         <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)"></button>
@@ -144,7 +144,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
       </div>
       <div class="messages" id="messages"></div>
       <form class="composer" id="composer">
-        <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn"></button>
+        <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn" hidden></button>
         <input id="fileInput" type="file" accept="image/*,video/*" hidden>
         <textarea id="input" rows="1" data-i18n-ph="typeMessage"></textarea>
         <button class="btn" data-i18n="send"></button>
