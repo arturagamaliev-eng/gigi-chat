@@ -78,6 +78,27 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .viewer-img[hidden]{display:none!important}
 #storyDelBtn{margin-top:16px;width:100%;text-align:center}
 .gone{color:var(--muted);font-style:italic}
+.modal-box{max-height:85vh;overflow-y:auto;max-width:460px;font-size:15px;line-height:1.4}
+.pf-head{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:18px}
+.pf-avatar{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;font-size:36px;font-weight:700;color:#fff;position:relative;overflow:hidden}
+.pf-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pf-name{font-size:20px;font-weight:650}
+.pf-status{font-size:13px;color:var(--muted)}
+.pf-status.on{color:var(--online)}
+.pf-bio{background:var(--bg);border-radius:12px;padding:12px 14px;margin:12px 0;color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
+.pf-bio.empty{color:var(--muted);font-style:italic}
+.pf-actions{display:flex;flex-direction:column;gap:8px}
+.pf-actions .btn{width:100%}
+.pf-actions .btn.ghost{background:var(--panel2);color:var(--text)}
+.pf-actions .btn.danger{background:var(--danger);color:#fff}
+.acc-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.acc-row .meta{min-width:0;flex:1}
+.acc-row .sub{font-size:12px;color:var(--muted)}
+.acc-row .sub.on{color:var(--online)}
+.acc-row .btn{padding:7px 10px;font-size:13px}
+.acc-head{font-size:18px;font-weight:650;margin-bottom:6px}
+.acc-foot{margin-top:18px}
+.clickable{cursor:pointer}
 .stories{display:flex;gap:12px;padding:12px 14px;overflow-x:auto;border-bottom:1px solid var(--line)}
 .story{flex:none;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;cursor:pointer;color:var(--muted);font-size:11px;padding:0}
 .story-ring{width:52px;height:52px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#5ea8e0,#4fd18b);display:grid;place-items:center}
@@ -147,11 +168,12 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
         <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
         <button class="icon" id="photoBtn" data-i18n="photoBtn" hidden></button>
         <input id="avatarInput" type="file" accept="image/*" hidden>
+        <button class="icon" id="adminBtn" data-i18n="adminBtn"></button>
         <button class="icon" id="storyBtn" data-i18n="storyBtn"></button>
         <button class="icon" id="storyPhotoBtn" data-i18n="storyPhotoBtn"></button>
-        <button class="icon" id="renameBtn" data-i18n="renameBtn"></button>
-        <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)"></button>
-        <button class="icon" id="logout" data-i18n="logout"></button>
+        <button class="icon" id="renameBtn" data-i18n="renameBtn" hidden></button>
+        <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)" hidden></button>
+        <button class="icon" id="logout" aria-label="logout">⎋</button>
       </div>
       <div class="hint" id="net"></div>
     </div>
@@ -160,7 +182,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
     <div class="placeholder" id="placeholder" data-i18n="selectChat"></div>
     <div class="chat-view" id="chatView" hidden>
       <header class="chat-top">
-        <button class="icon back" id="back" data-i18n="back"></button>
+        <button class="icon back" id="back" aria-label="back">←</button>
         <div class="avatar" id="hAvatar" style="width:40px;height:40px;font-size:15px"></div>
         <div class="meta">
           <div class="name" id="hName"></div>
@@ -199,6 +221,13 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
   </div>
 </div>
 
+<div id="modal" class="viewer" hidden>
+  <div class="viewer-box modal-box">
+    <button class="icon viewer-close" id="modalClose">✕</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
 <div id="toast" class="toast" role="status" hidden></div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -228,6 +257,13 @@ const I18N = {
     adminDone: 'Account deleted', badCode: 'Wrong code',
     storyBtn: 'Story', storyPrompt: 'Story text (up to 500 characters)', storyPosted: 'Story published',
     storyTitle: 'gigi chat', newStory: 'New story from gigi chat', storyPhotoBtn: 'Photo story',
+    adminBtn: 'Admin', accountsTitle: 'All accounts', noAccounts: 'No accounts yet',
+    deleteAllBtn: 'Delete all accounts', deleteAllConfirm: 'Delete ALL accounts and ALL messages? This cannot be undone.',
+    deleteAllConfirm2: 'Are you really sure? Everything will be lost.', allDeleted: 'All accounts were deleted',
+    profileTitle: 'Profile', aboutLabel: 'About', noBio: 'No description yet', bioPrompt: 'About you (up to 200 characters)',
+    editBio: 'Edit about', changePhoto: 'Change photo', removePhoto: 'Remove photo', writeMsg: 'Write a message',
+    created: 'created', lastSeen: 'last seen {time}', deleteUserConfirm: 'Delete this account and all its messages?',
+    photoRemoved: 'Photo removed', bioSaved: 'Saved',
     photoGone: 'Photo expired', storyAddPhoto: 'Add a photo to the story?', storyDelete: 'Delete story',
     storyDeleteConfirm: 'Delete this story for everyone?', storyDeleted: 'Story deleted',
     fileTooBig: 'File is too large (max 15 MB)', uploadFailed: 'Could not send the file',
@@ -257,6 +293,13 @@ const I18N = {
     adminDone: 'Акаунт видалено', badCode: 'Невірний код',
     storyBtn: 'Історія', storyPrompt: 'Текст історії (до 500 символів)', storyPosted: 'Історію опубліковано',
     storyTitle: 'gigi chat', newStory: 'Нова історія від gigi chat', storyPhotoBtn: 'Фото-історія',
+    adminBtn: 'Адмін', accountsTitle: 'Усі акаунти', noAccounts: 'Акаунтів ще немає',
+    deleteAllBtn: 'Видалити всі акаунти', deleteAllConfirm: 'Видалити ВСІ акаунти і ВСІ повідомлення? Це не можна скасувати.',
+    deleteAllConfirm2: 'Ви точно впевнені? Усе буде втрачено.', allDeleted: 'Усі акаунти видалено',
+    profileTitle: 'Профіль', aboutLabel: 'Про себе', noBio: 'Опису ще немає', bioPrompt: 'Про себе (до 200 символів)',
+    editBio: 'Змінити опис', changePhoto: 'Змінити фото', removePhoto: 'Видалити фото', writeMsg: 'Написати',
+    created: 'створено', lastSeen: 'був(ла) в мережі {time}', deleteUserConfirm: 'Видалити цей акаунт і всі його повідомлення?',
+    photoRemoved: 'Фото видалено', bioSaved: 'Збережено',
     photoGone: 'Фото вже не доступне', storyAddPhoto: 'Додати фото до історії?', storyDelete: 'Видалити історію',
     storyDeleteConfirm: 'Видалити цю історію для всіх?', storyDeleted: 'Історію видалено',
     fileTooBig: 'Файл завеликий (максимум 15 МБ)', uploadFailed: 'Не вдалося надіслати файл',
@@ -286,6 +329,13 @@ const I18N = {
     adminDone: 'Аккаунт удалён', badCode: 'Неверный код',
     storyBtn: 'История', storyPrompt: 'Текст истории (до 500 символов)', storyPosted: 'История опубликована',
     storyTitle: 'gigi chat', newStory: 'Новая история от gigi chat', storyPhotoBtn: 'Фото-история',
+    adminBtn: 'Админ', accountsTitle: 'Все аккаунты', noAccounts: 'Аккаунтов пока нет',
+    deleteAllBtn: 'Удалить все аккаунты', deleteAllConfirm: 'Удалить ВСЕ аккаунты и ВСЕ сообщения? Это нельзя отменить.',
+    deleteAllConfirm2: 'Вы точно уверены? Всё будет потеряно.', allDeleted: 'Все аккаунты удалены',
+    profileTitle: 'Профиль', aboutLabel: 'О себе', noBio: 'Описания пока нет', bioPrompt: 'О себе (до 200 символов)',
+    editBio: 'Изменить описание', changePhoto: 'Изменить фото', removePhoto: 'Удалить фото', writeMsg: 'Написать',
+    created: 'создан', lastSeen: 'был(а) в сети {time}', deleteUserConfirm: 'Удалить этот аккаунт и все его сообщения?',
+    photoRemoved: 'Фото удалено', bioSaved: 'Сохранено',
     photoGone: 'Фото уже недоступно', storyAddPhoto: 'Добавить фото к истории?', storyDelete: 'Удалить историю',
     storyDeleteConfirm: 'Удалить эту историю для всех?', storyDeleted: 'История удалена',
     fileTooBig: 'Файл слишком большой (максимум 15 МБ)', uploadFailed: 'Не удалось отправить файл',
@@ -311,6 +361,8 @@ let netKey = null;
 let avatars = new Map(); // nick -> image url
 let stories = [];        // newest first
 const seenStories = new Set(JSON.parse(localStorage.getItem('gigi_seen') || '[]'));
+const userInfo = new Map();  // nick -> { online, lastSeen, avatar, bio }
+let adminCode = null;        // kept only while this page is open
 
 const $ = id => document.getElementById(id);
 const enc = encodeURIComponent;
@@ -334,6 +386,8 @@ function applyI18n() {
   document.documentElement.lang = lang;
   document.querySelectorAll('[data-i18n]').forEach(n => n.textContent = t(n.dataset.i18n));
   document.querySelectorAll('[data-i18n-ph]').forEach(n => n.placeholder = t(n.dataset.i18nPh));
+  $('logout').title = t('logout');
+  $('back').title = t('back');
   document.querySelectorAll('[data-set-lang]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.setLang === lang)));
   const h = $('loginHint'); if (h.dataset.key) h.textContent = t(h.dataset.key);
   if (netKey) $('net').textContent = t(netKey);
@@ -405,7 +459,7 @@ function createSocket() {
     if (payload) socket.emit('login', payload, onLogin);
   });
   socket.on('disconnect', () => setNet(false));
-  socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); });
+  socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); if (active) refreshInfo(active); });
   socket.on('message', onMessage);
   socket.on('msg_deleted', onMsgDeleted);
   socket.on('stories', list => { stories = list || []; renderStories(); });
@@ -416,7 +470,16 @@ function createSocket() {
     if (Number($('storyDelBtn').dataset.id) === id) $('viewer').hidden = true;
   });
   socket.on('avatars', obj => { avatars = new Map(Object.entries(obj || {})); renderList(); renderHeader(); });
-  socket.on('avatar', ({ nick, url }) => { avatars.set(nick, url); renderList(); renderHeader(); });
+  socket.on('avatar', ({ nick, url }) => {
+    if (url) avatars.set(nick, url); else avatars.delete(nick);
+    renderList(); renderHeader();
+    if (nick === me && $('modal').hidden === false) openProfile(me);
+  });
+  socket.on('all_deleted', () => {
+    sessionStorage.setItem('gigi_flash', 'allDeleted');
+    forget();
+    location.reload();
+  });
   socket.on('read', ({ by, at }) => {
     let changed = false;
     for (const m of cache.get(by) || []) {
@@ -599,6 +662,7 @@ async function openChat(nick) {
   const ids = new Set(rows.map(r => r.id));
   cache.set(nick, [...rows, ...existing.filter(m => !ids.has(m.id))]);
   if (active === nick) { renderMessages(); markRead(nick); }
+  refreshInfo(nick);
   $('input').focus();
 }
 
@@ -636,7 +700,7 @@ function renderHeader() {
   applyAvatar(av, active);
   av.style.background = avatarBg(active);
   const st = $('hStatus');
-  st.textContent = t(on ? 'online' : 'offline');
+  st.textContent = statusText(active);
   st.classList.toggle('on', on);
 }
 
@@ -818,6 +882,140 @@ $('storyDelBtn').addEventListener('click', () => {
     toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
   });
 });
+
+const fmtDateTime = ts => new Intl.DateTimeFormat(LOCALES[lang], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(ts));
+
+function statusText(nick) {
+  if (!nick) return '';
+  if (online.has(nick)) return t('online');
+  const info = userInfo.get(nick);
+  if (info?.lastSeen) return t('lastSeen', { time: fmtDateTime(info.lastSeen) });
+  return t('offline');
+}
+
+function refreshInfo(nick) {
+  if (!socket?.connected || !nick) return;
+  socket.emit('user_info', { nick }, res => {
+    if (!res?.ok) return;
+    userInfo.set(nick, res.info);
+    if (active === nick) renderHeader();
+  });
+}
+
+function openModal(html) {
+  $('modalBody').replaceChildren(...html);
+  $('modal').hidden = false;
+}
+
+function closeModal() { $('modal').hidden = true; }
+
+function avatarNode(nick, url, size) {
+  const av = el('div', { class: 'pf-avatar' }, nick[0].toUpperCase());
+  av.style.background = avatarBg(nick);
+  if (size) { av.style.width = size + 'px'; av.style.height = size + 'px'; av.style.fontSize = Math.round(size / 2.6) + 'px'; }
+  if (url) av.replaceChildren(el('img', { src: url, alt: '' }));
+  return av;
+}
+
+function openProfile(nick) {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('user_info', { nick }, res => {
+    if (!res?.ok) return toast(t('errNoUser'));
+    const info = res.info;
+    userInfo.set(nick, info);
+    const mine = nick === me;
+    const avatarUrl = info.avatar || avatars.get(nick) || null;
+    const status = el('div', { class: 'pf-status' + (info.online ? ' on' : '') }, statusText(nick));
+    const bio = el('div', { class: 'pf-bio' + (info.bio ? '' : ' empty') }, info.bio || t('noBio'));
+    const actions = el('div', { class: 'pf-actions' });
+    if (mine) {
+      actions.append(
+        el('button', { class: 'btn', onclick: () => $('photoBtn').click() }, t('changePhoto')),
+        ...(avatarUrl ? [el('button', { class: 'btn ghost', onclick: () => socket.emit('set_avatar', { url: null }, () => toast(t('photoRemoved'))) }, t('removePhoto'))] : []),
+        el('button', { class: 'btn ghost', onclick: () => {
+          const text = prompt(t('bioPrompt'), info.bio || '');
+          if (text === null) return;
+          socket.emit('set_bio', { bio: text }, () => { toast(t('bioSaved')); openProfile(me); });
+        } }, t('editBio')),
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('renameBtn').click(); } }, t('renameBtn')),
+        el('button', { class: 'btn danger', onclick: () => { closeModal(); $('deleteBtn').click(); } }, t('deleteBtn')),
+      );
+    } else {
+      actions.append(el('button', { class: 'btn', onclick: () => { closeModal(); openChat(nick); } }, t('writeMsg')));
+    }
+    openModal([
+      el('div', { class: 'pf-head' },
+        avatarNode(nick, avatarUrl, 96),
+        el('div', { class: 'pf-name' }, nick),
+        status),
+      el('div', { class: 'pf-title acc-head' }, t('aboutLabel')),
+      bio,
+      actions,
+    ]);
+  });
+}
+
+function openAccounts(users) {
+  const list = el('div', {});
+  for (const u of users) {
+    const sub = u.online ? t('online') : (u.lastSeen ? t('lastSeen', { time: fmtDateTime(u.lastSeen) }) : t('offline'));
+    list.append(el('div', { class: 'acc-row' },
+      avatarNode(u.nick, null, 40),
+      el('div', { class: 'meta' },
+        el('div', { class: 'name' }, u.nick),
+        el('div', { class: 'sub' + (u.online ? ' on' : '') }, sub + ' · ' + t('created') + ' ' + fmtDateTime(u.created))),
+      el('button', { class: 'btn danger', onclick: () => adminDeleteOne(u.nick) }, t('deleteBtn'))));
+  }
+  if (!users.length) list.append(el('div', { class: 'empty' }, t('noAccounts')));
+  openModal([
+    el('div', { class: 'acc-head' }, t('accountsTitle') + ' (' + users.length + ')'),
+    list,
+    el('div', { class: 'acc-foot' },
+      el('button', { class: 'btn danger', style: 'width:100%', onclick: adminDeleteAll }, t('deleteAllBtn'))),
+  ]);
+}
+
+function adminLoadAccounts() {
+  socket.emit('admin_list', { code: adminCode }, res => {
+    if (!res?.ok) {
+      adminCode = null;
+      return toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
+    }
+    openAccounts(res.users);
+  });
+}
+
+function adminDeleteOne(nick) {
+  if (!confirm(t('deleteUserConfirm'))) return;
+  socket.emit('admin_delete', { nick, code: adminCode }, res => {
+    if (!res?.ok) return toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
+    toast(t('adminDone'));
+    adminLoadAccounts();
+  });
+}
+
+function adminDeleteAll() {
+  if (!confirm(t('deleteAllConfirm'))) return;
+  if (!confirm(t('deleteAllConfirm2'))) return;
+  socket.emit('admin_delete_all', { code: adminCode }, res => {
+    if (!res?.ok) toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
+  });
+}
+
+$('adminBtn').addEventListener('click', () => {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  if (adminCode) return adminLoadAccounts();
+  const code = prompt(t('adminCodePrompt'));
+  if (!code) return;
+  adminCode = code;
+  adminLoadAccounts();
+});
+
+$('modalClose').addEventListener('click', closeModal);
+$('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+$('hName').addEventListener('click', () => { if (active) openProfile(active); });
+$('hAvatar').addEventListener('click', () => { if (active) openProfile(active); });
+$('meName').addEventListener('click', () => { if (me) openProfile(me); });
 
 function applyAvatar(node, nick) {
   node.replaceChildren(nick[0].toUpperCase());
