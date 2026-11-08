@@ -157,6 +157,8 @@ CREATE TABLE IF NOT EXISTS gift_items (
   created_at DOUBLE PRECISION NOT NULL
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS stars INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_invite_day TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS invite_day TEXT;
 CREATE TABLE IF NOT EXISTS reactions (
   target_type TEXT NOT NULL,
   target_id INTEGER NOT NULL,
@@ -711,6 +713,29 @@ io.on('connection', async socket => {
     }
     io.emit('group_deleted', { id });
     ack?.({ ok: true });
+  });
+
+  // Invite reward: 15 stars, once per day per account.
+  on('invite_reward', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const today = new Date().toISOString().slice(0, 10);
+    const row = await db.one('SELECT invite_day FROM users WHERE nickname = $1', [me]);
+    if (row?.invite_day === today) return ack?.({ ok: false, error: 'already' });
+    const u = await db.one('UPDATE users SET stars = stars + 15, invite_day = $2 WHERE nickname = $1 RETURNING stars', [me, today]);
+    ack?.({ ok: true, stars: u.stars });
+  });
+
+  // 15 stars once per day for inviting a friend. The day is counted in UTC.
+  on('invite_reward', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const today = new Date().toISOString().slice(0, 10);
+    const row = await db.one(
+      'UPDATE users SET stars = stars + 15, last_invite_day = $1 WHERE nickname = $2 AND (last_invite_day IS NULL OR last_invite_day <> $1) RETURNING stars',
+      [today, me]);
+    if (!row) return ack?.({ ok: false, error: 'already' });
+    ack?.({ ok: true, stars: row.stars });
   });
 
   // ---- Stars and gifts ----
