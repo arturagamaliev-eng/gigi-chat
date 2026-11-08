@@ -63,6 +63,11 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .composer textarea{flex:1;resize:none;max-height:140px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;outline:none;line-height:1.4}
 .composer textarea:focus{border-color:var(--accent)}
 .placeholder{margin:auto;color:var(--muted);text-align:center;padding:24px}
+.avatar img{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover}
+.chat-top{position:relative}
+.menu{position:absolute;right:12px;top:58px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:15;min-width:200px;padding:6px}
+.menu-item{display:block;width:100%;background:none;border:0;text-align:left;padding:10px 12px;border-radius:8px;cursor:pointer;color:var(--danger)}
+.menu-item:hover{background:var(--panel)}
 .msg img.media,.msg video.media{display:block;max-width:100%;max-height:320px;border-radius:10px;cursor:pointer}
 .msg audio.media{display:block;width:240px;max-width:100%}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:9;max-width:90vw}
@@ -113,6 +118,8 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
     <div class="side-top" style="border-top:1px solid var(--line);border-bottom:0">
       <div class="row">
         <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button class="icon" id="photoBtn" data-i18n="photoBtn"></button>
+        <input id="avatarInput" type="file" accept="image/*" hidden>
         <button class="icon" id="renameBtn" data-i18n="renameBtn"></button>
         <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)"></button>
         <button class="icon" id="logout" data-i18n="logout"></button>
@@ -130,7 +137,11 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
           <div class="name" id="hName"></div>
           <div class="status" id="hStatus"></div>
         </div>
+        <button class="icon" id="moreBtn" aria-label="menu">⋮</button>
       </header>
+      <div id="chatMenu" class="menu" hidden>
+        <button id="adminDelBtn" class="menu-item" data-i18n="adminDelete"></button>
+      </div>
       <div class="messages" id="messages"></div>
       <form class="composer" id="composer">
         <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn"></button>
@@ -165,6 +176,9 @@ const I18N = {
     readAt: 'read {time}',
     confirmDeleteMsg: 'Delete this message for both of you?', msgDeleted: 'A message was deleted',
     attachBtn: 'File', recBtn: 'Voice', recStop: 'Stop', photoLabel: 'Photo', videoLabel: 'Video', voiceLabel: 'Voice message',
+    photoBtn: 'Photo', photoSaved: 'Photo saved', adminDelete: 'Delete account forever',
+    adminConfirm: 'Delete this account and all its messages forever?', adminCodePrompt: 'Enter the admin code',
+    adminDone: 'Account deleted', badCode: 'Wrong code',
     fileTooBig: 'File is too large (max 15 MB)', uploadFailed: 'Could not send the file',
     micDenied: 'Allow microphone access to send voice messages', badFile: 'This file type is not supported'
   },
@@ -186,6 +200,9 @@ const I18N = {
     readAt: 'прочитано {time}',
     confirmDeleteMsg: 'Видалити це повідомлення для обох?', msgDeleted: 'Повідомлення видалено',
     attachBtn: 'Файл', recBtn: 'Голос', recStop: 'Стоп', photoLabel: 'Фото', videoLabel: 'Відео', voiceLabel: 'Голосове повідомлення',
+    photoBtn: 'Фото', photoSaved: 'Фото збережено', adminDelete: 'Видалити акаунт назавжди',
+    adminConfirm: 'Видалити цей акаунт і всі його повідомлення назавжди?', adminCodePrompt: 'Введіть код адміністратора',
+    adminDone: 'Акаунт видалено', badCode: 'Невірний код',
     fileTooBig: 'Файл завеликий (максимум 15 МБ)', uploadFailed: 'Не вдалося надіслати файл',
     micDenied: 'Дозвольте доступ до мікрофона, щоб надсилати голосові', badFile: 'Цей тип файлу не підтримується'
   },
@@ -207,6 +224,9 @@ const I18N = {
     readAt: 'прочитано {time}',
     confirmDeleteMsg: 'Удалить это сообщение у обоих?', msgDeleted: 'Сообщение удалено',
     attachBtn: 'Файл', recBtn: 'Голос', recStop: 'Стоп', photoLabel: 'Фото', videoLabel: 'Видео', voiceLabel: 'Голосовое сообщение',
+    photoBtn: 'Фото', photoSaved: 'Фото сохранено', adminDelete: 'Удалить аккаунт навсегда',
+    adminConfirm: 'Удалить этот аккаунт и все его сообщения навсегда?', adminCodePrompt: 'Введите код администратора',
+    adminDone: 'Аккаунт удалён', badCode: 'Неверный код',
     fileTooBig: 'Файл слишком большой (максимум 15 МБ)', uploadFailed: 'Не удалось отправить файл',
     micDenied: 'Разрешите доступ к микрофону, чтобы отправлять голосовые', badFile: 'Этот тип файла не поддерживается'
   }
@@ -227,6 +247,7 @@ let results = [];
 let search = '';
 let active = null;
 let netKey = null;
+let avatars = new Map(); // nick -> image url
 
 const $ = id => document.getElementById(id);
 const enc = encodeURIComponent;
@@ -324,6 +345,8 @@ function createSocket() {
   socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); });
   socket.on('message', onMessage);
   socket.on('msg_deleted', onMsgDeleted);
+  socket.on('avatars', obj => { avatars = new Map(Object.entries(obj || {})); renderList(); renderHeader(); });
+  socket.on('avatar', ({ nick, url }) => { avatars.set(nick, url); renderList(); renderHeader(); });
   socket.on('read', ({ by, at }) => {
     let changed = false;
     for (const m of cache.get(by) || []) {
@@ -511,7 +534,7 @@ async function openChat(nick) {
 function chatItem(nick) {
   const info = chats.get(nick) || {};
   const av = el('div', { class: 'avatar' }, nick[0].toUpperCase());
-  av.style.background = avatarBg(nick);
+  applyAvatar(av, nick);
   if (online.has(nick)) av.append(el('span', { class: 'dot' }));
   const preview = info.last ? (info.last.from === me ? t('you') + ': ' : '') + previewText(info.last) : '';
   const btn = el('button', { class: 'item' + (nick === active ? ' active' : ''), onclick: () => openChat(nick) },
@@ -539,7 +562,7 @@ function renderHeader() {
   const on = online.has(active);
   $('hName').textContent = active;
   const av = $('hAvatar');
-  av.textContent = active[0].toUpperCase();
+  applyAvatar(av, active);
   av.style.background = avatarBg(active);
   const st = $('hStatus');
   st.textContent = t(on ? 'online' : 'offline');
@@ -618,6 +641,51 @@ $('fileInput').addEventListener('change', e => {
   const f = e.target.files?.[0];
   e.target.value = '';
   if (f) sendMedia(f);
+});
+
+function applyAvatar(node, nick) {
+  node.replaceChildren(nick[0].toUpperCase());
+  node.style.background = avatarBg(nick);
+  const url = avatars.get(nick);
+  if (url) node.replaceChildren(el('img', { src: url, alt: '' }));
+}
+
+$('photoBtn').addEventListener('click', () => $('avatarInput').click());
+$('avatarInput').addEventListener('change', async e => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (!f) return;
+  if (!f.type.startsWith('image/')) return toast(t('badFile'));
+  if (f.size > 15 * 1024 * 1024) return toast(t('fileTooBig'));
+  if (!socket?.connected) return toast(t('errNetwork'));
+  let res;
+  try {
+    const data = await readAsDataURL(new Blob([f], { type: f.type.split(';')[0] }));
+    res = await (await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: localStorage.getItem('gigi_token'), data })
+    })).json();
+  } catch { return toast(t('uploadFailed')); }
+  if (!res?.ok || res.kind !== 'image') return toast(t('badFile'));
+  socket.emit('set_avatar', { url: res.url }, ack => toast(ack?.ok ? t('photoSaved') : t('messageFailed')));
+});
+
+$('moreBtn').addEventListener('click', e => { e.stopPropagation(); $('chatMenu').hidden = !$('chatMenu').hidden; });
+document.addEventListener('click', () => { $('chatMenu').hidden = true; });
+
+$('adminDelBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  $('chatMenu').hidden = true;
+  if (!active) return;
+  if (!confirm(t('adminConfirm'))) return;
+  const code = prompt(t('adminCodePrompt'));
+  if (!code) return;
+  socket.emit('admin_delete', { nick: active, code }, res => {
+    if (res?.ok) return toast(t('adminDone'));
+    const keys = { bad_code: 'badCode', no_user: 'errNoUser' };
+    toast(t(keys[res?.error] || 'messageFailed'));
+  });
 });
 
 $('back').addEventListener('click', closeChat);
