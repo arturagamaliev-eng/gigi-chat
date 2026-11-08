@@ -169,11 +169,13 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
       <div class="row">
         <button class="icon" id="myProfileBtn" aria-label="profile" title="Профіль">👤</button>
         <div class="brand">gigi chat</div>
+        <button class="icon" id="inviteBtn" data-i18n-title="inviteTitle" aria-label="invite">🔗</button>
         <div class="lang">
           <button type="button" data-set-lang="en">EN</button>
           <button type="button" data-set-lang="uk">УК</button>
           <button type="button" data-set-lang="ru">РУ</button>
         </div>
+        <button class="icon" id="inviteBtn" title="Запросити друга">👥</button>
       </div>
       <input id="search" class="field" type="search" autocomplete="off" data-i18n-ph="search">
     </div>
@@ -303,6 +305,10 @@ const I18N = {
     giftPhotoBtn: 'Choose photo', giftPhotoNone: 'No photo chosen', giftPhotoOk: 'Photo added',
     giftCreated: 'Gift created', giftCreateBtn: 'Create', starsAmount: 'Stars amount', giveStarsBtn: 'Give',
     giftCountField: 'How many copies (1–100)',
+    inviteTitle: 'Invite a friend', inviteText: 'Join me on gigi chat!', inviteCopied: 'Link copied',
+    inviteRewarded: '+15 stars for the invite!', inviteAlready: 'You already got today\u2019s stars for invites',
+    inviteText: 'Join me in gigi chat:', inviteCopied: 'Link copied', inviteDone: '+15 ⭐ for inviting a friend',
+    inviteAlready: 'You already got today’s reward',
     starsGiven: 'Stars given', adminGiveBtn: 'Give to user', adminDeleteBtn: 'Delete gift',
     giftDeleteConfirm: 'Delete this gift from the market?', giftDeleted: 'Gift deleted', noMyGifts: 'You have no gifts yet',
     giftLabel: 'Gift', giftSold: 'Sold', giftBought: 'Purchased',
@@ -361,6 +367,8 @@ const I18N = {
     giftPhotoBtn: 'Обрати фото', giftPhotoNone: 'Фото ще не обрано', giftPhotoOk: 'Фото додано',
     giftCreated: 'Подарунок створено', giftCreateBtn: 'Створити', starsAmount: 'Кількість зірок', giveStarsBtn: 'Видати',
     giftCountField: 'Скільки примірників (1–100)',
+    inviteTitle: 'Запросити друга', inviteText: 'Приєднуйся до gigi chat!', inviteCopied: 'Посилання скопійовано',
+    inviteRewarded: '+15 зірок за запрошення!', inviteAlready: 'Зірки за запрошення сьогодні вже отримано',
     starsGiven: 'Зірки видано', adminGiveBtn: 'Подарувати користувачу', adminDeleteBtn: 'Видалити подарунок',
     giftDeleteConfirm: 'Видалити цей подарунок з маркету?', giftDeleted: 'Подарунок видалено', noMyGifts: 'Подарунків ще немає',
     giftLabel: 'Подарунок', giftSold: 'Продано', giftBought: 'Куплено',
@@ -419,6 +427,8 @@ const I18N = {
     giftPhotoBtn: 'Выбрать фото', giftPhotoNone: 'Фото ещё не выбрано', giftPhotoOk: 'Фото добавлено',
     giftCreated: 'Подарок создан', giftCreateBtn: 'Создать', starsAmount: 'Количество звёзд', giveStarsBtn: 'Выдать',
     giftCountField: 'Сколько экземпляров (1–100)',
+    inviteTitle: 'Пригласить друга', inviteText: 'Присоединяйся к gigi chat!', inviteCopied: 'Ссылка скопирована',
+    inviteRewarded: '+15 звёзд за приглашение!', inviteAlready: 'Звёзды за приглашение сегодня уже получены',
     starsGiven: 'Звёзды выданы', adminGiveBtn: 'Подарить пользователю', adminDeleteBtn: 'Удалить подарок',
     giftDeleteConfirm: 'Удалить этот подарок из маркета?', giftDeleted: 'Подарок удалён', noMyGifts: 'Подарков пока нет',
     giftLabel: 'Подарок', giftSold: 'Продано', giftBought: 'Куплено',
@@ -1629,6 +1639,20 @@ function openAdminStars() {
 }
 
 $('marketBtn').addEventListener('click', openMarket);
+
+const INVITE_URL = 'https://sites.google.com/view/gigichatdownloader/gigi';
+
+// Copies the invite text and opens the share sheet. The 15 stars are given once per day.
+$('inviteBtn').addEventListener('click', () => {
+  const text = t('inviteText') + ' ' + INVITE_URL;
+  navigator.clipboard?.writeText(text).then(() => toast(t('inviteCopied'))).catch(() => {});
+  if (navigator.share) navigator.share({ text, url: INVITE_URL }).catch(() => {});
+  if (!socket?.connected) return;
+  socket.emit('invite_reward', {}, res => {
+    if (res?.ok) toast(t('inviteRewarded'));
+    else if (res?.error === 'already') toast(t('inviteAlready'));
+  });
+});
 $('myProfileBtn').addEventListener('click', () => { if (me) openProfile(me); });
 
 function applyAvatar(node, nick) {
