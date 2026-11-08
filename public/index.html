@@ -302,6 +302,7 @@ const I18N = {
     giftTitleField: 'Gift name (up to 40 characters)', giftDescField: 'Description (optional)', giftPriceField: 'Price in stars',
     giftPhotoBtn: 'Choose photo', giftPhotoNone: 'No photo chosen', giftPhotoOk: 'Photo added',
     giftCreated: 'Gift created', giftCreateBtn: 'Create', starsAmount: 'Stars amount', giveStarsBtn: 'Give',
+    giftCountField: 'How many copies (1–100)',
     starsGiven: 'Stars given', adminGiveBtn: 'Give to user', adminDeleteBtn: 'Delete gift',
     giftDeleteConfirm: 'Delete this gift from the market?', giftDeleted: 'Gift deleted', noMyGifts: 'You have no gifts yet',
     giftLabel: 'Gift', giftSold: 'Sold', giftBought: 'Purchased',
@@ -359,6 +360,7 @@ const I18N = {
     giftTitleField: 'Назва подарунка (до 40 символів)', giftDescField: 'Опис (необов’язково)', giftPriceField: 'Ціна в зірках',
     giftPhotoBtn: 'Обрати фото', giftPhotoNone: 'Фото ще не обрано', giftPhotoOk: 'Фото додано',
     giftCreated: 'Подарунок створено', giftCreateBtn: 'Створити', starsAmount: 'Кількість зірок', giveStarsBtn: 'Видати',
+    giftCountField: 'Скільки примірників (1–100)',
     starsGiven: 'Зірки видано', adminGiveBtn: 'Подарувати користувачу', adminDeleteBtn: 'Видалити подарунок',
     giftDeleteConfirm: 'Видалити цей подарунок з маркету?', giftDeleted: 'Подарунок видалено', noMyGifts: 'Подарунків ще немає',
     giftLabel: 'Подарунок', giftSold: 'Продано', giftBought: 'Куплено',
@@ -416,6 +418,7 @@ const I18N = {
     giftTitleField: 'Название подарка (до 40 символов)', giftDescField: 'Описание (необязательно)', giftPriceField: 'Цена в звёздах',
     giftPhotoBtn: 'Выбрать фото', giftPhotoNone: 'Фото ещё не выбрано', giftPhotoOk: 'Фото добавлено',
     giftCreated: 'Подарок создан', giftCreateBtn: 'Создать', starsAmount: 'Количество звёзд', giveStarsBtn: 'Выдать',
+    giftCountField: 'Сколько экземпляров (1–100)',
     starsGiven: 'Звёзды выданы', adminGiveBtn: 'Подарить пользователю', adminDeleteBtn: 'Удалить подарок',
     giftDeleteConfirm: 'Удалить этот подарок из маркета?', giftDeleted: 'Подарок удалён', noMyGifts: 'Подарков пока нет',
     giftLabel: 'Подарок', giftSold: 'Продано', giftBought: 'Куплено',
@@ -1578,6 +1581,7 @@ function openCreateGift() {
   const title = el('input', { class: 'field', maxlength: '40', placeholder: t('giftTitleField') });
   const desc = el('input', { class: 'field', maxlength: '200', placeholder: t('giftDescField') });
   const price = el('input', { class: 'field', type: 'number', min: '1', placeholder: t('giftPriceField') });
+  const count = el('input', { class: 'field', type: 'number', min: '1', max: '100', value: '1', placeholder: t('giftCountField') });
   const status = el('div', { class: 'sub' }, t('giftPhotoNone'));
   const file = el('input', { type: 'file', accept: 'image/*', hidden: '' });
   file.addEventListener('change', async e => {
@@ -1598,10 +1602,11 @@ function openCreateGift() {
     el('div', { style: 'height:8px' }), title,
     el('div', { style: 'height:8px' }), desc,
     el('div', { style: 'height:8px' }), price,
+    el('div', { style: 'height:8px' }), count,
     el('div', { class: 'pf-actions acc-foot' }, el('button', { class: 'btn', onclick: () => {
       if (!image) return toast(t('giftPhotoNone'));
       adminCall('admin_gift_create', {
-        title: title.value.trim(), description: desc.value.trim(), price: Number(price.value), image,
+        title: title.value.trim(), description: desc.value.trim(), price: Number(price.value), count: Number(count.value), image,
       }, () => { toast(t('giftCreated')); openMarket(); });
     } }, t('giftCreateBtn'))),
   ]);
