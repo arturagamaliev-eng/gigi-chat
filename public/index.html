@@ -63,6 +63,26 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .composer textarea{flex:1;resize:none;max-height:140px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;outline:none;line-height:1.4}
 .composer textarea:focus{border-color:var(--accent)}
 .placeholder{margin:auto;color:var(--muted);text-align:center;padding:24px}
+.stories{display:flex;gap:12px;padding:10px 14px;overflow-x:auto;border-bottom:1px solid var(--line)}
+.stories[hidden]{display:none!important}
+.story{display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;cursor:pointer;color:var(--text);font-size:12px;flex:none}
+.story .ring{width:56px;height:56px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#5ea8e0,#4fd18b)}
+.story.seen .ring{background:var(--line)}
+.story .ring span{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;background:var(--bg);font-weight:700;font-size:18px}
+.viewer{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:25;display:flex;align-items:center;justify-content:center;padding:24px}
+.viewer[hidden]{display:none!important}
+.viewer-box{background:var(--panel);border-radius:16px;padding:32px 28px 28px;max-width:420px;width:100%;position:relative;white-space:pre-wrap;overflow-wrap:anywhere;font-size:18px;line-height:1.5}
+.viewer-title{font-size:13px;color:var(--muted);margin-bottom:12px}
+.viewer-close{position:absolute;top:8px;right:10px}
+.stories{display:flex;gap:12px;padding:12px 14px;overflow-x:auto;border-bottom:1px solid var(--line)}
+.story{flex:none;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;cursor:pointer;color:var(--muted);font-size:11px;padding:0}
+.story-ring{width:52px;height:52px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#5ea8e0,#4fd18b);display:grid;place-items:center}
+.story-ring span{width:100%;height:100%;border-radius:50%;background:var(--panel);display:grid;place-items:center;color:var(--text);font-weight:700;font-size:18px}
+.story.add .story-ring{background:var(--panel2)}
+.story-view{position:fixed;inset:0;background:rgba(5,10,16,.92);z-index:25;display:flex;align-items:center;justify-content:center;padding:24px;cursor:pointer}
+.story-view[hidden]{display:none!important}
+.story-card{max-width:520px;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;font-size:17px;cursor:default}
+.story-meta{color:var(--muted);font-size:13px;margin-bottom:12px}
 .avatar img{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover}
 .chat-top{position:relative}
 .menu{position:absolute;right:12px;top:58px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:15;min-width:200px;padding:6px}
@@ -114,12 +134,15 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
       </div>
       <input id="search" class="field" type="search" autocomplete="off" data-i18n-ph="search">
     </div>
+    <div class="stories" id="stories"></div>
+    <div class="stories" id="stories" hidden></div>
     <div class="list" id="list"></div>
     <div class="side-top" style="border-top:1px solid var(--line);border-bottom:0">
       <div class="row">
         <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
         <button class="icon" id="photoBtn" data-i18n="photoBtn" hidden></button>
         <input id="avatarInput" type="file" accept="image/*" hidden>
+        <button class="icon" id="storyBtn" data-i18n="storyBtn"></button>
         <button class="icon" id="renameBtn" data-i18n="renameBtn"></button>
         <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)"></button>
         <button class="icon" id="logout" data-i18n="logout"></button>
@@ -153,6 +176,21 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
   </main>
 </section>
 
+<div id="storyView" class="story-view" hidden>
+  <div class="story-card">
+    <div class="story-meta" id="storyMeta"></div>
+    <div id="storyText"></div>
+  </div>
+</div>
+
+<div id="viewer" class="viewer" hidden>
+  <div class="viewer-box">
+    <button class="icon viewer-close" id="viewerClose">✕</button>
+    <div class="viewer-title" id="viewerTitle"></div>
+    <div id="viewerText"></div>
+  </div>
+</div>
+
 <div id="toast" class="toast" role="status" hidden></div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -176,9 +214,12 @@ const I18N = {
     readAt: 'read {time}',
     confirmDeleteMsg: 'Delete this message for both of you?', msgDeleted: 'A message was deleted',
     attachBtn: 'File', recBtn: 'Voice', recStop: 'Stop', photoLabel: 'Photo', videoLabel: 'Video', voiceLabel: 'Voice message',
+    storyAdd: 'Story', storyCode: 'Admin code', storyTextPrompt: 'Story text', storyPosted: 'Story posted',
     photoBtn: 'Photo', photoSaved: 'Photo saved', adminDelete: 'Delete account forever',
     adminConfirm: 'Delete this account and all its messages forever?', adminCodePrompt: 'Enter the admin code',
     adminDone: 'Account deleted', badCode: 'Wrong code',
+    storyBtn: 'Story', storyPrompt: 'Story text (up to 500 characters)', storyPosted: 'Story published',
+    storyTitle: 'gigi chat', newStory: 'New story from gigi chat',
     fileTooBig: 'File is too large (max 15 MB)', uploadFailed: 'Could not send the file',
     micDenied: 'Allow microphone access to send voice messages', badFile: 'This file type is not supported'
   },
@@ -200,9 +241,12 @@ const I18N = {
     readAt: 'прочитано {time}',
     confirmDeleteMsg: 'Видалити це повідомлення для обох?', msgDeleted: 'Повідомлення видалено',
     attachBtn: 'Файл', recBtn: 'Голос', recStop: 'Стоп', photoLabel: 'Фото', videoLabel: 'Відео', voiceLabel: 'Голосове повідомлення',
+    storyAdd: 'Історія', storyCode: 'Код адміністратора', storyTextPrompt: 'Текст історії', storyPosted: 'Історію опубліковано',
     photoBtn: 'Фото', photoSaved: 'Фото збережено', adminDelete: 'Видалити акаунт назавжди',
     adminConfirm: 'Видалити цей акаунт і всі його повідомлення назавжди?', adminCodePrompt: 'Введіть код адміністратора',
     adminDone: 'Акаунт видалено', badCode: 'Невірний код',
+    storyBtn: 'Історія', storyPrompt: 'Текст історії (до 500 символів)', storyPosted: 'Історію опубліковано',
+    storyTitle: 'gigi chat', newStory: 'Нова історія від gigi chat',
     fileTooBig: 'Файл завеликий (максимум 15 МБ)', uploadFailed: 'Не вдалося надіслати файл',
     micDenied: 'Дозвольте доступ до мікрофона, щоб надсилати голосові', badFile: 'Цей тип файлу не підтримується'
   },
@@ -224,9 +268,12 @@ const I18N = {
     readAt: 'прочитано {time}',
     confirmDeleteMsg: 'Удалить это сообщение у обоих?', msgDeleted: 'Сообщение удалено',
     attachBtn: 'Файл', recBtn: 'Голос', recStop: 'Стоп', photoLabel: 'Фото', videoLabel: 'Видео', voiceLabel: 'Голосовое сообщение',
+    storyAdd: 'История', storyCode: 'Код администратора', storyTextPrompt: 'Текст истории', storyPosted: 'История опубликована',
     photoBtn: 'Фото', photoSaved: 'Фото сохранено', adminDelete: 'Удалить аккаунт навсегда',
     adminConfirm: 'Удалить этот аккаунт и все его сообщения навсегда?', adminCodePrompt: 'Введите код администратора',
     adminDone: 'Аккаунт удалён', badCode: 'Неверный код',
+    storyBtn: 'История', storyPrompt: 'Текст истории (до 500 символов)', storyPosted: 'История опубликована',
+    storyTitle: 'gigi chat', newStory: 'Новая история от gigi chat',
     fileTooBig: 'Файл слишком большой (максимум 15 МБ)', uploadFailed: 'Не удалось отправить файл',
     micDenied: 'Разрешите доступ к микрофону, чтобы отправлять голосовые', badFile: 'Этот тип файла не поддерживается'
   }
@@ -248,6 +295,8 @@ let search = '';
 let active = null;
 let netKey = null;
 let avatars = new Map(); // nick -> image url
+let stories = [];        // newest first
+const seenStories = new Set(JSON.parse(localStorage.getItem('gigi_seen') || '[]'));
 
 const $ = id => document.getElementById(id);
 const enc = encodeURIComponent;
@@ -345,6 +394,8 @@ function createSocket() {
   socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); });
   socket.on('message', onMessage);
   socket.on('msg_deleted', onMsgDeleted);
+  socket.on('stories', list => { stories = list || []; renderStories(); });
+  socket.on('story', s => { stories.unshift(s); renderStories(); toast(t('newStory')); });
   socket.on('avatars', obj => { avatars = new Map(Object.entries(obj || {})); renderList(); renderHeader(); });
   socket.on('avatar', ({ nick, url }) => { avatars.set(nick, url); renderList(); renderHeader(); });
   socket.on('read', ({ by, at }) => {
@@ -641,6 +692,41 @@ $('fileInput').addEventListener('change', e => {
   const f = e.target.files?.[0];
   e.target.value = '';
   if (f) sendMedia(f);
+});
+
+function renderStories() {
+  const box = $('stories');
+  box.replaceChildren();
+  box.hidden = stories.length === 0;
+  for (const s of stories) {
+    box.append(el('button', { class: 'story' + (seenStories.has(s.id) ? ' seen' : ''), onclick: () => openStory(s) },
+      el('span', { class: 'ring' }, el('span', {}, 'G')),
+      el('span', {}, t('storyTitle'))));
+  }
+}
+
+function openStory(s) {
+  $('viewerTitle').textContent = t('storyTitle');
+  $('viewerText').textContent = s.text;
+  $('viewer').hidden = false;
+  seenStories.add(s.id);
+  localStorage.setItem('gigi_seen', JSON.stringify([...seenStories].slice(-200)));
+  renderStories();
+}
+
+$('viewerClose').addEventListener('click', () => { $('viewer').hidden = true; });
+$('viewer').addEventListener('click', e => { if (e.target.id === 'viewer') $('viewer').hidden = true; });
+
+$('storyBtn').addEventListener('click', () => {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  const code = prompt(t('adminCodePrompt'));
+  if (!code) return;
+  const text = prompt(t('storyPrompt'));
+  if (!text || !text.trim()) return;
+  socket.emit('story_post', { code, text }, res => {
+    if (res?.ok) return toast(t('storyPosted'));
+    toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
+  });
 });
 
 function applyAvatar(node, nick) {
