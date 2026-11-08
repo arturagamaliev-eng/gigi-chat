@@ -3,122 +3,83 @@ const http = require('http');
 const crypto = require('crypto');
 const express = require('express');
 const { Server } = require('socket.io');
-const Database = require('better-sqlite3');
-const fs = require('fs');
-
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const { Pool } = require('pg');
 
 const PORT = process.env.PORT || 3000;
 const MAX_TEXT = 2000;
 const NICK_RE = /^[\p{L}\p{N}_]{3,20}$/u;
 const PASS_MIN = 4;
 const PASS_MAX = 100;
-const keyOf = s => s.toLowerCase(); // works for Cyrillic too
+const MAX_UPLOAD = 15 * 1024 * 1024;
+const keyOf = s => s.toLowerCase();
 
-const db = new Database(process.env.DB_FILE || path.join(__dirname, 'gigi.db'));
-db.pragma('journal_mode = WAL');
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    nickname TEXT PRIMARY KEY,
-    key TEXT,
-    pass_salt TEXT NOT NULL,
-    pass_hash TEXT NOT NULL,
-    created_at INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS sessions (
-    token TEXT PRIMARY KEY,
-    nickname TEXT NOT NULL,
-    created_at INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_nick TEXT NOT NULL,
-    to_nick TEXT NOT NULL,
-    text TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    read_at INTEGER
-  );
-`);
+const CLOUD = process.env.CLOUDINARY_CLOUD_NAME || '';
+const CKEY = process.env.CLOUDINARY_API_KEY || '';
+const CSECRET = process.env.CLOUDINARY_API_SECRET || '';
+const MEDIA_ON = false; // photos and videos are not stored
+const STORAGE_OK = MEDIA_ON && Boolean(CLOUD && CKEY && CSECRET);
+const MEDIA = {
+  'image/jpeg': ['image', 'jpg'], 'image/png': ['image', 'png'], 'image/webp': ['image', 'webp'], 'image/gif': ['image', 'gif'],
+  'video/mp4': ['video', 'mp4'], 'video/webm': ['video', 'webm'],
+};
 
-// Upgrade databases created by earlier versions.
-const columnsOf = table => db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
-if (!columnsOf('users').includes('key')) db.exec('ALTER TABLE users ADD COLUMN key TEXT');
-if (!columnsOf('messages').includes('read_at')) db.exec('ALTER TABLE messages ADD COLUMN read_at INTEGER');
-if (!columnsOf('messages').includes('kind')) db.exec("ALTER TABLE messages ADD COLUMN kind TEXT DEFAULT 'text'");
-if (!columnsOf('users').includes('avatar')) db.exec('ALTER TABLE users ADD COLUMN avatar TEXT');
-db.exec(`
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_key ON users(key);
-  CREATE INDEX IF NOT EXISTS idx_msg_from ON messages(from_nick, id);
-  CREATE INDEX IF NOT EXISTS idx_msg_to ON messages(to_nick, id);
-`);
-for (const u of db.prepare('SELECT nickname FROM users WHERE key IS NULL').all()) {
+if (!process.env.DATABASE_URL) {
+  console.error('DATABASE_URL is not set. Add it in Render → Environment.');
+  process.exit(1);
+}
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 5 });
+pool.on('error', err => console.error('db pool error:', err.message));
+
+const db = {
+  one: async (sql, p = []) => (await pool.query(sql, p)).rows[0],
+  all: async (sql, p = []) => (await pool.query(sql, p)).rows,
+  run: (sql, p = []) => pool.query(sql, p),
+};
+
+async function tx(fn) {
+  const c = await pool.connect();
   try {
-    db.prepare('UPDATE users SET key = ? WHERE nickname = ?').run(keyOf(u.nickname), u.nickname);
-  } catch {
-    db.prepare('UPDATE users SET key = ? WHERE nickname = ?').run('dup:' + u.nickname, u.nickname);
+    await c.query('BEGIN');
+    const result = await fn(c);
+    await c.query('COMMIT');
+    return result;
+  } catch (e) {
+    await c.query('ROLLBACK');
+    throw e;
+  } finally {
+    c.release();
   }
 }
 
-const q = {
-  getUser: db.prepare('SELECT nickname, key, pass_salt, pass_hash FROM users WHERE key = ?'),
-  insertUser: db.prepare('INSERT INTO users (nickname, key, pass_salt, pass_hash, created_at) VALUES (?, ?, ?, ?, ?)'),
-  renameUser: db.prepare('UPDATE users SET nickname = ?, key = ? WHERE nickname = ?'),
-  deleteUser: db.prepare('DELETE FROM users WHERE nickname = ?'),
-  setAvatar: db.prepare('UPDATE users SET avatar = ? WHERE nickname = ?'),
-  allAvatars: db.prepare('SELECT nickname, avatar FROM users WHERE avatar IS NOT NULL'),
-  insertSession: db.prepare('INSERT INTO sessions (token, nickname, created_at) VALUES (?, ?, ?)'),
-  getSession: db.prepare('SELECT nickname FROM sessions WHERE token = ?'),
-  renameSessions: db.prepare('UPDATE sessions SET nickname = ? WHERE nickname = ?'),
-  deleteSessions: db.prepare('DELETE FROM sessions WHERE nickname = ?'),
-  searchUsers: db.prepare('SELECT nickname FROM users WHERE key LIKE ? ORDER BY nickname LIMIT 20'),
-  insertMsg: db.prepare('INSERT INTO messages (from_nick, to_nick, text, created_at, kind) VALUES (?, ?, ?, ?, ?)'),
-  lastMsg: db.prepare('SELECT * FROM messages WHERE id = ?'),
-  renameFrom: db.prepare('UPDATE messages SET from_nick = ? WHERE from_nick = ?'),
-  renameTo: db.prepare('UPDATE messages SET to_nick = ? WHERE to_nick = ?'),
-  deleteMsgs: db.prepare('DELETE FROM messages WHERE from_nick = ? OR to_nick = ?'),
-  markRead: db.prepare('UPDATE messages SET read_at = ? WHERE from_nick = ? AND to_nick = ? AND read_at IS NULL'),
-  getMsg: db.prepare('SELECT id, from_nick, to_nick, kind, text FROM messages WHERE id = ?'),
-  deleteMsg: db.prepare('DELETE FROM messages WHERE id = ?'),
-  chats: db.prepare(`
-    SELECT partner, MAX(id) AS last_id FROM (
-      SELECT to_nick AS partner, id FROM messages WHERE from_nick = @me
-      UNION ALL
-      SELECT from_nick AS partner, id FROM messages WHERE to_nick = @me
-    ) GROUP BY partner ORDER BY last_id DESC LIMIT 100`),
-  history: db.prepare(`
-    SELECT * FROM messages
-    WHERE (from_nick = @a AND to_nick = @b) OR (from_nick = @b AND to_nick = @a)
-    ORDER BY id DESC LIMIT 200`),
-};
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+  nickname TEXT PRIMARY KEY,
+  key TEXT UNIQUE NOT NULL,
+  pass_salt TEXT NOT NULL,
+  pass_hash TEXT NOT NULL,
+  avatar TEXT,
+  created_at DOUBLE PRECISION NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  nickname TEXT NOT NULL,
+  created_at DOUBLE PRECISION NOT NULL
+);
+CREATE TABLE IF NOT EXISTS messages (
+  id SERIAL PRIMARY KEY,
+  from_nick TEXT NOT NULL,
+  to_nick TEXT NOT NULL,
+  text TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'text',
+  created_at DOUBLE PRECISION NOT NULL,
+  read_at DOUBLE PRECISION
+);
+CREATE INDEX IF NOT EXISTS idx_msg_from ON messages(from_nick, id);
+CREATE INDEX IF NOT EXISTS idx_msg_to ON messages(to_nick, id);
+`;
 
-const findUser = nick => q.getUser.get(keyOf(nick));
+const findUser = nick => db.one('SELECT nickname, key, pass_salt, pass_hash FROM users WHERE key = $1', [keyOf(nick)]);
 const toMsg = r => ({ id: r.id, from: r.from_nick, to: r.to_nick, text: r.text, created_at: r.created_at, read_at: r.read_at ?? null, kind: r.kind || 'text' });
-
-const renameAll = db.transaction((oldNick, newNick) => {
-  q.renameUser.run(newNick, keyOf(newNick), oldNick);
-  q.renameFrom.run(newNick, oldNick);
-  q.renameTo.run(newNick, oldNick);
-  q.renameSessions.run(newNick, oldNick);
-});
-
-const deleteAll = db.transaction(nick => {
-  q.deleteMsgs.run(nick, nick);
-  q.deleteSessions.run(nick);
-  q.deleteUser.run(nick);
-});
-
-const filesOf = db.prepare("SELECT text FROM messages WHERE (from_nick = ? OR to_nick = ?) AND kind != 'text'");
-const avatarOf = db.prepare('SELECT avatar FROM users WHERE nickname = ?');
-
-// Deletes an account, its messages and every uploaded file that belonged to it.
-function removeUser(nick) {
-  const names = filesOf.all(nick, nick).map(r => r.text);
-  const av = avatarOf.get(nick)?.avatar;
-  if (av) names.push(av);
-  for (const u of names) fs.unlink(path.join(UPLOAD_DIR, path.basename(u)), () => {});
-  deleteAll(nick);
-}
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   return { salt, hash: crypto.scryptSync(password, salt, 64).toString('hex') };
@@ -130,15 +91,15 @@ function checkPassword(password, salt, hash) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-function createSession(nick) {
+async function createSession(nick) {
   const token = crypto.randomBytes(24).toString('hex');
-  q.insertSession.run(token, nick, Date.now());
+  await db.run('INSERT INTO sessions (token, nickname, created_at) VALUES ($1, $2, $3)', [token, nick, Date.now()]);
   return { ok: true, nick, token };
 }
 
-function authenticate(payload) {
+async function authenticate(payload) {
   if (payload?.token) {
-    const s = q.getSession.get(String(payload.token));
+    const s = await db.one('SELECT nickname FROM sessions WHERE token = $1', [String(payload.token)]);
     return s ? { ok: true, nick: s.nickname } : { ok: false, error: 'bad_session' };
   }
   const nick = typeof payload?.nick === 'string' ? payload.nick.trim() : '';
@@ -146,62 +107,126 @@ function authenticate(payload) {
   if (!NICK_RE.test(nick)) return { ok: false, error: 'invalid_nick' };
   if (password.length < PASS_MIN || password.length > PASS_MAX) return { ok: false, error: 'invalid_password' };
 
-  const user = findUser(nick);
+  const user = await findUser(nick);
   if (!user) {
     const { salt, hash } = hashPassword(password);
-    q.insertUser.run(nick, keyOf(nick), salt, hash, Date.now());
+    await db.run('INSERT INTO users (nickname, key, pass_salt, pass_hash, created_at) VALUES ($1, $2, $3, $4, $5)',
+      [nick, keyOf(nick), salt, hash, Date.now()]);
     return createSession(nick);
   }
   if (!checkPassword(password, user.pass_salt, user.pass_hash)) return { ok: false, error: 'nick_taken' };
   return createSession(user.nickname);
 }
 
+// ---- Cloudinary: photos and videos ----
+
+const sign = params => {
+  const str = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join('&') + CSECRET;
+  return crypto.createHash('sha1').update(str).digest('hex');
+};
+
+async function cloudUpload(dataUrl, resourceType, publicId) {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const form = new FormData();
+  form.append('file', dataUrl);
+  form.append('api_key', CKEY);
+  form.append('timestamp', String(timestamp));
+  form.append('public_id', publicId);
+  form.append('signature', sign({ public_id: publicId, timestamp }));
+  const r = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD}/${resourceType}/upload`, { method: 'POST', body: form });
+  const j = await r.json();
+  if (!r.ok || !j.secure_url) throw new Error('cloudinary upload failed: ' + (j.error?.message || r.status));
+  return j.secure_url;
+}
+
+async function cloudDestroy(url) {
+  const m = /^https:\/\/res\.cloudinary\.com\/([^/]+)\/(image|video)\/upload\/(?:v\d+\/)?(.+)\.[a-z0-9]+$/i.exec(String(url));
+  if (!m || m[1] !== CLOUD) return;
+  const timestamp = Math.floor(Date.now() / 1000);
+  const form = new FormData();
+  form.append('public_id', m[3]);
+  form.append('api_key', CKEY);
+  form.append('timestamp', String(timestamp));
+  form.append('signature', sign({ public_id: m[3], timestamp }));
+  await fetch(`https://api.cloudinary.com/v1_1/${CLOUD}/${m[2]}/destroy`, { method: 'POST', body: form }).catch(() => {});
+}
+
+const isOurMedia = (url, kind) =>
+  STORAGE_OK && typeof url === 'string' && url.length < 500 &&
+  url.startsWith(`https://res.cloudinary.com/${CLOUD}/${kind}/upload/`);
+
+async function removeUser(nick) {
+  const files = (await db.all("SELECT text FROM messages WHERE (from_nick = $1 OR to_nick = $1) AND kind <> 'text'", [nick]))
+    .map(r => r.text);
+  const u = await db.one('SELECT avatar FROM users WHERE nickname = $1', [nick]);
+  if (u?.avatar) files.push(u.avatar);
+  await tx(async c => {
+    await c.query('DELETE FROM messages WHERE from_nick = $1 OR to_nick = $1', [nick]);
+    await c.query('DELETE FROM sessions WHERE nickname = $1', [nick]);
+    await c.query('DELETE FROM users WHERE nickname = $1', [nick]);
+  });
+  for (const f of files) await cloudDestroy(f);
+}
+
+// ---- HTTP ----
+
+const route = fn => (req, res) => fn(req, res).catch(e => {
+  console.error('route error:', e.message);
+  res.status(500).json({ error: 'server' });
+});
+
 const app = express();
 app.use(express.json({ limit: '25mb' }));
-app.use('/uploads', express.static(UPLOAD_DIR));
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/api/users', (req, res) => {
+app.get('/api/users', route(async (req, res) => {
   const term = String(req.query.q || '').replace(/[^\p{L}\p{N}_]/gu, '');
   if (!term) return res.json([]);
-  res.json(q.searchUsers.all(`%${keyOf(term)}%`).map(r => r.nickname));
-});
+  const rows = await db.all('SELECT nickname FROM users WHERE key LIKE $1 ORDER BY nickname LIMIT 20', [`%${keyOf(term)}%`]);
+  res.json(rows.map(r => r.nickname));
+}));
 
-app.get('/api/chats', (req, res) => {
+app.get('/api/chats', route(async (req, res) => {
   const me = String(req.query.me || '');
   if (!NICK_RE.test(me)) return res.status(400).json({ error: 'bad_nick' });
-  res.json(q.chats.all({ me }).map(r => ({
-    nick: r.partner,
-    last: toMsg(q.lastMsg.get(r.last_id)),
-  })));
-});
+  const rows = await db.all(`
+    SELECT partner, MAX(id) AS last_id FROM (
+      SELECT to_nick AS partner, id FROM messages WHERE from_nick = $1
+      UNION ALL
+      SELECT from_nick AS partner, id FROM messages WHERE to_nick = $1
+    ) t GROUP BY partner ORDER BY last_id DESC LIMIT 100`, [me]);
+  const out = [];
+  for (const r of rows) {
+    const last = await db.one('SELECT * FROM messages WHERE id = $1', [r.last_id]);
+    out.push({ nick: r.partner, last: toMsg(last) });
+  }
+  res.json(out);
+}));
 
-app.get('/api/history', (req, res) => {
+app.get('/api/history', route(async (req, res) => {
   const a = String(req.query.me || '');
   const b = String(req.query.with || '');
   if (!NICK_RE.test(a) || !NICK_RE.test(b)) return res.status(400).json({ error: 'bad_nick' });
-  res.json(q.history.all({ a, b }).reverse().map(toMsg));
-});
+  const rows = await db.all(`
+    SELECT * FROM messages
+    WHERE (from_nick = $1 AND to_nick = $2) OR (from_nick = $2 AND to_nick = $1)
+    ORDER BY id DESC LIMIT 200`, [a, b]);
+  res.json(rows.reverse().map(toMsg));
+}));
 
-const MEDIA = {
-  'image/jpeg': ['image', 'jpg'], 'image/png': ['image', 'png'], 'image/webp': ['image', 'webp'], 'image/gif': ['image', 'gif'],
-  'video/mp4': ['video', 'mp4'], 'video/webm': ['video', 'webm'],
-};
-const MAX_UPLOAD = 15 * 1024 * 1024;
-
-app.post('/api/upload', (req, res) => {
-  const s = q.getSession.get(String(req.body?.token || ''));
+app.post('/api/upload', route(async (req, res) => {
+  const s = await db.one('SELECT nickname FROM sessions WHERE token = $1', [String(req.body?.token || '')]);
   if (!s) return res.status(401).json({ error: 'bad_session' });
+  if (!STORAGE_OK) return res.status(503).json({ error: 'storage_off' });
   const m = /^data:([\w/+.-]+);base64,(.+)$/.exec(String(req.body?.data || ''));
   const spec = m && MEDIA[m[1]];
   if (!spec) return res.status(400).json({ error: 'bad_type' });
-  const buf = Buffer.from(m[2], 'base64');
-  if (!buf.length) return res.status(400).json({ error: 'empty' });
-  if (buf.length > MAX_UPLOAD) return res.status(413).json({ error: 'too_big' });
-  const name = crypto.randomBytes(16).toString('hex') + '.' + spec[1];
-  fs.writeFileSync(path.join(UPLOAD_DIR, name), buf);
-  res.json({ ok: true, url: '/uploads/' + name, kind: spec[0] });
-});
+  if (Math.floor(m[2].length * 3 / 4) > MAX_UPLOAD) return res.status(413).json({ error: 'too_big' });
+  const url = await cloudUpload(req.body.data, spec[0], 'gigi/' + crypto.randomBytes(16).toString('hex'));
+  res.json({ ok: true, url, kind: spec[0] });
+}));
+
+// ---- Realtime ----
 
 const server = http.createServer(app);
 const io = new Server(server);
@@ -225,88 +250,100 @@ function detach(socket) {
   broadcastPresence();
 }
 
-io.on('connection', socket => {
+async function avatarMap() {
+  const rows = await db.all('SELECT nickname, avatar FROM users WHERE avatar IS NOT NULL');
+  return Object.fromEntries(rows.map(r => [r.nickname, r.avatar]));
+}
+
+io.on('connection', async socket => {
   socket.emit('presence', onlineList());
-  socket.emit('avatars', Object.fromEntries(q.allAvatars.all().map(r => [r.nickname, r.avatar])));
+  try { socket.emit('avatars', await avatarMap()); } catch (e) { console.error('avatars:', e.message); }
 
-  socket.on('login', (payload, ack) => {
-    const res = authenticate(payload);
+  // Wraps each handler so a database error never crashes the server.
+  const on = (ev, fn) => socket.on(ev, async (...args) => {
+    try { await fn(...args); }
+    catch (e) {
+      console.error(ev + ':', e.message);
+      const ack = args.find(a => typeof a === 'function');
+      ack?.({ ok: false, error: 'server' });
+    }
+  });
+
+  on('login', async (payload, ack) => {
+    const res = await authenticate(payload);
     if (!res.ok) return ack?.(res);
-
     detach(socket);
     socketNick.set(socket.id, res.nick);
     if (!online.has(res.nick)) online.set(res.nick, new Set());
     online.get(res.nick).add(socket.id);
     socket.join('u:' + res.nick);
-
     broadcastPresence();
     ack?.(res);
   });
 
-  socket.on('message', (payload, ack) => {
+  on('message', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
-
-    const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
     const kind = ['image', 'video'].includes(payload?.kind) ? payload.kind : 'text';
-    if (kind !== 'text' && !/^\/uploads\/[a-f0-9]{32}\.[a-z0-9]{2,4}$/.test(text)) return ack?.({ ok: false, error: 'invalid' });
+    const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
+    if (kind !== 'text' && !isOurMedia(text, kind)) return ack?.({ ok: false, error: 'invalid' });
     if (!text || (kind === 'text' && text.length > MAX_TEXT)) return ack?.({ ok: false, error: 'invalid' });
 
-    const to = findUser(String(payload?.to || ''))?.nickname;
+    const to = (await findUser(String(payload?.to || '')))?.nickname;
     if (!to) return ack?.({ ok: false, error: 'no_user' });
 
     const now = Date.now();
-    const info = q.insertMsg.run(me, to, text, now, kind);
-    const msg = { id: Number(info.lastInsertRowid), from: me, to, text, created_at: now, read_at: null, kind };
-
+    const row = await db.one(
+      'INSERT INTO messages (from_nick, to_nick, text, kind, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [me, to, text, kind, now]);
+    const msg = { id: row.id, from: me, to, text, created_at: now, read_at: null, kind };
     io.to('u:' + to).to('u:' + me).emit('message', msg);
     ack?.({ ok: true, msg });
   });
 
-  // Mark everything the partner sent me as read, and tell the partner.
-  socket.on('read', payload => {
+  on('read', async payload => {
     const me = socketNick.get(socket.id);
     if (!me) return;
-    const partner = findUser(String(payload?.with || ''))?.nickname;
+    const partner = (await findUser(String(payload?.with || '')))?.nickname;
     if (!partner || partner === me) return;
     const now = Date.now();
-    const info = q.markRead.run(now, partner, me);
-    if (info.changes > 0) io.to('u:' + partner).emit('read', { by: me, at: now });
+    const r = await db.run('UPDATE messages SET read_at = $1 WHERE from_nick = $2 AND to_nick = $3 AND read_at IS NULL', [now, partner, me]);
+    if (r.rowCount > 0) io.to('u:' + partner).emit('read', { by: me, at: now });
   });
 
-  // Only the sender can delete a message; it disappears for both sides.
-  socket.on('msg_delete', (payload, ack) => {
+  on('msg_delete', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
     const id = Number(payload?.id);
-    const row = Number.isInteger(id) ? q.getMsg.get(id) : null;
+    const row = Number.isInteger(id) ? await db.one('SELECT id, from_nick, to_nick, kind, text FROM messages WHERE id = $1', [id]) : null;
     if (!row || row.from_nick !== me) return ack?.({ ok: false, error: 'forbidden' });
-    if (row.kind && row.kind !== 'text') fs.unlink(path.join(UPLOAD_DIR, path.basename(row.text)), () => {});
-    q.deleteMsg.run(id);
+    await db.run('DELETE FROM messages WHERE id = $1', [id]);
+    if (row.kind !== 'text') await cloudDestroy(row.text);
     io.to('u:' + row.to_nick).to('u:' + me).emit('msg_deleted', { id, from: me, to: row.to_nick });
     ack?.({ ok: true });
   });
 
-  socket.on('set_avatar', (payload, ack) => {
+  on('set_avatar', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
     const url = String(payload?.url || '');
-    if (!/^\/uploads\/[a-f0-9]{32}\.(jpg|png|webp|gif)$/.test(url)) return ack?.({ ok: false, error: 'invalid' });
-    q.setAvatar.run(url, me);
+    if (!isOurMedia(url, 'image')) return ack?.({ ok: false, error: 'invalid' });
+    const old = (await db.one('SELECT avatar FROM users WHERE nickname = $1', [me]))?.avatar;
+    await db.run('UPDATE users SET avatar = $1 WHERE nickname = $2', [url, me]);
+    if (old && old !== url) await cloudDestroy(old);
     io.emit('avatar', { nick: me, url });
     ack?.({ ok: true });
   });
 
   // Only the owner of the server knows ADMIN_CODE (set in Render's Environment settings).
-  socket.on('admin_delete', (payload, ack) => {
+  on('admin_delete', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
     const code = process.env.ADMIN_CODE;
     if (!code || String(payload?.code || '') !== code) return ack?.({ ok: false, error: 'bad_code' });
-    const target = findUser(String(payload?.nick || ''))?.nickname;
+    const target = (await findUser(String(payload?.nick || '')))?.nickname;
     if (!target) return ack?.({ ok: false, error: 'no_user' });
-
-    removeUser(target);
+    await removeUser(target);
     const sockets = [...(online.get(target) || [])];
     online.delete(target);
     for (const id of sockets) {
@@ -319,18 +356,21 @@ io.on('connection', socket => {
     ack?.({ ok: true });
   });
 
-  socket.on('rename', (payload, ack) => {
+  on('rename', async (payload, ack) => {
     const oldNick = socketNick.get(socket.id);
     if (!oldNick) return ack?.({ ok: false, error: 'not_logged_in' });
-
     const newNick = typeof payload?.nick === 'string' ? payload.nick.trim() : '';
     if (!NICK_RE.test(newNick)) return ack?.({ ok: false, error: 'invalid_nick' });
     if (newNick === oldNick) return ack?.({ ok: true, nick: oldNick });
-
-    const taken = findUser(newNick);
+    const taken = await findUser(newNick);
     if (taken && taken.nickname !== oldNick) return ack?.({ ok: false, error: 'nick_taken' });
 
-    renameAll(oldNick, newNick);
+    await tx(async c => {
+      await c.query('UPDATE users SET nickname = $1, key = $2 WHERE nickname = $3', [newNick, keyOf(newNick), oldNick]);
+      await c.query('UPDATE messages SET from_nick = $1 WHERE from_nick = $2', [newNick, oldNick]);
+      await c.query('UPDATE messages SET to_nick = $1 WHERE to_nick = $2', [newNick, oldNick]);
+      await c.query('UPDATE sessions SET nickname = $1 WHERE nickname = $2', [newNick, oldNick]);
+    });
 
     const sockets = online.get(oldNick) || new Set();
     online.delete(oldNick);
@@ -340,18 +380,15 @@ io.on('connection', socket => {
       const s = io.sockets.sockets.get(id);
       if (s) { s.leave('u:' + oldNick); s.join('u:' + newNick); }
     }
-
     io.emit('renamed', { from: oldNick, to: newNick });
     broadcastPresence();
     ack?.({ ok: true, nick: newNick });
   });
 
-  socket.on('delete', (payload, ack) => {
+  on('delete', async (payload, ack) => {
     const nick = socketNick.get(socket.id);
     if (!nick) return ack?.({ ok: false, error: 'not_logged_in' });
-
-    removeUser(nick);
-
+    await removeUser(nick);
     const sockets = [...(online.get(nick) || [])];
     online.delete(nick);
     for (const id of sockets) {
@@ -359,7 +396,6 @@ io.on('connection', socket => {
       const s = io.sockets.sockets.get(id);
       if (s) { s.leave('u:' + nick); s.emit('account_deleted'); }
     }
-
     io.emit('user_deleted', { nick });
     broadcastPresence();
     ack?.({ ok: true });
@@ -368,4 +404,12 @@ io.on('connection', socket => {
   socket.on('disconnect', () => detach(socket));
 });
 
-server.listen(PORT, () => console.log(`gigi chat running on http://localhost:${PORT}`));
+async function main() {
+  await pool.query(SCHEMA);
+  server.listen(PORT, () => console.log(`gigi chat running on port ${PORT}`));
+}
+
+main().catch(e => {
+  console.error('startup failed:', e.message);
+  process.exit(1);
+});
