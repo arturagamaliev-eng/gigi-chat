@@ -21,6 +21,19 @@ const isOurMedia = (url, kind) => kind === 'image' && typeof url === 'string' &&
 const adminOk = code => Boolean(process.env.ADMIN_CODE) && String(code || '') === process.env.ADMIN_CODE;
 const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
+const isMember = async (id, nick) => Boolean(await db.one('SELECT 1 AS x FROM chat_members WHERE chat_id = $1 AND nick = $2', [id, nick]));
+const membersOf = async id => (await db.all('SELECT nick FROM chat_members WHERE chat_id = $1', [id])).map(r => r.nick);
+const toGMsg = r => ({ id: r.id, chat: r.chat_id, from: r.from_nick, text: r.text, kind: r.kind || 'text', created_at: r.created_at });
+
+async function chatSummary(c, me) {
+  const members = await membersOf(c.id);
+  const last = await db.one('SELECT id, chat_id, from_nick, text, kind, created_at FROM gmessages WHERE chat_id = $1 ORDER BY id DESC LIMIT 1', [c.id]);
+  return {
+    id: c.id, kind: c.kind, title: c.title, owner: c.owner,
+    members: members.length, joined: members.includes(me), last: last ? toGMsg(last) : null,
+  };
+}
+
 // Returns Map: target id -> { emoji: [nicknames] }
 async function reactionsFor(type, ids) {
   const out = new Map();
@@ -101,6 +114,27 @@ const EXTRA_SCHEMA = `
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS media TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen DOUBLE PRECISION;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+CREATE TABLE IF NOT EXISTS chats (
+  id SERIAL PRIMARY KEY,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  owner TEXT NOT NULL,
+  created_at DOUBLE PRECISION NOT NULL
+);
+CREATE TABLE IF NOT EXISTS chat_members (
+  chat_id INTEGER NOT NULL,
+  nick TEXT NOT NULL,
+  PRIMARY KEY (chat_id, nick)
+);
+CREATE TABLE IF NOT EXISTS gmessages (
+  id SERIAL PRIMARY KEY,
+  chat_id INTEGER NOT NULL,
+  from_nick TEXT NOT NULL,
+  text TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'text',
+  created_at DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gmsg_chat ON gmessages(chat_id, id);
 CREATE TABLE IF NOT EXISTS reactions (
   target_type TEXT NOT NULL,
   target_id INTEGER NOT NULL,
@@ -160,6 +194,7 @@ async function authenticate(payload) {
 async function cleanup() {
   const now = Date.now();
   await db.run("UPDATE messages SET kind = 'gone', text = '' WHERE kind = 'image' AND created_at < $1", [now - CHAT_MEDIA_MS]);
+  await db.run("UPDATE gmessages SET kind = 'gone', text = '' WHERE kind = 'image' AND created_at < $1", [now - CHAT_MEDIA_MS]);
   await db.run('DELETE FROM stories WHERE created_at < $1', [now - STORY_MS]);
   await db.run('DELETE FROM media WHERE expires_at < $1', [now]);
   await db.run("DELETE FROM reactions WHERE target_type = 'story' AND target_id NOT IN (SELECT id FROM stories)");
@@ -181,6 +216,10 @@ async function removeUser(nick) {
     await c.query('DELETE FROM messages WHERE from_nick = $1 OR to_nick = $1', [nick]);
     await c.query("DELETE FROM reactions WHERE nick = $1 OR (target_type = 'msg' AND target_id NOT IN (SELECT id FROM messages))", [nick]);
     await c.query('DELETE FROM sessions WHERE nickname = $1', [nick]);
+    await c.query("DELETE FROM reactions WHERE target_type = 'gmsg' AND target_id IN (SELECT id FROM gmessages WHERE chat_id IN (SELECT id FROM chats WHERE owner = $1) OR from_nick = $1)", [nick]);
+    await c.query('DELETE FROM gmessages WHERE chat_id IN (SELECT id FROM chats WHERE owner = $1) OR from_nick = $1', [nick]);
+    await c.query('DELETE FROM chat_members WHERE nick = $1 OR chat_id IN (SELECT id FROM chats WHERE owner = $1)', [nick]);
+    await c.query('DELETE FROM chats WHERE owner = $1', [nick]);
     await c.query('DELETE FROM users WHERE nickname = $1', [nick]);
   });
   for (const url of urls) {
@@ -428,6 +467,10 @@ io.on('connection', async socket => {
       await c.query('DELETE FROM messages');
       await c.query("DELETE FROM reactions WHERE target_type = 'msg'");
       await c.query('DELETE FROM sessions');
+      await c.query("DELETE FROM reactions WHERE target_type = 'gmsg'");
+      await c.query('DELETE FROM gmessages');
+      await c.query('DELETE FROM chat_members');
+      await c.query('DELETE FROM chats');
       await c.query('DELETE FROM users');
       await c.query('DELETE FROM media WHERE id NOT IN (SELECT substr(media, 8, 32) FROM stories WHERE media IS NOT NULL)');
     });
@@ -531,17 +574,135 @@ io.on('connection', async socket => {
     ack?.({ ok: true });
   });
 
+  on('group_create', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const kind = ['group', 'channel'].includes(payload?.kind) ? payload.kind : null;
+    const title = typeof payload?.title === 'string' ? payload.title.trim() : '';
+    if (!kind || !title || title.length > 40) return ack?.({ ok: false, error: 'invalid' });
+    const row = await db.one('INSERT INTO chats (kind, title, owner, created_at) VALUES ($1, $2, $3, $4) RETURNING id',
+      [kind, title, me, Date.now()]);
+    await db.run('INSERT INTO chat_members (chat_id, nick) VALUES ($1, $2)', [row.id, me]);
+    ack?.({ ok: true, id: row.id });
+  });
+
+  // Public list of every group and channel; "joined" tells whether this user is a member.
+  on('group_list', async (payload, ack) => {
+    const me = socketNick.get(socket.id) || '';
+    const rows = await db.all('SELECT id, kind, title, owner, created_at FROM chats ORDER BY id DESC LIMIT 200');
+    const out = [];
+    for (const c of rows) out.push(await chatSummary(c, me));
+    ack?.({ ok: true, chats: out });
+  });
+
+  on('group_join', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id);
+    const c = Number.isInteger(id) ? await db.one('SELECT id FROM chats WHERE id = $1', [id]) : null;
+    if (!c) return ack?.({ ok: false, error: 'no_chat' });
+    await db.run('INSERT INTO chat_members (chat_id, nick) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, me]);
+    ack?.({ ok: true });
+  });
+
+  on('group_leave', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id);
+    const c = Number.isInteger(id) ? await db.one('SELECT id, owner FROM chats WHERE id = $1', [id]) : null;
+    if (!c) return ack?.({ ok: false, error: 'no_chat' });
+    if (c.owner === me) return ack?.({ ok: false, error: 'owner' });
+    await db.run('DELETE FROM chat_members WHERE chat_id = $1 AND nick = $2', [id, me]);
+    ack?.({ ok: true });
+  });
+
+  on('group_history', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    const id = Number(payload?.id);
+    if (!me || !Number.isInteger(id) || !(await isMember(id, me))) return ack?.({ ok: false, error: 'forbidden' });
+    const rows = await db.all('SELECT id, chat_id, from_nick, text, kind, created_at FROM gmessages WHERE chat_id = $1 ORDER BY id DESC LIMIT 200', [id]);
+    const reacts = await reactionsFor('gmsg', rows.map(r => r.id));
+    ack?.({ ok: true, messages: rows.reverse().map(r => ({ ...toGMsg(r), reactions: reacts.get(r.id) || {} })) });
+  });
+
+  on('group_send', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id);
+    const c = Number.isInteger(id) ? await db.one('SELECT id, kind, owner FROM chats WHERE id = $1', [id]) : null;
+    if (!c || !(await isMember(id, me))) return ack?.({ ok: false, error: 'forbidden' });
+    if (c.kind === 'channel' && c.owner !== me) return ack?.({ ok: false, error: 'read_only' });
+    const kind = payload?.kind === 'image' ? 'image' : 'text';
+    const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
+    if (kind === 'image' && !isOurMedia(text, 'image')) return ack?.({ ok: false, error: 'invalid' });
+    if (!text || (kind === 'text' && text.length > MAX_TEXT)) return ack?.({ ok: false, error: 'invalid' });
+    const now = Date.now();
+    const row = await db.one('INSERT INTO gmessages (chat_id, from_nick, text, kind, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [id, me, text, kind, now]);
+    if (kind === 'image') await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + CHAT_MEDIA_MS, mediaIdOf(text)]);
+    const msg = { id: row.id, chat: id, from: me, text, kind, created_at: now, reactions: {} };
+    for (const m of await membersOf(id)) io.to('u:' + m).emit('gmessage', { chat: id, msg });
+    ack?.({ ok: true, msg });
+  });
+
+  // A group message can be deleted by its sender or by the group's owner.
+  on('gmsg_delete', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id);
+    const row = Number.isInteger(id) ? await db.one('SELECT id, chat_id, from_nick, kind, text FROM gmessages WHERE id = $1', [id]) : null;
+    if (!row) return ack?.({ ok: false, error: 'no_message' });
+    const owner = (await db.one('SELECT owner FROM chats WHERE id = $1', [row.chat_id]))?.owner;
+    if (row.from_nick !== me && owner !== me) return ack?.({ ok: false, error: 'forbidden' });
+    const members = await membersOf(row.chat_id);
+    await db.run('DELETE FROM gmessages WHERE id = $1', [id]);
+    await db.run("DELETE FROM reactions WHERE target_type = 'gmsg' AND target_id = $1", [id]);
+    if (row.kind === 'image') {
+      const mid = mediaIdOf(row.text);
+      if (mid) await db.run('DELETE FROM media WHERE id = $1', [mid]);
+    }
+    for (const m of members) io.to('u:' + m).emit('gmsg_deleted', { chat: row.chat_id, id });
+    ack?.({ ok: true });
+  });
+
+  // A group or channel can be deleted by its owner, or by anyone with the admin code.
+  on('group_delete', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id);
+    const c = Number.isInteger(id) ? await db.one('SELECT id, owner FROM chats WHERE id = $1', [id]) : null;
+    if (!c) return ack?.({ ok: false, error: 'no_chat' });
+    if (c.owner !== me && !adminOk(payload?.code)) return ack?.({ ok: false, error: 'forbidden' });
+    const imgs = (await db.all("SELECT text FROM gmessages WHERE chat_id = $1 AND kind = 'image'", [id])).map(r => r.text);
+    await tx(async cl => {
+      await cl.query("DELETE FROM reactions WHERE target_type = 'gmsg' AND target_id IN (SELECT id FROM gmessages WHERE chat_id = $1)", [id]);
+      await cl.query('DELETE FROM gmessages WHERE chat_id = $1', [id]);
+      await cl.query('DELETE FROM chat_members WHERE chat_id = $1', [id]);
+      await cl.query('DELETE FROM chats WHERE id = $1', [id]);
+    });
+    for (const u of imgs) {
+      const mid = mediaIdOf(u);
+      if (mid) await db.run('DELETE FROM media WHERE id = $1', [mid]);
+    }
+    io.emit('group_deleted', { id });
+    ack?.({ ok: true });
+  });
+
   // Toggles one reaction. Messages: only the two people in the chat see it. Stories: everyone.
   on('react', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
-    const type = payload?.type === 'story' ? 'story' : payload?.type === 'msg' ? 'msg' : null;
+    const type = ['story', 'msg', 'gmsg'].includes(payload?.type) ? payload.type : null;
     const id = Number(payload?.id);
     const emoji = String(payload?.emoji || '');
     if (!type || !Number.isInteger(id) || !EMOJIS.includes(emoji)) return ack?.({ ok: false, error: 'invalid' });
 
     let people = null;
-    if (type === 'msg') {
+    if (type === 'gmsg') {
+      const gm = await db.one('SELECT chat_id FROM gmessages WHERE id = $1', [id]);
+      if (!gm || !(await isMember(gm.chat_id, me))) return ack?.({ ok: false, error: 'forbidden' });
+      people = await membersOf(gm.chat_id);
+    } else if (type === 'msg') {
       const m = await db.one('SELECT from_nick, to_nick FROM messages WHERE id = $1', [id]);
       if (!m || (m.from_nick !== me && m.to_nick !== me)) return ack?.({ ok: false, error: 'forbidden' });
       people = [m.from_nick, m.to_nick];
