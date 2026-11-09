@@ -160,26 +160,27 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
 .visual-edit-mode .visual-edit-selected{outline:3px solid #ffb020!important;outline-offset:2px!important}
 .visual-edit-mode #modal,.visual-edit-mode #toast{cursor:auto!important}
 #modalBody input[type=text],
-/* Compact floating bottom navigation */
+/* Compact, tidy floating bottom navigation */
 .mobile-bottom-nav{display:none}
 @media (max-width:760px){
- .mobile-bottom-nav{position:fixed;z-index:40;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(88vw,510px);height:76px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center;padding:5px 7px;background:rgba(29,48,63,.97);border:1px solid rgba(116,145,165,.16);border-radius:44px;box-shadow:0 8px 24px rgba(0,0,0,.26);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
- .mobile-nav-item{height:64px;min-width:0;border:0;border-radius:36px;background:transparent;color:#f3f7fb;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:clamp(11px,2.9vw,14px);font-weight:650;cursor:pointer;padding:3px 1px}
- .mobile-nav-item .mobile-nav-icon{font-size:clamp(25px,5.8vw,32px);line-height:1}
+ .mobile-bottom-nav{position:fixed;z-index:40;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(86vw,490px);height:70px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center;padding:4px 6px;background:rgba(29,48,63,.97);border:1px solid rgba(116,145,165,.16);border-radius:40px;box-shadow:0 7px 20px rgba(0,0,0,.24);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)}
+ .mobile-nav-item{height:60px;min-width:0;border:0;border-radius:32px;background:transparent;color:#f3f7fb;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:clamp(10px,2.8vw,13px);font-weight:650;cursor:pointer;padding:3px 1px}
+ .mobile-nav-item .mobile-nav-icon{font-size:clamp(23px,5.5vw,30px);line-height:1}
  .mobile-nav-item.active{background:#20394c;color:#55baf4;box-shadow:inset 0 0 0 1px rgba(110,174,211,.08)}
  .mobile-nav-item:active{transform:scale(.97)}
- .mobile-nav-avatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#344b5d;background-size:cover;background-position:center;font-size:21px;overflow:hidden}
- .sidebar{padding-bottom:94px}.chat{padding-bottom:94px}
- /* In an open conversation, give the whole screen to the chat and composer. */
+ .mobile-nav-avatar{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#344b5d;background-size:cover;background-position:center;font-size:20px;overflow:hidden}
+ .sidebar{padding-bottom:90px}.chat{padding-bottom:90px}
+ /* Hide the bottom bar completely while a private or group conversation is open. */
  .app.chat-open .mobile-bottom-nav{display:none!important}
  .app.chat-open .chat{padding-bottom:0}
 }
 @media (max-width:380px){
- .mobile-bottom-nav{height:70px;padding:4px 5px;width:90vw;bottom:calc(18px + env(safe-area-inset-bottom))}
- .mobile-nav-item{height:60px;font-size:10.5px}
- .mobile-nav-item .mobile-nav-icon{font-size:24px}
- .mobile-nav-avatar{width:31px;height:31px}
+ .mobile-bottom-nav{height:66px;padding:3px 5px;width:88vw;bottom:calc(22px + env(safe-area-inset-bottom))}
+ .mobile-nav-item{height:56px;font-size:10px}
+ .mobile-nav-item .mobile-nav-icon{font-size:22px}
+ .mobile-nav-avatar{width:29px;height:29px}
 }
+</style>
 </head>
 <body>
 
@@ -652,6 +653,7 @@ function closeChat() {
   $('app').classList.remove('chat-open');
   $('chatView').hidden = true;
   $('placeholder').hidden = false;
+  document.querySelectorAll('.mobile-nav-item').forEach(b => b.classList.toggle('active', b.dataset.nav === 'chats'));
   renderList();
 }
 
