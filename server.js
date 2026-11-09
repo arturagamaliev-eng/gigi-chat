@@ -1471,6 +1471,27 @@ io.on('connection', async socket => {
     ack?.({ ok: true });
   });
 
+  // Admin only: reset a user's star balance or revoke their Premium.
+  on('admin_revoke_perk', async (payload, ack) => {
+    const actor = socketNick.get(socket.id);
+    if (!actor) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const target = (await findUser(String(payload?.nick || '')))?.nickname;
+    if (!target) return ack?.({ ok: false, error: 'no_user' });
+    const mode = String(payload?.mode || '');
+    if (mode === 'stars') {
+      const result = await db.run('UPDATE users SET stars = 0 WHERE nickname = $1', [target]);
+      await auditAdmin(actor, 'admin_remove_all_stars', target, 'Баланс зірок встановлено на 0');
+      return ack?.({ ok: true, mode, target });
+    }
+    if (mode === 'premium') {
+      await db.run('UPDATE users SET premium_until = NULL WHERE nickname = $1', [target]);
+      await auditAdmin(actor, 'admin_revoke_premium', target, 'Premium вимкнено адміністратором');
+      return ack?.({ ok: true, mode, target });
+    }
+    ack?.({ ok: false, error: 'invalid' });
+  });
+
   // Admin only: create a gift for the market.
   on('admin_gift_create', async (payload, ack) => {
     if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
