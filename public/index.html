@@ -2024,6 +2024,8 @@ function openMarket() {
       openModal([
         el('div', { class: 'acc-head' }, t('marketTitle') + ' · ⭐ ' + mine.stars),
         el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
+          el('button', { class: 'btn ghost', onclick: () => openMarket() }, '🎁 Подарунки'),
+          el('button', { class: 'btn', onclick: () => openGames(mine.stars) }, '🎮 Ігри'),
           el('button', { class: 'btn ghost', onclick: () => openMyGifts() }, t('myGiftsBtn')),
           el('button', { class: 'btn ghost', onclick: () => openCreateGift() }, t('createGiftBtn')),
           el('button', { class: 'btn ghost', onclick: () => openAdminStars() }, t('adminStarsBtn')),
@@ -2036,6 +2038,32 @@ function openMarket() {
       ]);
     });
   });
+}
+
+function openGames(starsNow) {
+  openModal([
+    el('div', { class: 'acc-head' }, '🎮 Ігри · ⭐ ' + starsNow),
+    el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
+      el('button', { class: 'btn ghost', onclick: () => openMarket() }, '🎁 Подарунки'),
+      el('button', { class: 'btn', onclick: () => openGames(starsNow) }, '🎮 Ігри')),
+    el('div', { class: 'acc-card', style: 'padding:18px;text-align:center' },
+      el('div', { style: 'font-size:54px;margin:8px 0' }, '🎰'),
+      el('div', { class: 'acc-head' }, 'Щоденний бонус зірок'),
+      el('div', { class: 'sub', style: 'margin:8px 0 16px' }, 'Одна безкоштовна гра на день. Ставок немає: твої наявні зірки не списуються. Можна отримати від 0 до 3 бонусних зірок.'),
+      el('button', { class: 'btn', onclick: () => {
+        const btn = document.activeElement;
+        if (btn) btn.disabled = true;
+        socket.emit('game_daily_spin', {}, res => {
+          if (!res?.ok) {
+            if (btn) btn.disabled = false;
+            return toast(res?.error === 'already_played' ? 'Ти вже використав(-ла) сьогоднішню гру. Спробуй завтра!' : 'Не вдалося запустити гру');
+          }
+          toast(res.reward ? `🎉 Вітаємо! Ти отримав(-ла) ${res.reward} ⭐` : 'Сьогодні без бонусу. Спробуй завтра!');
+          openGames(res.stars);
+        });
+      } }, '🎰 Отримати щоденний бонус'),
+      el('div', { class: 'sub', style: 'margin-top:12px' }, 'Результат визначається сервером. Зірки не можна поставити або втратити.'))
+  ]);
 }
 
 function buyGift(it) {
