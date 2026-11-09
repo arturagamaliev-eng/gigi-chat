@@ -253,6 +253,7 @@ CREATE TABLE IF NOT EXISTS group_roles (chat_id INTEGER NOT NULL, nick TEXT NOT 
 `;
 
 const findUser = nick => db.one('SELECT nickname, key, pass_salt, pass_hash FROM users WHERE key = $1', [keyOf(nick)]);
+const findUserById = async value => { const id = Number(value); if (!Number.isSafeInteger(id) || id < 1) return null; return db.one('SELECT nickname, user_id FROM users WHERE user_id = $1', [id]); };
 const toMsg = r => ({ id: r.id, from: r.from_nick, to: r.to_nick, text: r.text, created_at: r.created_at, read_at: r.read_at ?? null, kind: r.kind || 'text', reply_to: r.reply_to ?? null, edited_at: r.edited_at ?? null });
 const auditAdmin = (actor, action, target, details='') => db.run('INSERT INTO admin_audit (actor, action, target, details, created_at) VALUES ($1,$2,$3,$4,$5)', [actor, action, target || null, details, Date.now()]);
 
@@ -777,7 +778,7 @@ io.on('connection', async socket => {
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     const id = Number(payload?.chatId);
-    const target = (await findUser(String(payload?.nick || '')))?.nickname;
+    const target = (await findUserById(payload?.userId))?.nickname;
     const chat = Number.isInteger(id) ? await db.one('SELECT id, title FROM chats WHERE id = $1', [id]) : null;
     if (!chat) return ack?.({ ok: false, error: 'no_chat' });
     if (!target) return ack?.({ ok: false, error: 'no_user' });
@@ -1459,7 +1460,7 @@ io.on('connection', async socket => {
   on('gift_send', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
-    const to = (await findUser(String(payload?.to || '')))?.nickname;
+    const to = (await findUserById(payload?.toId))?.nickname;
     if (!to) return ack?.({ ok: false, error: 'no_user' });
     if (to === me) return ack?.({ ok: false, error: 'self' });
     const id = Number(payload?.id);
@@ -1476,7 +1477,8 @@ io.on('connection', async socket => {
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     const amount = Number(payload?.amount);
     if (!Number.isInteger(amount) || amount < 1 || amount > 1000000000) return ack?.({ ok: false, error: 'invalid' });
-    const target = (await findUser(String(payload?.nick || '')))?.nickname;
+    const targetUser = await findUserById(payload?.userId);
+    const target = targetUser?.nickname;
     if (!target) return ack?.({ ok: false, error: 'no_user' });
     await db.run('UPDATE users SET stars = stars + $1 WHERE nickname = $2', [amount, target]);
     ack?.({ ok: true });
@@ -1487,7 +1489,8 @@ io.on('connection', async socket => {
     const actor = socketNick.get(socket.id);
     if (!actor) return ack?.({ ok: false, error: 'not_logged_in' });
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
-    const target = (await findUser(String(payload?.nick || '')))?.nickname;
+    const targetUser = await findUserById(payload?.userId);
+    const target = targetUser?.nickname;
     if (!target) return ack?.({ ok: false, error: 'no_user' });
     const mode = String(payload?.mode || '');
     if (mode === 'stars') {
@@ -1531,7 +1534,7 @@ io.on('connection', async socket => {
     const id = Number(payload?.id);
     const item = Number.isInteger(id) ? await db.one('SELECT id, title, description, price, image FROM gift_items WHERE id = $1', [id]) : null;
     if (!item) return ack?.({ ok: false, error: 'no_gift' });
-    const target = (await findUser(String(payload?.nick || '')))?.nickname;
+    const target = (await findUserById(payload?.userId))?.nickname;
     if (!target) return ack?.({ ok: false, error: 'no_user' });
     await db.run('UPDATE gift_items SET owner = $1, on_shelf = false WHERE id = $2', [target, id]);
     await sendGiftMessage(me, target, item);
