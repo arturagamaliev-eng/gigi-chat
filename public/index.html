@@ -101,6 +101,15 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .acc-head{font-size:18px;font-weight:650;margin-bottom:6px}
 .acc-foot{margin-top:18px}
 .clickable{cursor:pointer}
+.gift-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.gcard{background:var(--bg);border-radius:12px;padding:6px;cursor:pointer;text-align:center;min-width:0}
+.gcard img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;display:block}
+.gcard-name{font-size:12px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gcard-price{font-size:12px;color:#f5c542}
+.shelf{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.shelf img{width:100%;aspect-ratio:1;height:auto}
+body{background-size:cover;background-position:center;background-attachment:fixed}
+body.has-bg .chat,body.has-bg .messages{background:transparent}
 .reacts{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
 .react{background:var(--panel2);border:0;border-radius:999px;padding:2px 9px;font-size:13px;color:var(--text);cursor:pointer}
 .react.mine{background:var(--accent);color:#0b1520}
@@ -182,6 +191,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
     </div>
     <input id="storyPhoto" type="file" accept="image/*" hidden>
     <input id="myStoryPhoto" type="file" accept="image/*" hidden>
+    <input id="bgInput" type="file" accept="image/*" hidden>
     <div class="stories" id="stories" hidden></div>
     <div class="list" id="list"></div>
     <div class="side-top" style="border-top:1px solid var(--line);border-bottom:0">
@@ -192,8 +202,8 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
         <button class="icon" id="marketBtn" data-i18n-title="marketBtn">🛍</button>
         <button class="icon" id="groupsBtn" data-i18n-title="groupsBtn">👥</button>
         <button class="icon" id="adminBtn" data-i18n-title="adminBtn">🔑</button>
-        <button class="icon" id="storyBtn" data-i18n-title="storyBtn">📖</button>
-        <button class="icon" id="storyPhotoBtn" data-i18n-title="storyPhotoBtn">🖼</button>
+        <button class="icon" id="storyBtn" data-i18n-title="storyBtn" hidden>📖</button>
+        <button class="icon" id="storyPhotoBtn" data-i18n-title="storyPhotoBtn" hidden>🖼</button>
         <button class="icon" id="renameBtn" data-i18n="renameBtn" hidden></button>
         <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)" hidden></button>
         <button class="icon" id="settingsBtn" aria-label="settings" title="Налаштування">⚙</button>
@@ -216,6 +226,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
         <button class="icon" id="moreBtn" aria-label="menu">⋮</button>
       </header>
       <div id="chatMenu" class="menu" hidden>
+        <button id="complaintBtn" class="menu-item" data-i18n="complaintBtn"></button>
         <button id="blockChatBtn" class="menu-item" data-i18n="blockBtn"></button>
         <button id="adminDelBtn" class="menu-item" data-i18n="adminDelete"></button>
       </div>
@@ -317,6 +328,14 @@ const I18N = {
     premiumTitle: 'Premium', premiumActive: 'Premium is active', premiumNone: 'Premium is not active',
     premium1Btn: 'Premium 1 month: 1000 ⭐', premium12Btn: 'Premium 1 year: 5000 ⭐', premiumBought: 'Premium activated',
     myStoryBtn: 'Post a story', myStoryPhotoBtn: 'Post a photo story',
+    adminSettingsTitle: 'Admin settings', accountsBtn: 'All users', gigiStoryBtn: 'gigi chat story',
+    gigiStoryPhotoBtn: 'gigi chat photo story', bgSetBtn: 'Change background', bgClearBtn: 'Reset background',
+    bgSaved: 'Background saved', bgCleared: 'Background reset', stopOnBtn: 'Stop all writing',
+    stopOffBtn: 'Allow writing again', stopOn: 'Writing stopped for everyone', stopOff: 'Writing allowed again',
+    writesStopped: 'Writing is temporarily stopped by the administrator', notifyBtn: 'Send notification to all',
+    notifyPrompt: 'Notification text', notifySent: 'Notification sent to all users',
+    complaintBtn: 'Complain', complaintPrompt: 'Describe the problem', complaintSent: 'Complaint sent',
+    complaintsBtn: 'Complaints ({n})', complaintsTitle: 'Complaints', noComplaints: 'No complaints',
     blockedTitle: 'Blocked users', noBlocked: 'No blocked users', unblockBtn: 'Unblock', blockBtn: 'Block user',
     blockConfirm: 'Block this user? You will not see each other’s messages.', blocked: 'User blocked', unknown: 'Unknown',
     inviteRewarded: '+15 stars for the invite!', inviteAlready: 'You already got today\u2019s stars for invites',
@@ -388,6 +407,14 @@ const I18N = {
     premiumTitle: 'Преміум', premiumActive: 'Преміум активний', premiumNone: 'Преміум не активний',
     premium1Btn: 'Преміум на місяць: 1000 ⭐', premium12Btn: 'Преміум на рік: 5000 ⭐', premiumBought: 'Преміум активовано',
     myStoryBtn: 'Опублікувати історію', myStoryPhotoBtn: 'Опублікувати фото-історію',
+    adminSettingsTitle: 'Налаштування адміна', accountsBtn: 'Усі користувачі', gigiStoryBtn: 'Історія gigi chat',
+    gigiStoryPhotoBtn: 'Фото-історія gigi chat', bgSetBtn: 'Змінити фон', bgClearBtn: 'Повернути фон як було',
+    bgSaved: 'Фон збережено', bgCleared: 'Фон повернуто', stopOnBtn: 'Стоп: ніхто не пише',
+    stopOffBtn: 'Дозволити писати знову', stopOn: 'Писати заборонено всім', stopOff: 'Писати знову дозволено',
+    writesStopped: 'Адміністратор тимчасово зупинив листування', notifyBtn: 'Сповіщення всім від gigi chat',
+    notifyPrompt: 'Текст сповіщення', notifySent: 'Сповіщення надіслано всім',
+    complaintBtn: 'Поскаржитися', complaintPrompt: 'Опишіть проблему', complaintSent: 'Скаргу надіслано',
+    complaintsBtn: 'Скарги ({n})', complaintsTitle: 'Скарги', noComplaints: 'Скарг немає',
     blockedTitle: 'Заблоковані користувачі', noBlocked: 'Заблокованих немає', unblockBtn: 'Розблокувати', blockBtn: 'Заблокувати',
     blockConfirm: 'Заблокувати цього користувача? Ви не бачитимете повідомлень один одного.', blocked: 'Користувача заблоковано', unknown: 'Невідомо',
     inviteRewarded: '+15 зірок за запрошення!', inviteAlready: 'Зірки за запрошення сьогодні вже отримано',
@@ -457,6 +484,14 @@ const I18N = {
     premiumTitle: 'Премиум', premiumActive: 'Премиум активен', premiumNone: 'Премиум не активен',
     premium1Btn: 'Премиум на месяц: 1000 ⭐', premium12Btn: 'Премиум на год: 5000 ⭐', premiumBought: 'Премиум активирован',
     myStoryBtn: 'Опубликовать историю', myStoryPhotoBtn: 'Опубликовать фото-историю',
+    adminSettingsTitle: 'Настройки админа', accountsBtn: 'Все пользователи', gigiStoryBtn: 'История gigi chat',
+    gigiStoryPhotoBtn: 'Фото-история gigi chat', bgSetBtn: 'Изменить фон', bgClearBtn: 'Вернуть фон как было',
+    bgSaved: 'Фон сохранён', bgCleared: 'Фон возвращён', stopOnBtn: 'Стоп: никто не пишет',
+    stopOffBtn: 'Разрешить писать снова', stopOn: 'Писать запрещено всем', stopOff: 'Писать снова разрешено',
+    writesStopped: 'Администратор временно остановил переписку', notifyBtn: 'Уведомление всем от gigi chat',
+    notifyPrompt: 'Текст уведомления', notifySent: 'Уведомление отправлено всем',
+    complaintBtn: 'Пожаловаться', complaintPrompt: 'Опишите проблему', complaintSent: 'Жалоба отправлена',
+    complaintsBtn: 'Жалобы ({n})', complaintsTitle: 'Жалобы', noComplaints: 'Жалоб нет',
     blockedTitle: 'Заблокированные пользователи', noBlocked: 'Заблокированных нет', unblockBtn: 'Разблокировать', blockBtn: 'Заблокировать',
     blockConfirm: 'Заблокировать этого пользователя? Вы не будете видеть сообщения друг друга.', blocked: 'Пользователь заблокирован', unknown: 'Неизвестно',
     inviteRewarded: '+15 звёзд за приглашение!', inviteAlready: 'Звёзды за приглашение сегодня уже получены',
@@ -498,6 +533,7 @@ let gcache = new Map();      // id -> messages of that group
 let activeGroup = null;      // id of the open group or channel (active is null then)
 let groupResults = [];       // groups and channels matching the search text
 let myPremium = false;       // true while your premium is active
+let writesStopped = false;   // true while the admin has stopped all writing
 
 const $ = id => document.getElementById(id);
 const enc = encodeURIComponent;
@@ -659,6 +695,17 @@ function createSocket() {
     gcache.delete(id);
     if (activeGroup === id) closeChat();
     renderList();
+  });
+  socket.on('app_config', c => {
+    writesStopped = Boolean(c?.stopped);
+    if (c?.bg) {
+      document.body.style.backgroundImage = `url("${c.bg}")`;
+      document.body.classList.add('has-bg');
+    } else {
+      document.body.style.backgroundImage = '';
+      document.body.classList.remove('has-bg');
+    }
+    renderComposer();
   });
   socket.on('all_deleted', () => {
     sessionStorage.setItem('gigi_flash', 'allDeleted');
@@ -1245,11 +1292,11 @@ function adminDeleteAll() {
 
 $('adminBtn').addEventListener('click', () => {
   if (!socket?.connected) return toast(t('errNetwork'));
-  if (adminCode) return adminLoadAccounts();
+  if (adminCode) return openAdminSettings();
   const code = prompt(t('adminCodePrompt'));
   if (!code) return;
   adminCode = code;
-  adminLoadAccounts();
+  openAdminSettings();
 });
 
 $('modalClose').addEventListener('click', closeModal);
@@ -1334,6 +1381,12 @@ function renderGroupHeader() {
 }
 
 function renderComposer() {
+  if (writesStopped) {
+    $('composer').hidden = true;
+    $('chanNote').hidden = false;
+    $('chanNote').replaceChildren(el('div', {}, t('writesStopped')));
+    return;
+  }
   const g = activeGroup ? groups.get(activeGroup) : null;
   const note = $('chanNote');
   const notMember = Boolean(g) && !g.joined;
@@ -1582,6 +1635,91 @@ function buyPremium(months) {
 $('settingsBtn').addEventListener('click', openSettings);
 $('blockChatBtn').addEventListener('click', () => { $('chatMenu').hidden = true; if (active) blockUser(active); });
 
+// One gift as a square card in the grid.
+function giftCard(it, mine) {
+  return el('div', { class: 'gcard', onclick: () => openGiftDetail(it, mine) },
+    el('img', { src: it.image, alt: '' }),
+    el('div', { class: 'gcard-name' }, it.title),
+    el('div', { class: 'gcard-price' }, mine && it.on_shelf ? t('onShelf') : '⭐ ' + it.price));
+}
+
+function openMyGifts() {
+  socket.emit('gifts_mine', {}, res => {
+    if (!res?.ok) return toast(t('messageFailed'));
+    const cards = res.items.map(it => giftCard(it, true));
+    openModal([
+      el('div', { class: 'acc-head' }, t('myGiftsBtn') + ' · ⭐ ' + res.stars),
+      el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
+        el('button', { class: 'btn ghost', onclick: () => openMarket() }, t('marketTitle'))),
+      ...(cards.length ? [el('div', { class: 'gift-grid' }, ...cards)] : [el('div', { class: 'empty' }, t('noMyGifts'))]),
+    ]);
+  });
+}
+
+// Admin settings: opened by the 🔑 button after the admin code.
+function openAdminSettings() {
+  adminCall('admin_complaints', {}, res => {
+    const count = res.items.length;
+    openModal([
+      el('div', { class: 'acc-head' }, t('adminSettingsTitle')),
+      el('div', { class: 'pf-actions', style: 'margin-bottom:10px' },
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); adminLoadAccounts(); } }, t('accountsBtn')),
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('storyBtn').click(); } }, t('gigiStoryBtn')),
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('storyPhotoBtn').click(); } }, t('gigiStoryPhotoBtn')),
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('bgInput').click(); } }, t('bgSetBtn')),
+        el('button', { class: 'btn ghost', onclick: () => adminCall('admin_set_bg', { url: '' }, () => toast(t('bgCleared'))) }, t('bgClearBtn')),
+        el('button', { class: 'btn ghost', onclick: () => adminCall('admin_stop', { on: !writesStopped }, () => {
+          toast(writesStopped ? t('stopOff') : t('stopOn'));
+          closeModal();
+        }) }, writesStopped ? t('stopOffBtn') : t('stopOnBtn')),
+        el('button', { class: 'btn ghost', onclick: () => {
+          const text = (prompt(t('notifyPrompt')) || '').trim();
+          if (!text) return;
+          adminCall('admin_notify', { text }, () => toast(t('notifySent')));
+        } }, t('notifyBtn')),
+        el('button', { class: 'btn ghost', onclick: () => openComplaints() }, t('complaintsBtn', { n: count })),
+      ),
+    ]);
+  });
+}
+
+function openComplaints() {
+  adminCall('admin_complaints', {}, res => {
+    const rows = res.items.map(c => el('div', { class: 'acc-row' },
+      el('div', { class: 'meta' },
+        el('div', { class: 'name' }, c.from + ' → ' + c.about),
+        el('div', { class: 'sub' }, fmtDateTime(c.created) + ' · ' + c.text)),
+      el('button', { class: 'btn danger', onclick: () => adminCall('admin_complaint_delete', { id: c.id }, () => openComplaints()) }, t('deleteBtn'))));
+    openModal([
+      el('div', { class: 'acc-head' }, t('complaintsTitle')),
+      ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noComplaints'))]),
+    ]);
+  });
+}
+
+
+$('bgInput').addEventListener('change', async e => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (!f) return;
+  try {
+    const url = await uploadBlob(await compressImage(f));
+    adminCall('admin_set_bg', { url }, () => toast(t('bgSaved')));
+  } catch {
+    toast(t('uploadFailed'));
+  }
+});
+
+$('complaintBtn').addEventListener('click', () => {
+  $('chatMenu').hidden = true;
+  if (!active) return;
+  const text = (prompt(t('complaintPrompt')) || '').trim();
+  if (!text) return;
+  socket.emit('complaint', { nick: active, text }, res => {
+    toast(res?.ok ? t('complaintSent') : t('messageFailed'));
+  });
+});
+
 function postMyStory() {
   const text = (prompt(t('storyPrompt')) || '').trim();
   if (!text) return;
@@ -1636,7 +1774,7 @@ function openMarket() {
     if (!mine?.ok) return toast(t('messageFailed'));
     socket.emit('market_list', {}, res => {
       if (!res?.ok) return toast(t('messageFailed'));
-      const rows = res.items.map(marketRow);
+      const rows = [el('div', { class: 'gift-grid' }, ...res.items.map(it => giftCard(it, false)))];
       openModal([
         el('div', { class: 'acc-head' }, t('marketTitle') + ' · ⭐ ' + mine.stars),
         el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
@@ -1658,7 +1796,7 @@ function buyGift(it) {
   });
 }
 
-function openMyGifts() {
+function openMyGiftsList() {
   socket.emit('gifts_mine', {}, res => {
     if (!res?.ok) return toast(t('messageFailed'));
     const rows = res.items.map(it => el('div', { class: 'acc-row', onclick: () => openGiftDetail(it, true) },
