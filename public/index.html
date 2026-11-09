@@ -80,6 +80,9 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 #storyDelBtn{margin-top:16px;width:100%;text-align:center}
 .gone{color:var(--muted);font-style:italic}
 :root[data-theme="light"]{--bg:#eef2f7;--panel:#ffffff;--panel2:#e6ebf2;--line:#d5dce6;--out:#d6e7fb;--in:#ffffff;--accent:#2b7bc4;--text:#1b2631;--muted:#66768a;--online:#2fa86a;--danger:#d9534f}
+:root[data-theme="purple"]{--bg:#171225;--panel:#211a33;--panel2:#302545;--line:#44345e;--out:#49316d;--in:#261d38;--accent:#b78cff;--text:#f6efff;--muted:#b9a9ce;--online:#52d69a;--danger:#ff7777}
+:root[data-theme="ocean"]{--bg:#071b2b;--panel:#0d293d;--panel2:#15384e;--line:#24516a;--out:#174766;--in:#0e3047;--accent:#42c6e8;--text:#e8f8ff;--muted:#9cc2d2;--online:#52d69a;--danger:#ff7777}
+:root[data-theme="rose"]{--bg:#28151e;--panel:#38202c;--panel2:#4a2a39;--line:#664052;--out:#71374f;--in:#402532;--accent:#ff8eb7;--text:#fff0f5;--muted:#d6a8b9;--online:#52d69a;--danger:#ff7777}
 .modal-box{max-height:85vh;overflow-y:auto;max-width:460px;font-size:15px;line-height:1.4}
 .pf-head{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:18px}
 .pf-avatar{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;font-size:36px;font-weight:700;color:#fff;position:relative;overflow:hidden}
@@ -151,6 +154,7 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
   .back{display:inline-flex}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.poll-card{min-width:220px;max-width:340px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);display:grid;gap:8px}.poll-option{display:flex;justify-content:space-between;gap:12px;text-align:left;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);cursor:pointer}.poll-option.selected{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,var(--panel))}.acc-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
 </style>
 </head>
 <body>
@@ -236,7 +240,8 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
       <div id="replyBar" class="chan-note" hidden></div>
       <form class="composer" id="composer">
         <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn"></button>
-        <input id="fileInput" type="file" accept="image/*" hidden>
+        <button type="button" class="icon" id="pollBtn" title="Створити опитування" hidden>📊</button>
+        <input id="fileInput" type="file" accept="image/*,video/mp4,video/webm,video/quicktime,.pdf,.zip,.doc,.docx,.xls,.xlsx,.csv,.txt" hidden>
         <textarea id="input" rows="1" data-i18n-ph="typeMessage"></textarea>
         <button class="btn" data-i18n="send"></button>
       </form>
@@ -660,6 +665,7 @@ function createSocket() {
     if (Number($('storyDelBtn').dataset.id) === id) $('viewer').hidden = true;
   });
   socket.on('avatars', obj => { avatars = new Map(Object.entries(obj || {})); renderList(); renderHeader(); });
+  socket.on('profile_status', ({ nick, statusText }) => { const i=userInfo.get(nick); if(i) i.statusText=statusText||''; });
   socket.on('avatar', ({ nick, url }) => {
     if (url) avatars.set(nick, url); else avatars.delete(nick);
     renderList(); renderHeader();
@@ -695,6 +701,19 @@ function createSocket() {
     }
     if (activeGroup === chat) renderMessages();
     renderList();
+  });
+  socket.on('gpinned', ({ chat, id }) => { const list=gcache.get(chat)||[]; list.forEach(m=>m.pinned=(m.id===id)); if(activeGroup===chat) renderPinBar(); });
+  socket.on('poll_updated', ({ chat, id, pollResults, myVote }) => {
+    const list = gcache.get(chat) || [];
+    const m = list.find(x => x.id === id);
+    if (m) { m.pollResults = pollResults || {}; if (myVote !== undefined) m.myVote = myVote; }
+    if (activeGroup === chat) renderMessages();
+  });
+  socket.on('group_removed', ({ id }) => {
+    const g = groups.get(id); if (g) g.joined = false;
+    gcache.delete(id);
+    if (activeGroup === id) { closeChat(); toast('Тебе видалили з групи'); }
+    refreshGroups();
   });
   socket.on('gmsg_deleted', ({ chat, id }) => {
     const list = gcache.get(chat);
@@ -784,6 +803,8 @@ function mediaNode(m) {
   const stop = e => e.stopPropagation();
   if (m.kind === 'image') return el('img', { src: m.text, alt: '', class: 'media', onclick: e => { stop(e); window.open(m.text, '_blank'); } });
   if (m.kind === 'video') return el('video', { src: m.text, controls: '', playsinline: '', class: 'media', onclick: stop });
+  if (m.kind === 'audio') return el('audio', { src: m.text, controls: '', preload: 'metadata', onclick: stop, style: 'max-width:100%;display:block;margin:6px 0' });
+  if (m.kind === 'file') return el('a', { href: m.text, target: '_blank', rel: 'noopener', onclick: stop, class: 'file-attachment' }, '📎 Відкрити / завантажити файл');
   return null;
 }
 
@@ -793,6 +814,8 @@ function previewText(m) {
   }
   if (m.kind === 'image') return '📷 ' + t('photoLabel');
   if (m.kind === 'video') return '🎬 ' + t('videoLabel');
+  if (m.kind === 'audio') return '🎙️ ' + t('voiceLabel');
+  if (m.kind === 'file') return '📎 Файл';
   return m.text;
 }
 
@@ -806,18 +829,17 @@ function readAsDataURL(blob) {
 }
 
 async function sendMedia(blob) {
-  if (!active && !activeGroup) return;
   if (!socket?.connected) return toast(t('errNetwork'));
   if (blob.size > 15 * 1024 * 1024) return toast(t('fileTooBig'));
-  const clean = new Blob([blob], { type: (blob.type || '').split(';')[0] });
+  const mime = (blob.type || 'application/octet-stream').split(';')[0].toLowerCase();
+  const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : 'file';
   let data;
-  try { data = await readAsDataURL(clean); }
+  try { data = await readAsDataURL(blob); }
   catch { return toast(t('uploadFailed')); }
   let res;
   try {
     res = await (await fetch('/api/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: localStorage.getItem('gigi_token'), data })
     })).json();
   } catch { return toast(t('uploadFailed')); }
@@ -826,33 +848,9 @@ async function sendMedia(blob) {
     return toast(t(keys[res?.error] || 'uploadFailed'));
   }
   const done = res2 => { if (!res2?.ok) toast(t('messageFailed')); };
-  if (activeGroup) socket.emit('group_send', { id: activeGroup, text: res.url, kind: 'image' }, done);
-  else socket.emit('message', { to: active, text: res.url, kind: res.kind }, done);
-}
-
-let recorder = null;
-let recChunks = [];
-
-async function toggleRecord() {
-  if (recorder) { recorder.stop(); return; }
-  if (!active) return;
-  if (!window.MediaRecorder) return toast(t('uploadFailed'));
-  let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch { return toast(t('micDenied')); }
-  recChunks = [];
-  recorder = new MediaRecorder(stream);
-  recorder.ondataavailable = e => { if (e.data.size) recChunks.push(e.data); };
-  recorder.onstop = () => {
-    const type = recorder.mimeType || 'audio/webm';
-    stream.getTracks().forEach(tr => tr.stop());
-    recorder = null;
-    $('recBtn').textContent = t('recBtn');
-    const blob = new Blob(recChunks, { type });
-    if (blob.size) sendMedia(blob);
-  };
-  recorder.start();
-  $('recBtn').textContent = t('recStop');
+  if (activeGroup) socket.emit('group_send', { id: activeGroup, text: res.url, kind: res.kind || kind }, done);
+  else if (active) socket.emit('message', { to: active, text: res.url, kind: res.kind || kind }, done);
+  else toast(t('selectChat'));
 }
 
 function deleteMessage(m) {
@@ -979,6 +977,23 @@ function messageMeta(m) {
   return `${fmtTime(m.created_at)} · ✓`;
 }
 
+function pollNode(m) {
+  let data; try { data = JSON.parse(m.text); } catch { return el('div', {}, 'Опитування недоступне'); }
+  const results = m.pollResults || {};
+  const total = Object.values(results).reduce((a, n) => a + Number(n || 0), 0);
+  const card = el('div', { class: 'poll-card', onclick: e => e.stopPropagation() },
+    el('strong', {}, '📊 ' + data.question),
+    ...data.options.map((option, i) => {
+      const count = Number(results[i] || 0), percent = total ? Math.round(count * 100 / total) : 0;
+      const b = el('button', { class: 'poll-option' + (m.myVote === i ? ' selected' : ''), onclick: e => { e.stopPropagation(); socket.emit('poll_vote', { id: m.id, option: i }, res => { if (!res?.ok) return toast('Не вдалося проголосувати'); m.pollResults = res.pollResults; m.myVote = res.myVote; renderMessages(); }); } },
+        el('span', {}, option), el('span', {}, `${count} · ${percent}%`));
+      b.title = 'Натисни, щоб проголосувати або змінити голос';
+      return b;
+    }),
+    el('div', { class: 'preview' }, `${total} голос(ів)`));
+  return card;
+}
+
 function renderMessages() {
   const box = $('messages');
   // Jump to the newest message only when opening a chat or when already at the bottom.
@@ -993,7 +1008,7 @@ function renderMessages() {
     const quote = m.reply_to ? (activeGroup ? (gcache.get(activeGroup)||[]) : (cache.get(active)||[])).find(x=>x.id===m.reply_to) : null;
     const contents = [];
     if (quote) contents.push(el('div', { class: 'preview', style: 'border-left:2px solid var(--accent);padding-left:8px;margin-bottom:5px' }, '↪ ' + quote.from + ': ' + String(quote.text || '').slice(0,100)));
-    contents.push(mediaNode(m) ?? m.text);
+    contents.push(m.kind === 'poll' ? pollNode(m) : (mediaNode(m) ?? m.text));
     if (m.edited_at) contents.push(el('span', { class: 'preview' }, ' · змінено'));
     box.append(el('div', { class: 'msg' + (own ? ' own' : ''), onclick: () => openMsgMenu(m, msgType) },
       ...contents,
@@ -1067,11 +1082,23 @@ $('search').addEventListener('input', e => {
   }, 250);
 });
 
+$('pollBtn').addEventListener('click', () => {
+  if (!activeGroup) return;
+  const question = prompt('Питання опитування:'); if (!question || !question.trim()) return;
+  const raw = prompt('Варіанти відповіді — кожен з нового рядка (мінімум 2, максимум 8):', 'Так\nНі');
+  if (raw === null) return;
+  const options = raw.split(/\r?\n/).map(x => x.trim()).filter(Boolean).slice(0, 8);
+  socket.emit('group_poll_create', { id: activeGroup, question: question.trim(), options }, res => {
+    if (!res?.ok) return toast(res?.error === 'invalid_poll' ? 'Потрібно мінімум два різні варіанти' : 'Не вдалося створити опитування');
+    const list = gcache.get(activeGroup) || []; list.push(res.msg); gcache.set(activeGroup, list); renderMessages();
+  });
+});
+
 $('attachBtn').addEventListener('click', () => $('fileInput').click());
 $('fileInput').addEventListener('change', e => {
   const f = e.target.files?.[0];
   e.target.value = '';
-  if (f) compressImage(f).then(sendMedia).catch(() => toast(t('uploadFailed')));
+  if (f) (f.type.startsWith('image/') ? compressImage(f) : Promise.resolve(f)).then(sendMedia).catch(() => toast(t('uploadFailed')));
 });
 
 function renderStories() {
@@ -1233,11 +1260,13 @@ function openProfile(nick) {
     const avatarUrl = info.avatar || avatars.get(nick) || null;
     const status = el('div', { class: 'pf-status' + (info.online ? ' on' : '') }, statusText(nick));
     const bio = el('div', { class: 'pf-bio' + (info.bio ? '' : ' empty') }, info.bio || t('noBio'));
+    const statusLine = el('div', { class: 'pf-status' }, info.statusText || '');
     const actions = el('div', { class: 'pf-actions' });
     if (mine) {
       actions.append(
         el('button', { class: 'btn', onclick: () => $('photoBtn').click() }, t('changePhoto')),
         ...(avatarUrl ? [el('button', { class: 'btn ghost', onclick: () => socket.emit('set_avatar', { url: null }, () => toast(t('photoRemoved'))) }, t('removePhoto'))] : []),
+        el('button', { class: 'btn ghost', onclick: () => { const status = prompt('Статус профілю (до 80 символів):', info.statusText || ''); if (status === null) return; socket.emit('set_profile_status', { status }, r => { if (r?.ok) { toast('Статус оновлено'); openProfile(me); } }); } }, '✨ Змінити статус'),
         el('button', { class: 'btn ghost', onclick: () => {
           const text = prompt(t('bioPrompt'), info.bio || '');
           if (text === null) return;
@@ -1257,6 +1286,7 @@ function openProfile(nick) {
         avatarNode(nick, avatarUrl, 96),
         el('div', { class: 'pf-name' }, nick),
         status),
+      statusLine,
       el('div', { class: 'pf-title acc-head' }, t('aboutLabel')),
       bio,
       shelfNode(info.shelf),
@@ -1357,6 +1387,7 @@ function emojiBar(type, id, onPicked) {
 function openMsgMenu(m, type = 'msg') {
   const items = [emojiBar(type, m.id, closeModal)];
   items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); replyTarget=m; editTarget=null; $('replyBar').hidden=false; $('replyBar').textContent='Відповідь на '+m.from+': '+String(m.text||'').slice(0,100)+'  ✕'; $('replyBar').onclick=()=>{replyTarget=null;$('replyBar').hidden=true;}; $('input').focus(); } }, '↩ Відповісти з цитатою'));
+  if (type === 'gmsg' && activeGroup && groups.get(activeGroup)?.owner === me) items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); socket.emit('gmsg_pin', { id: m.id, on: !m.pinned }, r => { if (!r?.ok) return toast('Не вдалося закріпити'); const list=gcache.get(activeGroup)||[]; list.forEach(x=>x.pinned=x.id===m.id ? !m.pinned : false); renderMessages(); renderPinBar(); }); } }, m.pinned ? '📌 Відкріпити' : '📌 Закріпити'));
   if (type === 'msg' && m.from === me && m.kind === 'text') items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); editTarget=m; replyTarget=null; $('input').value=m.text; $('replyBar').hidden=false; $('replyBar').textContent='Редагування повідомлення · Enter — зберегти'; $('input').focus(); } }, '✎ Редагувати'));
   if (type === 'msg') items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); const to=prompt('Переслати користувачу (нікнейм):'); if(!to?.trim()) return; socket.emit('message',{to:to.trim(),text:'Переслано від '+m.from+':\n'+m.text,kind:'text'},r=>toast(r?.ok?'Переслано':'Не вдалося переслати')); } }, '➦ Переслати'));
   if (m.from === me || (myPremium && type === 'msg')) items.push(el('button', { class: 'btn danger', style: 'width:100%', onclick: () => { closeModal(); deleteMessage(m); } }, t('deleteMsgBtn')));
@@ -1416,11 +1447,20 @@ function renderComposer() {
   const notMember = Boolean(g) && !g.joined;
   const readOnly = Boolean(g) && g.kind === 'channel' && g.owner !== me;
   $('composer').hidden = notMember || readOnly;
+  $('pollBtn').hidden = !g || notMember || readOnly || g.kind === 'channel' && g.owner !== me;
   note.hidden = !(notMember || readOnly);
   if (!note.hidden) {
     note.replaceChildren(el('div', {}, notMember ? t('joinToWrite') : t('channelReadOnly')));
     if (notMember) note.append(el('button', { class: 'btn', onclick: () => joinGroup(g.id) }, t('joinBtn')));
   }
+}
+
+function renderPinBar() {
+  const bar = $('pinBar');
+  if (!activeGroup) { bar.hidden = true; return; }
+  const pinned = (gcache.get(activeGroup) || []).find(m => m.pinned);
+  bar.hidden = !pinned;
+  if (pinned) bar.textContent = '📌 Закріплено: ' + (pinned.kind === 'poll' ? (() => { try { return JSON.parse(pinned.text).question; } catch { return 'Опитування'; } })() : String(pinned.text || '').slice(0, 120));
 }
 
 function openGroup(id) {
@@ -1438,7 +1478,7 @@ function openGroup(id) {
     const existing = gcache.get(id) || [];
     const ids = new Set(res.messages.map(m => m.id));
     gcache.set(id, [...res.messages, ...existing.filter(m => !ids.has(m.id))]);
-    if (activeGroup === id) renderMessages();
+    if (activeGroup === id) { renderMessages(); renderPinBar(); }
   });
   $('input').focus();
 }
@@ -1485,6 +1525,7 @@ function openGroupInfo(id) {
   if (!g.joined) btns.push(el('button', { class: 'btn', onclick: () => { closeModal(); joinGroup(id); } }, t('joinBtn')));
   else if (!isOwner) btns.push(el('button', { class: 'btn ghost', onclick: () => { closeModal(); leaveGroup(id); } }, t('leaveBtn')));
   btns.push(el('button', { class: 'btn danger', onclick: () => deleteGroup(id) }, t('groupDeleteBtn')));
+  if (isOwner) btns.push(el('button', { class: 'btn ghost', onclick: () => openGroupModeration(id) }, '👑 Учасники та модератори'));
   const head = el('div', { class: 'pf-avatar' }, g.kind === 'channel' ? '📢' : '👥');
   head.style.background = avatarBg(g.title);
   openModal([
@@ -1493,6 +1534,22 @@ function openGroupInfo(id) {
       (g.kind === 'channel' ? t('channelInfo', { n: g.members }) : t('groupInfo', { n: g.members }))),
     el('div', { class: 'pf-actions' }, ...btns),
   ]);
+}
+
+function openGroupModeration(id) {
+  socket.emit('group_moderators', { id }, res => {
+    if (!res?.ok) return toast('Не вдалося завантажити учасників');
+    const body = el('div', {}, el('div', { class: 'acc-head' }, 'Учасники та модератори'));
+    for (const m of res.members || []) {
+      if (m.nick === me) { body.append(el('div', { class: 'item' }, el('div', { class: 'meta' }, el('div', { class: 'name' }, m.nick), el('div', { class: 'preview' }, m.role)))); continue; }
+      const role = el('select', { class: 'field' });
+      for (const [v, label] of [['member','Учасник'],['moderator','Модератор']]) role.append(el('option', { value: v, selected: m.role === v }, label));
+      const save = el('button', { class: 'btn ghost', onclick: () => socket.emit('group_moderate', { id, nick: m.nick, action: role.value }, r => { if (!r?.ok) toast('Не вдалося змінити роль'); else toast('Роль оновлено'); }) }, 'Зберегти роль');
+      const remove = el('button', { class: 'btn danger', onclick: () => { if (!confirm('Видалити ' + m.nick + ' з групи?')) return; socket.emit('group_moderate', { id, nick: m.nick, action: 'remove' }, r => { if (!r?.ok) return toast('Не вдалося видалити учасника'); openGroupModeration(id); refreshGroups(); }); } }, 'Видалити');
+      body.append(el('div', { class: 'acc-row' }, el('div', { class: 'meta' }, el('div', { class: 'name' }, m.nick), role), el('div', { class: 'pf-actions' }, save, remove)));
+    }
+    openModal([body]);
+  });
 }
 
 function openCreateGroup() {
@@ -1620,9 +1677,8 @@ function openSettings() {
     openModal([
       el('div', { class: 'acc-head' }, t('settingsTitle')),
       el('div', { class: 'sub' }, t('themeLabel')),
-      el('div', { class: 'pf-actions', style: 'margin:8px 0 16px' },
-        el('button', { class: 'btn' + (theme === 'dark' ? '' : ' ghost'), onclick: () => setTheme('dark') }, t('themeDark')),
-        el('button', { class: 'btn' + (theme === 'light' ? '' : ' ghost'), onclick: () => setTheme('light') }, t('themeLight'))),
+      el('div', { class: 'pf-actions', style: 'margin:8px 0 16px;flex-wrap:wrap' },
+        ...[['dark','🌑 Темна'],['light','☀️ Світла'],['purple','💜 Фіолетова'],['ocean','🌊 Океан'],['rose','🌸 Рожева']].map(([key,label]) => el('button', { class: 'btn' + (theme === key ? '' : ' ghost'), onclick: () => setTheme(key) }, label))),
       el('div', { class: 'acc-head' }, t('premiumTitle')),
       el('div', { class: 'sub' }, myPremium ? t('premiumActive') : t('premiumNone')),
       el('div', { class: 'pf-actions', style: 'margin:8px 0 16px' },
@@ -1656,6 +1712,15 @@ function buyPremium(months) {
   });
 }
 
+$('searchMsgBtn').addEventListener('click', () => {
+  const q = prompt('Пошук повідомлень у чатах:');
+  if (!q || !q.trim()) return;
+  socket.emit('search_messages', { q: q.trim() }, res => {
+    if (!res?.ok) return toast('Пошук не вдався');
+    const rows = (res.results || []).map(r => el('button', { class: 'item', style: 'width:100%;text-align:left', onclick: () => { closeModal(); if (r.scope === 'pm') openChat(r.partner); else openGroup(r.chat); } }, el('div', { class: 'meta' }, el('div', { class: 'name' }, (r.scope === 'pm' ? r.partner : r.title) + ' · ' + r.from), el('div', { class: 'preview' }, r.text))));
+    openModal([el('div', { class: 'acc-head' }, 'Результати пошуку'), ...(rows.length ? rows : [el('div', { class: 'empty' }, 'Нічого не знайдено')])]);
+  });
+});
 $('settingsBtn').addEventListener('click', openSettings);
 $('blockChatBtn').addEventListener('click', () => { $('chatMenu').hidden = true; if (active) blockUser(active); });
 
@@ -1691,6 +1756,22 @@ function openAdminAudit() {
   });
 }
 
+function openAdminStats() {
+  adminCall('admin_stats', {}, r => {
+    openModal([el('div', { class: 'acc-head' }, '📊 Статистика Gigi Chat'),
+      ...[['Користувачі',r.users],['Повідомлення',r.messages],['Групи',r.groups],['Канали',r.channels],['Скарги',r.complaints],['Онлайн зараз',r.online]].map(([label,value]) => el('div',{class:'acc-row'},el('div',{class:'meta'},el('div',{class:'name'},label),el('div',{class:'sub'},String(value ?? 0))))) ]);
+  });
+}
+
+function openAdminGroups() {
+  adminCall('admin_groups', {}, r => {
+    const rows = (r.items || []).map(g => el('div', { class: 'acc-row' },
+      el('div', { class: 'meta' }, el('div', { class: 'name' }, (g.kind === 'channel' ? '📣 ' : '👥 ') + g.title), el('div', { class: 'sub' }, 'ID ' + g.id + ' · власник: ' + g.owner + ' · учасників: ' + g.members)),
+      el('button', { class: 'btn danger', onclick: () => { if (!confirm('Видалити «' + g.title + '»?')) return; socket.emit('group_delete', { id: g.id, code: adminCode }, res => { if (!res?.ok) return toast(t('messageFailed')); openAdminGroups(); }); } }, 'Видалити')));
+    openModal([el('div', { class: 'acc-head' }, '👥 Групи та канали'), ...(rows.length ? rows : [el('div',{class:'empty'},'Груп і каналів немає')])]);
+  });
+}
+
 function openAdminSettings() {
   adminCall('admin_complaints', {}, res => {
     const count = res.items.length;
@@ -1713,6 +1794,8 @@ function openAdminSettings() {
         } }, t('notifyBtn')),
         el('button', { class: 'btn ghost', onclick: () => openComplaints() }, t('complaintsBtn', { n: count })),
         el('button', { class: 'btn ghost', onclick: () => openAdminAudit() }, '📋 Журнал дій адміна'),
+        el('button', { class: 'btn ghost', onclick: () => openAdminStats() }, '📊 Статистика'),
+        el('button', { class: 'btn ghost', onclick: () => openAdminGroups() }, '👥 Керування групами/каналами'),
       ),
     ]);
   });
