@@ -224,6 +224,12 @@ CREATE TABLE IF NOT EXISTS blocks (
   blocked TEXT NOT NULL,
   PRIMARY KEY (blocker, blocked)
 );
+CREATE TABLE IF NOT EXISTS hidden_conversations (
+  owner TEXT NOT NULL,
+  partner TEXT NOT NULL,
+  created_at DOUBLE PRECISION NOT NULL,
+  PRIMARY KEY (owner, partner)
+);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS invite_day TEXT;
 CREATE TABLE IF NOT EXISTS reactions (
   target_type TEXT NOT NULL,
@@ -363,7 +369,7 @@ app.get('/api/chats', route(async (req, res) => {
       SELECT to_nick AS partner, id FROM messages WHERE from_nick = $1
       UNION ALL
       SELECT from_nick AS partner, id FROM messages WHERE to_nick = $1
-    ) t GROUP BY partner ORDER BY last_id DESC LIMIT 100`, [me]);
+    ) t WHERE NOT EXISTS (SELECT 1 FROM hidden_conversations h WHERE h.owner = $1 AND h.partner = t.partner) GROUP BY partner ORDER BY last_id DESC LIMIT 100`, [me]);
   const out = [];
   for (const r of rows) {
     const last = await db.one('SELECT * FROM messages WHERE id = $1', [r.last_id]);
@@ -378,7 +384,8 @@ app.get('/api/history', route(async (req, res) => {
   if (!NICK_RE.test(a) || !NICK_RE.test(b)) return res.status(400).json({ error: 'bad_nick' });
   const rows = await db.all(`
     SELECT * FROM messages
-    WHERE (from_nick = $1 AND to_nick = $2) OR (from_nick = $2 AND to_nick = $1)
+    WHERE ((from_nick = $1 AND to_nick = $2) OR (from_nick = $2 AND to_nick = $1))
+      AND NOT EXISTS (SELECT 1 FROM hidden_conversations h WHERE h.owner = $1 AND h.partner = $2)
     ORDER BY id DESC LIMIT 200`, [a, b]);
   const reacts = await reactionsFor('msg', rows.map(r => r.id));
   res.json(rows.reverse().map(r => ({ ...toMsg(r), reactions: reacts.get(r.id) || {} })));
@@ -1025,6 +1032,35 @@ io.on('connection', async socket => {
     if (row?.invite_day === today) return ack?.({ ok: false, error: 'already' });
     const u = await db.one('UPDATE users SET stars = stars + 15, invite_day = $2 WHERE nickname = $1 RETURNING stars', [me, today]);
     ack?.({ ok: true, stars: u.stars });
+  });
+
+  // A user may hide a conversation only from their own account, or permanently delete it for both participants.
+  on('conversation_remove', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const partner = (await findUser(String(payload?.nick || '')))?.nickname;
+    if (!partner || partner === me) return ack?.({ ok: false, error: 'no_user' });
+    const mode = payload?.mode;
+    if (mode === 'self') {
+      await db.run('INSERT INTO hidden_conversations (owner, partner, created_at) VALUES ($1, $2, $3) ON CONFLICT (owner, partner) DO UPDATE SET created_at = EXCLUDED.created_at', [me, partner, Date.now()]);
+      ack?.({ ok: true, mode: 'self' });
+      return;
+    }
+    if (mode === 'both') {
+      await tx(async c => {
+        const ids = (await c.query('SELECT id FROM messages WHERE (from_nick = $1 AND to_nick = $2) OR (from_nick = $2 AND to_nick = $1)', [me, partner])).rows.map(r => r.id);
+        if (ids.length) {
+          await c.query("DELETE FROM reactions WHERE target_type = 'msg' AND target_id = ANY($1::int[])", [ids]);
+          await c.query('DELETE FROM poll_votes WHERE message_id = ANY($1::int[])', [ids]);
+        }
+        await c.query('DELETE FROM messages WHERE (from_nick = $1 AND to_nick = $2) OR (from_nick = $2 AND to_nick = $1)', [me, partner]);
+        await c.query('DELETE FROM hidden_conversations WHERE (owner = $1 AND partner = $2) OR (owner = $2 AND partner = $1)', [me, partner]);
+      });
+      io.to('u:' + me).to('u:' + partner).emit('conversation_removed_both', { a: me, b: partner });
+      ack?.({ ok: true, mode: 'both' });
+      return;
+    }
+    ack?.({ ok: false, error: 'invalid_mode' });
   });
 
   on('block', async (payload, ack) => {
