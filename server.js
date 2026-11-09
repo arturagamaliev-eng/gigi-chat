@@ -10,14 +10,15 @@ const MAX_TEXT = 2000;
 const NICK_RE = /^[\p{L}\p{N}_]{3,20}$/u;
 const PASS_MIN = 4;
 const PASS_MAX = 100;
-const MAX_IMAGE_CHARS = 2000000;              // base64 size, about 1.5 MB
+const MAX_MEDIA_CHARS = 20000000;              // base64 size, supports files up to about 15 MB
 const CHAT_MEDIA_MS = 7 * 24 * 3600 * 1000;   // chat photos are kept 7 days
 const STORY_MS = 24 * 3600 * 1000;            // stories are kept 24 hours
 const AVATAR_MS = 365 * 24 * 3600 * 1000;     // profile photo stays until removed
 const keyOf = s => s.toLowerCase();
 const MEDIA_RE = /^\/media\/([a-f0-9]{32})$/;
 const mediaIdOf = url => { const m = MEDIA_RE.exec(String(url || '')); return m ? m[1] : null; };
-const isOurMedia = (url, kind) => kind === 'image' && typeof url === 'string' && mediaIdOf(url) !== null;
+const MEDIA_KINDS = new Set(['image', 'video', 'audio', 'file']);
+const isOurMedia = (url, kind) => MEDIA_KINDS.has(kind) && typeof url === 'string' && mediaIdOf(url) !== null;
 const adminOk = code => Boolean(process.env.ADMIN_CODE) && String(code || '') === process.env.ADMIN_CODE;
 const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 const SELL_PERCENT = 0.8; // a gift sold back to the market returns 80% of its price
@@ -379,13 +380,17 @@ app.get('/api/history', route(async (req, res) => {
 app.post('/api/upload', route(async (req, res) => {
   const s = await db.one('SELECT nickname FROM sessions WHERE token = $1', [String(req.body?.token || '')]);
   if (!s) return res.status(401).json({ error: 'bad_session' });
-  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.data || ''));
+  const m = /^data:([a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body?.data || ''));
   if (!m) return res.status(400).json({ error: 'bad_type' });
-  if (m[2].length > MAX_IMAGE_CHARS) return res.status(413).json({ error: 'too_big' });
+  const mime = m[1].toLowerCase();
+  const allowed = /^(image\/(jpeg|png|webp|gif)|video\/(mp4|webm|quicktime)|audio\/(webm|ogg|mpeg|mp4|wav|aac)|application\/(pdf|zip|vnd\.openxmlformats-officedocument\.wordprocessingml\.document|vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|msword|vnd\.ms-excel)|text\/(plain|csv))$/;
+  if (!allowed.test(mime)) return res.status(400).json({ error: 'bad_type' });
+  if (m[2].length > MAX_MEDIA_CHARS) return res.status(413).json({ error: 'too_big' });
   const id = crypto.randomBytes(16).toString('hex');
   await db.run('INSERT INTO media (id, data, mime, expires_at) VALUES ($1, $2, $3, $4)',
-    [id, m[2], m[1], Date.now() + CHAT_MEDIA_MS]);
-  res.json({ ok: true, url: '/media/' + id, kind: 'image' });
+    [id, m[2], mime, Date.now() + CHAT_MEDIA_MS]);
+  const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
+  res.json({ ok: true, url: '/media/' + id, kind, mime });
 }));
 
 app.get('/media/:id', route(async (req, res) => {
@@ -476,9 +481,9 @@ io.on('connection', async socket => {
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
     if (await isBlockedBetween(me, payload?.to)) return ack?.({ ok: false, error: 'blocked' });
     if (writesStopped) return ack?.({ ok: false, error: 'stopped' });
-    const kind = payload?.kind === 'image' ? 'image' : 'text';
+    const kind = MEDIA_KINDS.has(payload?.kind) ? payload.kind : 'text';
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
-    if (kind === 'image' && !isOurMedia(text, 'image')) return ack?.({ ok: false, error: 'invalid' });
+    if (MEDIA_KINDS.has(kind) && !isOurMedia(text, kind)) return ack?.({ ok: false, error: 'invalid' });
     if (!text || (kind === 'text' && text.length > MAX_TEXT)) return ack?.({ ok: false, error: 'invalid' });
 
     const to = (await findUser(String(payload?.to || '')))?.nickname;
@@ -488,7 +493,7 @@ io.on('connection', async socket => {
     const row = await db.one(
       'INSERT INTO messages (from_nick, to_nick, text, kind, created_at, reply_to) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
       [me, to, text, kind, now, Number.isInteger(Number(payload?.reply_to)) ? Number(payload.reply_to) : null]);
-    if (kind === 'image') await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + CHAT_MEDIA_MS, mediaIdOf(text)]);
+    if (MEDIA_KINDS.has(kind)) await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + CHAT_MEDIA_MS, mediaIdOf(text)]);
     const msg = { id: row.id, from: me, to, text, created_at: now, read_at: null, kind, reply_to: Number.isInteger(Number(payload?.reply_to)) ? Number(payload.reply_to) : null, edited_at: null };
     io.to('u:' + to).to('u:' + me).emit('message', msg);
     ack?.({ ok: true, msg });
@@ -596,6 +601,24 @@ io.on('connection', async socket => {
   });
 
   // Admin only: every account, including ones with no chats yet.
+  on('admin_stats', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const users = await db.one('SELECT COUNT(*)::int AS n FROM users');
+    const messages = await db.one('SELECT COUNT(*)::int AS n FROM messages');
+    const groups = await db.one("SELECT COUNT(*)::int AS n FROM chats WHERE kind = 'group'");
+    const channels = await db.one("SELECT COUNT(*)::int AS n FROM chats WHERE kind = 'channel'");
+    const complaints = await db.one('SELECT COUNT(*)::int AS n FROM complaints');
+    ack?.({ ok: true, users: users.n, messages: messages.n, groups: groups.n, channels: channels.n, complaints: complaints.n, online: online.size });
+  });
+
+  on('admin_groups', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const rows = await db.all('SELECT c.id, c.kind, c.title, c.owner, c.created_at, COUNT(m.nick)::int AS members FROM chats c LEFT JOIN chat_members m ON m.chat_id = c.id GROUP BY c.id ORDER BY c.created_at DESC LIMIT 300');
+    ack?.({ ok: true, items: rows });
+  });
+
   on('admin_list', async (payload, ack) => {
     if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
@@ -784,14 +807,14 @@ io.on('connection', async socket => {
     if (!c || !(await isMember(id, me))) return ack?.({ ok: false, error: 'forbidden' });
     if (writesStopped) return ack?.({ ok: false, error: 'stopped' });
     if (c.kind === 'channel' && c.owner !== me) return ack?.({ ok: false, error: 'read_only' });
-    const kind = payload?.kind === 'image' ? 'image' : 'text';
+    const kind = MEDIA_KINDS.has(payload?.kind) ? payload.kind : 'text';
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
-    if (kind === 'image' && !isOurMedia(text, 'image')) return ack?.({ ok: false, error: 'invalid' });
+    if (MEDIA_KINDS.has(kind) && !isOurMedia(text, kind)) return ack?.({ ok: false, error: 'invalid' });
     if (!text || (kind === 'text' && text.length > MAX_TEXT)) return ack?.({ ok: false, error: 'invalid' });
     const now = Date.now();
     const row = await db.one('INSERT INTO gmessages (chat_id, from_nick, text, kind, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING id',
       [id, me, text, kind, now]);
-    if (kind === 'image') await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + CHAT_MEDIA_MS, mediaIdOf(text)]);
+    if (MEDIA_KINDS.has(kind)) await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + CHAT_MEDIA_MS, mediaIdOf(text)]);
     const msg = { id: row.id, chat: id, from: me, text, kind, created_at: now, reactions: {} };
     for (const m of await membersOf(id)) io.to('u:' + m).emit('gmessage', { chat: id, msg });
     ack?.({ ok: true, msg });
