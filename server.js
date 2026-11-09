@@ -659,16 +659,17 @@ io.on('connection', async socket => {
   on('user_info', async (payload, ack) => {
     const u = await findUser(String(payload?.nick || ''));
     if (!u) return ack?.({ ok: false, error: 'no_user' });
-    const row = await db.one('SELECT nickname, avatar, bio, status_text, last_seen, premium_until FROM users WHERE nickname = $1', [u.nickname]);
+    const row = await db.one('SELECT user_id, nickname, avatar, bio, status_text, last_seen, premium_until FROM users WHERE nickname = $1', [u.nickname]);
     if (row.premium_until > Date.now()) {
       return ack?.({ ok: true, info: {
-        nick: row.nickname, hidden: true, online: false, lastSeen: null,
+        nick: row.nickname, id: row.user_id, hidden: true, online: false, lastSeen: null,
         avatar: row.avatar, bio: row.bio, statusText: row.status_text || '',
         shelf: await db.all('SELECT id, title, image FROM gift_items WHERE owner = $1 AND on_shelf = true', [row.nickname]),
       } });
     }
     ack?.({ ok: true, info: {
       nick: row.nickname,
+      id: row.user_id,
       online: online.has(row.nickname),
       lastSeen: row.last_seen,
       avatar: row.avatar,
