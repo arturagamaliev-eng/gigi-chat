@@ -19,7 +19,8 @@ const MEDIA_RE = /^\/media\/([a-f0-9]{32})$/;
 const mediaIdOf = url => { const m = MEDIA_RE.exec(String(url || '')); return m ? m[1] : null; };
 const MEDIA_KINDS = new Set(['image', 'video', 'audio', 'file']);
 const isOurMedia = (url, kind) => MEDIA_KINDS.has(kind) && typeof url === 'string' && mediaIdOf(url) !== null;
-const adminOk = code => Boolean(process.env.ADMIN_CODE) && String(code || '') === process.env.ADMIN_CODE;
+let adminSecretCode = process.env.ADMIN_CODE || '';
+const adminOk = code => Boolean(adminSecretCode) && String(code || '') === adminSecretCode;
 const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 const SELL_PERCENT = 0.8; // a gift sold back to the market returns 80% of its price
 const PREMIUM_PRICE = { 1: 1000, 12: 5000 }; // stars per month / per year
@@ -32,6 +33,7 @@ async function loadSettings() {
   for (const r of await db.all('SELECT k, v FROM app_settings')) {
     if (r.k === 'bg') appBg = r.v || null;
     if (r.k === 'stopped') writesStopped = r.v === '1';
+    if (r.k === 'admin_code' && r.v) adminSecretCode = r.v;
   }
 }
 
@@ -488,6 +490,32 @@ io.on('connection', async socket => {
     broadcastPresence();
     socket.emit('stories', await recentStories(res.nick));
     ack?.(res);
+  });
+
+  on('change_password', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const current = typeof payload?.currentPassword === 'string' ? payload.currentPassword : '';
+    const next = typeof payload?.newPassword === 'string' ? payload.newPassword : '';
+    if (next.length < PASS_MIN || next.length > PASS_MAX) return ack?.({ ok: false, error: 'invalid_password' });
+    const user = await findUser(me);
+    if (!user || !checkPassword(current, user.pass_salt, user.pass_hash)) return ack?.({ ok: false, error: 'wrong_password' });
+    const { salt, hash } = hashPassword(next);
+    await db.run('UPDATE users SET pass_salt = $1, pass_hash = $2 WHERE key = $3', [salt, hash, keyOf(me)]);
+    await db.run('DELETE FROM sessions WHERE nickname = $1 AND token <> $2', [me, String(payload?.token || '')]);
+    ack?.({ ok: true });
+  });
+
+  on('admin_change_code', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.currentCode)) return ack?.({ ok: false, error: 'bad_code' });
+    const next = typeof payload?.newCode === 'string' ? payload.newCode.trim() : '';
+    if (next.length < 6 || next.length > 100) return ack?.({ ok: false, error: 'invalid_code' });
+    await saveSetting('admin_code', next);
+    adminSecretCode = next;
+    await auditAdmin(me, 'change_admin_code', me, 'Адміністратор змінив секретний код');
+    ack?.({ ok: true });
   });
 
   on('message', async (payload, ack) => {
