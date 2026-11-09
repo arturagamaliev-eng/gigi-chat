@@ -686,6 +686,16 @@ io.on('connection', async socket => {
     ack?.({ ok: true, statusText: status });
   });
 
+  // Public user lookup by numeric account ID; exposes only profile identity fields.
+  on('user_lookup_id', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    const rawId = String(payload?.id || '').trim();
+    if (!/^\d{1,20}$/.test(rawId)) return ack?.({ ok: false, error: 'invalid_id' });
+    const user = await db.one('SELECT nickname, avatar, bio FROM users WHERE user_id = $1', [rawId]);
+    if (!user) return ack?.({ ok: false, error: 'not_found' });
+    ack?.({ ok: true, user: { nick: user.nickname, avatar: user.avatar || null, bio: user.bio || '' } });
+  });
+
   // Admin only: every account, including ones with no chats yet.
   on('admin_stats', async (payload, ack) => {
     if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
