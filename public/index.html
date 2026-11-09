@@ -1329,21 +1329,7 @@ function openProfile(nick) {
       socket.emit('gifts_mine', {}, balance => {
         if (balance?.ok) marketButton.textContent = '🛍 Маркет · ⭐ ' + balance.stars;
       });
-      actions.append(
-        marketButton,
-        el('button', { class: 'btn', onclick: () => $('photoBtn').click() }, t('changePhoto')),
-        ...(avatarUrl ? [el('button', { class: 'btn ghost', onclick: () => socket.emit('set_avatar', { url: null }, () => toast(t('photoRemoved'))) }, t('removePhoto'))] : []),
-        el('button', { class: 'btn ghost', onclick: () => { const status = prompt('Статус профілю (до 80 символів):', info.statusText || ''); if (status === null) return; socket.emit('set_profile_status', { status }, r => { if (r?.ok) { toast('Статус оновлено'); openProfile(me); } }); } }, '✨ Змінити статус'),
-        el('button', { class: 'btn ghost', onclick: () => {
-          const text = prompt(t('bioPrompt'), info.bio || '');
-          if (text === null) return;
-          socket.emit('set_bio', { bio: text }, () => { toast(t('bioSaved')); openProfile(me); });
-        } }, t('editBio')),
-        el('button', { class: 'btn', onclick: () => postMyStory() }, t('myStoryBtn')),
-        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('myStoryPhoto').click(); } }, t('myStoryPhotoBtn')),
-        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('renameBtn').click(); } }, t('renameBtn')),
-        el('button', { class: 'btn danger', onclick: () => { closeModal(); $('deleteBtn').click(); } }, t('deleteBtn')),
-      );
+      actions.append(marketButton);
     } else {
       actions.append(el('button', { class: 'btn', onclick: () => { closeModal(); openChat(nick); } }, t('writeMsg')),
         el('button', { class: 'btn danger', onclick: () => blockUser(nick) }, t('blockBtn')));
@@ -1637,8 +1623,8 @@ function openGroupModeration(id) {
   });
 }
 
-function openCreateGroup() {
-  let kind = 'group';
+function openCreateGroup(initialKind = 'group') {
+  let kind = initialKind === 'channel' ? 'channel' : 'group';
   const title = el('input', { class: 'field', maxlength: '40', placeholder: t('groupTitle') });
   const kindBox = el('div', { class: 'pf-actions' });
   const drawKind = () => kindBox.replaceChildren(
@@ -1766,6 +1752,16 @@ function openSettings() {
         ...[['dark','🌑 Темна'],['light','☀️ Світла'],['purple','💜 Фіолетова'],['ocean','🌊 Океан'],['rose','🌸 Рожева']].map(([key,label]) => el('button', { class: 'btn' + (theme === key ? '' : ' ghost'), onclick: () => setTheme(key) }, label))),
       el('div', { class: 'acc-head' }, '🔒 Безпека акаунта'),
       el('button', { class: 'btn ghost', style: 'width:100%;margin:8px 0 16px', onclick: changeAccountPassword }, '🔑 Змінити пароль акаунта'),
+      el('div', { class: 'acc-head' }, '👤 Налаштування профілю'),
+      el('div', { class: 'pf-actions', style: 'margin:8px 0 16px;flex-wrap:wrap' },
+        el('button', { class: 'btn', onclick: () => $('photoBtn').click() }, '🖼 Змінити фото аватарки'),
+        el('button', { class: 'btn ghost', onclick: () => socket.emit('set_avatar', { url: null }, r => { if (r?.ok) toast(t('photoRemoved')); else toast(t('messageFailed')); }) }, '🗑 Видалити фото аватарки'),
+        el('button', { class: 'btn ghost', onclick: () => { const current = userInfo.get(me)?.statusText || ''; const status = prompt('Статус профілю (до 80 символів):', current); if (status === null) return; socket.emit('set_profile_status', { status }, r => { if (r?.ok) { toast('Статус оновлено'); openSettings(); } else toast(t('messageFailed')); }); } }, '✨ Змінити статус'),
+        el('button', { class: 'btn ghost', onclick: () => { const current = userInfo.get(me)?.bio || ''; const bio = prompt(t('bioPrompt'), current); if (bio === null) return; socket.emit('set_bio', { bio }, r => { if (r?.ok) { toast(t('bioSaved')); openSettings(); } else toast(t('messageFailed')); }); } }, '📝 Змінити опис'),
+        el('button', { class: 'btn', onclick: () => { closeModal(); postMyStory(); } }, '📖 Опублікувати історію'),
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('myStoryPhoto').click(); } }, '🖼 Опублікувати фото-історію'),
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('renameBtn').click(); } }, '✏️ Нікнейм'),
+        el('button', { class: 'btn danger', onclick: () => { closeModal(); $('deleteBtn').click(); } }, '🗑 Видалити акаунт')),
       el('div', { class: 'acc-head' }, t('premiumTitle')),
       el('div', { class: 'sub' }, myPremium ? t('premiumActive') : t('premiumNone')),
       el('div', { class: 'pf-actions', style: 'margin:8px 0 16px' },
@@ -1840,7 +1836,13 @@ $('mobileBottomNav')?.addEventListener('click', e => {
   closeModal();
   const names=[...chats.keys()];
   const rows=names.map(nick=>el('button',{class:'item',onclick:()=>{closeModal();openChat(nick);}},avatarNode(nick,avatars.get(nick)||null,42),el('div',{class:'meta'},el('div',{class:'name'},nick),el('div',{class:'preview'},'Відкрити контакт'))));
-  openModal([el('div',{class:'acc-head'},'Контакти'),...(rows.length?rows:[el('div',{class:'empty'},'Контактів поки немає')])]); return;
+  openModal([
+   el('div',{class:'acc-head'},'Контакти'),
+   el('div',{class:'pf-actions',style:'margin:8px 0 14px;flex-wrap:wrap'},
+    el('button',{class:'btn',onclick:()=>{closeModal();openCreateGroup('group');}},'👥 Створити групу'),
+    el('button',{class:'btn ghost',onclick:()=>{closeModal();openCreateGroup('channel');}},'📢 Створити канал')),
+   ...(rows.length?rows:[el('div',{class:'empty'},'Контактів поки немає')])
+  ]); return;
  }
  if(tab==='settings'){closeModal();openSettings();return;}
  if(tab==='profile'){closeModal();const av=$('bottomNavAvatar');if(av&&me&&avatars.get(me)){av.style.backgroundImage=`url("${avatars.get(me)}")`;av.textContent='';}if(me)openProfile(me);}
