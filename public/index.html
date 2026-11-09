@@ -182,6 +182,18 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
 }
 
 .pf-id{font-size:13px;line-height:1.35;color:var(--muted,#9bb6c7);margin-top:3px;letter-spacing:.2px}
+
+/* Secondary account actions moved into the reserved strip above bottom navigation. */
+.account-tools{padding:10px 18px 8px!important}
+.account-tools-main{min-height:42px;align-items:center}
+.account-tools-secondary{display:flex;align-items:center;justify-content:center;gap:18px;min-height:48px;padding:3px 12px 0}
+.account-tools-secondary .icon{width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;border-radius:14px}
+@media(max-width:760px){
+ .account-tools{padding:10px 18px 8px!important}
+ .account-tools-secondary{justify-content:center;gap:24px;min-height:54px;padding-top:5px}
+ .account-tools-secondary .icon{width:44px;height:44px;font-size:21px}
+}
+
 </style>
 </head>
 <body>
@@ -227,20 +239,22 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
     <input id="bgInput" type="file" accept="image/*" hidden>
     <div class="stories" id="stories" hidden></div>
     <div class="list" id="list"></div>
-    <div class="side-top" style="border-top:1px solid var(--line);border-bottom:0">
-      <div class="row">
+    <div class="side-top account-tools" style="border-top:1px solid var(--line);border-bottom:0">
+      <div class="row account-tools-main">
         <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
         <button class="icon" id="photoBtn" data-i18n="photoBtn" hidden></button>
         <input id="avatarInput" type="file" accept="image/*" hidden>
         <input id="groupAvatarInput" type="file" accept="image/*" hidden>
-        <button class="icon" id="groupsBtn" data-i18n-title="groupsBtn" hidden>👥</button>
         <button class="icon" id="adminBtn" data-i18n-title="adminBtn" style="margin-left:auto">🔑</button>
         <button class="icon" id="storyBtn" data-i18n-title="storyBtn" hidden>📖</button>
         <button class="icon" id="storyPhotoBtn" data-i18n-title="storyPhotoBtn" hidden>🖼</button>
         <button class="icon" id="renameBtn" data-i18n="renameBtn" hidden></button>
         <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)" hidden></button>
+      </div>
+      <div class="account-tools-secondary" aria-label="Додаткові дії">
+        <button class="icon" id="groupsBtn" data-i18n-title="groupsBtn" title="Групи" hidden>👥</button>
         <button class="icon" id="settingsBtn" aria-label="settings" title="Налаштування" hidden>⚙</button>
-        <button class="icon" id="logout" aria-label="logout" hidden>⎋</button>
+        <button class="icon" id="logout" aria-label="logout" title="Вийти" hidden>⎋</button>
       </div>
       <div class="hint" id="net"></div>
     </div>
@@ -1931,9 +1945,10 @@ function openAdminGroups() {
       el('div', { class: 'meta' }, el('div', { class: 'name' }, (g.kind === 'channel' ? '📣 ' : '👥 ') + g.title), el('div', { class: 'sub' }, 'ID ' + g.id + ' · власник: ' + g.owner + ' · учасників: ' + g.members)),
       el('div', { class: 'pf-actions' },
         el('button', { class: 'btn ghost', onclick: () => {
-          const nick = (prompt('Нік користувача, якого додати до «' + g.title + '»:') || '').trim();
-          if (!nick) return;
-          adminCall('admin_add_member', { chatId: g.id, nick }, r => { toast(r.already ? 'Користувач уже є в чаті' : 'Користувача додано'); openAdminGroups(); });
+          const userId = (prompt('ID користувача, якого додати до «' + g.title + '»:') || '').trim();
+          if (!userId) return;
+          if (!/^\d+$/.test(userId)) return toast('Введи числовий ID користувача');
+          adminCall('admin_add_member', { chatId: g.id, userId: Number(userId) }, r => { toast(r.already ? 'Користувач уже є в чаті' : 'Користувача додано'); openAdminGroups(); });
         } }, '➕ Додати користувача'),
         el('button', { class: 'btn ghost', onclick: () => { pendingGroupAvatar = g.id; $('groupAvatarInput').click(); } }, '🖼 Фото'),
         el('button', { class: 'btn danger', onclick: () => { if (!confirm('Видалити «' + g.title + '»?')) return; socket.emit('group_delete', { id: g.id, code: adminCode }, res => { if (!res?.ok) return toast(t('messageFailed')); openAdminGroups(); }); } }, 'Видалити'))));
@@ -2275,9 +2290,10 @@ function openGiftDetail(it, mine) {
 }
 
 function sendGift(it) {
-  const to = (prompt(t('giftNick')) || '').trim();
-  if (!to) return;
-  socket.emit('gift_send', { id: it.id, to }, res => {
+  const toId = (prompt('ID отримувача подарунка:') || '').trim();
+  if (!toId) return;
+  if (!/^\d+$/.test(toId)) return toast('Введи числовий ID користувача');
+  socket.emit('gift_send', { id: it.id, toId: Number(toId) }, res => {
     if (!res?.ok) return toast(t(res?.error === 'no_user' ? 'errNoUser' : res?.error === 'self' ? 'giftNoSelf' : 'messageFailed'));
     closeModal();
     toast(t('giftSent'));
@@ -2302,9 +2318,10 @@ function toggleShelf(it) {
 }
 
 function adminGiveGift(it) {
-  const nick = (prompt(t('giftNick')) || '').trim();
-  if (!nick) return;
-  adminCall('admin_gift_give', { id: it.id, nick }, () => { closeModal(); toast(t('giftSent')); });
+  const userId = (prompt('ID користувача, якому видати подарунок:') || '').trim();
+  if (!userId) return;
+  if (!/^\d+$/.test(userId)) return toast('Введи числовий ID користувача');
+  adminCall('admin_gift_give', { id: it.id, userId: Number(userId) }, () => { closeModal(); toast(t('giftSent')); });
 }
 
 function adminDeleteGift(it) {
@@ -2349,37 +2366,37 @@ function openCreateGift() {
 }
 
 function openAdminRevokePerks() {
-  const nick = el('input', { class: 'field', placeholder: 'Нікнейм користувача', maxlength: '20' });
+  const nick = el('input', { class: 'field', type: 'number', min: '1', step: '1', placeholder: 'ID користувача' });
   openModal([
     el('div', { class: 'acc-head' }, '⭐ Керування зірками та Premium'),
-    el('div', { class: 'sub' }, 'Вкажи нікнейм користувача та обери, що потрібно забрати.'),
+    el('div', { class: 'sub' }, 'Вкажи ID користувача та обери, що потрібно забрати.'),
     nick,
     el('div', { class: 'pf-actions', style: 'margin-top:12px' },
       el('button', { class: 'btn danger', onclick: () => {
         const target = nick.value.trim();
-        if (!target) return toast('Введи нікнейм користувача');
-        if (!confirm('Обнулити всі зірки користувача «' + target + '»?')) return;
-        adminCall('admin_revoke_perk', { nick: target, mode: 'stars' }, () => { toast('Баланс зірок користувача обнулено'); openAdminRevokePerks(); });
+        if (!/^\d+$/.test(target)) return toast('Введи числовий ID користувача');
+        if (!confirm('Обнулити всі зірки користувача з ID ' + target + '?')) return;
+        adminCall('admin_revoke_perk', { userId: Number(target), mode: 'stars' }, () => { toast('Баланс зірок користувача обнулено'); openAdminRevokePerks(); });
       } }, '⭐ Видалити всі зірки'),
       el('button', { class: 'btn danger', onclick: () => {
         const target = nick.value.trim();
-        if (!target) return toast('Введи нікнейм користувача');
-        if (!confirm('Вимкнути Premium для користувача «' + target + '»?')) return;
-        adminCall('admin_revoke_perk', { nick: target, mode: 'premium' }, () => { toast('Premium користувача вимкнено'); openAdminRevokePerks(); });
+        if (!/^\d+$/.test(target)) return toast('Введи числовий ID користувача');
+        if (!confirm('Вимкнути Premium для користувача з ID ' + target + '?')) return;
+        adminCall('admin_revoke_perk', { userId: Number(target), mode: 'premium' }, () => { toast('Premium користувача вимкнено'); openAdminRevokePerks(); });
       } }, '💎 Забрати Premium'),
     ),
   ]);
 }
 
 function openAdminStars() {
-  const nick = el('input', { class: 'field', placeholder: t('giftNick'), maxlength: '20', value: me || '' });
+  const nick = el('input', { class: 'field', type: 'number', min: '1', step: '1', placeholder: 'ID користувача' });
   const amount = el('input', { class: 'field', type: 'number', min: '1', placeholder: t('starsAmount') });
   openModal([
     el('div', { class: 'acc-head' }, t('adminStarsBtn')),
     nick,
     el('div', { style: 'height:8px' }), amount,
     el('div', { class: 'pf-actions acc-foot' }, el('button', { class: 'btn', onclick: () => {
-      adminCall('admin_stars', { nick: nick.value.trim(), amount: Number(amount.value) }, () => {
+      adminCall('admin_stars', { userId: Number(nick.value), amount: Number(amount.value) }, () => {
         toast(t('starsGiven'));
         openMarket();
       });
