@@ -155,7 +155,11 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 .poll-card{min-width:220px;max-width:340px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);display:grid;gap:8px}.poll-option{display:flex;justify-content:space-between;gap:12px;text-align:left;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);cursor:pointer}.poll-option.selected{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,var(--panel))}.acc-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
-</style>
+
+.visual-edit-mode *{cursor:crosshair!important}
+.visual-edit-mode .visual-edit-selected{outline:3px solid #ffb020!important;outline-offset:2px!important}
+.visual-edit-mode #modal,.visual-edit-mode #toast{cursor:auto!important}
+#modalBody input[type=text],</style>
 </head>
 <body>
 
@@ -538,6 +542,10 @@ let stories = [];        // newest first
 const seenStories = new Set(JSON.parse(localStorage.getItem('gigi_seen') || '[]'));
 const userInfo = new Map();  // nick -> { online, lastSeen, avatar, bio }
 let adminCode = null;        // kept only while this page is open
+let visualRules = {};
+let visualEditMode = false;
+let visualObserver = null;
+let visualSelected = null;
 let groups = new Map();      // id -> group or channel summary
 let gcache = new Map();      // id -> messages of that group
 let activeGroup = null;      // id of the open group or channel (active is null then)
@@ -752,6 +760,9 @@ function createSocket() {
   });
   socket.on('app_config', c => {
     writesStopped = Boolean(c?.stopped);
+    visualRules = c?.visualRules && typeof c.visualRules === 'object' ? c.visualRules : {};
+    applyVisualRules();
+    ensureVisualObserver();
     if (c?.bg) {
       document.body.style.backgroundImage = `url("${c.bg}")`;
       document.body.classList.add('has-bg');
@@ -1880,6 +1891,7 @@ function openAdminSettings() {
         } }, t('notifyBtn')),
         el('button', { class: 'btn ghost', onclick: () => openComplaints() }, t('complaintsBtn', { n: count })),
         el('button', { class: 'btn ghost', onclick: changeAdminSecretCode }, '🔐 Змінити секретний код адміна'),
+        el('button', { class: 'btn ghost', onclick: () => startVisualEditor() }, '🎨 Візуальний редактор сайту'),
         el('button', { class: 'btn ghost', onclick: () => openAdminAudit() }, '📋 Журнал дій адміна'),
         el('button', { class: 'btn ghost', onclick: () => openAdminStats() }, '📊 Статистика'),
         el('button', { class: 'btn ghost', onclick: () => openAdminGroups() }, '👥 Керування групами/каналами'),
@@ -1891,6 +1903,111 @@ function openAdminSettings() {
       ),
     ]);
   });
+}
+
+function visualSelector(node) {
+  const parts = [];
+  let cur = node;
+  while (cur && cur !== document.body) {
+    if (cur.id) { parts.unshift('#' + CSS.escape(cur.id)); break; }
+    const tag = cur.tagName.toLowerCase();
+    let index = 1;
+    for (let sib = cur.previousElementSibling; sib; sib = sib.previousElementSibling) if (sib.tagName === cur.tagName) index++;
+    parts.unshift(tag + ':nth-of-type(' + index + ')');
+    cur = cur.parentElement;
+  }
+  return 'body > ' + parts.join(' > ');
+}
+
+function applyVisualRules() {
+  for (const [selector, rule] of Object.entries(visualRules || {})) {
+    let nodes = [];
+    try { nodes = document.querySelectorAll(selector); } catch { continue; }
+    nodes.forEach(node => {
+      if (rule.text !== undefined && node.children.length === 0 && node.textContent !== rule.text) node.textContent = rule.text;
+      if (rule.color) node.style.color = rule.color;
+      if (rule.backgroundColor) node.style.backgroundColor = rule.backgroundColor;
+      if (rule.fontSize) node.style.fontSize = rule.fontSize;
+      if (rule.borderRadius) node.style.borderRadius = rule.borderRadius;
+      if (rule.translateX !== undefined || rule.translateY !== undefined) node.style.translate = (rule.translateX || '0px') + ' ' + (rule.translateY || '0px');
+      if (rule.hidden !== undefined) node.style.display = rule.hidden ? 'none' : '';
+    });
+  }
+}
+
+function stopVisualEditor() {
+  visualEditMode = false;
+  document.body.classList.remove('visual-edit-mode');
+  document.removeEventListener('click', visualEditorClick, true);
+  document.querySelectorAll('.visual-edit-selected').forEach(n => n.classList.remove('visual-edit-selected'));
+  visualSelected = null;
+}
+
+function ensureVisualObserver() {
+  if (visualObserver) return;
+  visualObserver = new MutationObserver(() => { if (!visualEditMode) applyVisualRules(); });
+  visualObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+function startVisualEditor() {
+  const code = adminCode || prompt(t('adminCodePrompt'));
+  if (!code) return;
+  adminCode = code;
+  visualEditMode = true;
+  document.body.classList.add('visual-edit-mode');
+  document.addEventListener('click', visualEditorClick, true);
+  ensureVisualObserver();
+  closeModal();
+  toast('Режим редагування: натисни на елемент сторінки');
+}
+
+function visualEditorClick(event) {
+  if (!visualEditMode) return;
+  const target = event.target.closest('body *');
+  if (!target || target.closest('#modal') || target.closest('#toast') || target.closest('.visual-editor-panel') || ['INPUT','TEXTAREA','SELECT','BUTTON','SVG','PATH'].includes(target.tagName)) return;
+  event.preventDefault(); event.stopPropagation();
+  document.querySelectorAll('.visual-edit-selected').forEach(n => n.classList.remove('visual-edit-selected'));
+  visualSelected = target;
+  target.classList.add('visual-edit-selected');
+  openVisualElementEditor(target);
+}
+
+function openVisualElementEditor(node) {
+  const selector = visualSelector(node);
+  const old = visualRules[selector] || {};
+  const leaf = node.children.length === 0;
+  const textInput = el('textarea', { class: 'input', rows: 2, placeholder: leaf ? 'Текст елемента' : 'Текст можна змінювати лише в простих текстових елементах' });
+  textInput.value = leaf ? (old.text ?? node.textContent.trim().slice(0, 200)) : '';
+  textInput.disabled = !leaf;
+  const color = el('input', { type: 'text', value: old.color || getComputedStyle(node).color, placeholder: '#ffffff або rgb(...)' });
+  const bg = el('input', { type: 'text', value: old.backgroundColor || getComputedStyle(node).backgroundColor, placeholder: '#211a33 або transparent' });
+  const size = el('input', { type: 'number', min: '8', max: '72', value: parseInt(old.fontSize || getComputedStyle(node).fontSize, 10) || 16 });
+  const radius = el('input', { type: 'number', min: '0', max: '50', value: parseInt(old.borderRadius || getComputedStyle(node).borderRadius, 10) || 0 });
+  const moveX = el('input', { type: 'number', min: '-500', max: '500', value: parseInt(old.translateX || '0', 10) || 0 });
+  const moveY = el('input', { type: 'number', min: '-500', max: '500', value: parseInt(old.translateY || '0', 10) || 0 });
+  const hidden = el('input', { type: 'checkbox' }); hidden.checked = Boolean(old.hidden);
+  openModal([
+    el('div', { class: 'acc-head' }, '🎨 Редагування елемента'),
+    el('div', { class: 'sub' }, node.tagName.toLowerCase() + ' · ' + selector.slice(-90)),
+    el('label', {}, 'Текст (для простих текстових елементів)'), textInput,
+    el('label', {}, 'Колір тексту'), color,
+    el('label', {}, 'Колір фону'), bg,
+    el('label', {}, 'Розмір шрифту (px)'), size,
+    el('label', {}, 'Заокруглення кутів (px)'), radius,
+    el('label', {}, 'Зсув по горизонталі X (px)'), moveX,
+    el('label', {}, 'Зсув по вертикалі Y (px)'), moveY,
+    el('label', {}, hidden, ' Приховати елемент'),
+    el('button', { class: 'btn', onclick: () => {
+      const rule = { color: color.value, backgroundColor: bg.value, fontSize: Math.max(8, Math.min(72, Number(size.value) || 16)), borderRadius: Math.max(0, Math.min(50, Number(radius.value) || 0)), hidden: hidden.checked };
+      rule.translateX = Math.max(-500, Math.min(500, Number(moveX.value) || 0));
+      rule.translateY = Math.max(-500, Math.min(500, Number(moveY.value) || 0));
+      if (leaf) rule.text = textInput.value.slice(0, 200);
+      visualRules[selector] = rule;
+      applyVisualRules();
+      adminCall('admin_visual_save', { rules: visualRules }, r => { visualRules = { ...visualRules }; toast('Зміни збережено для всіх користувачів'); stopVisualEditor(); });
+    } }, '💾 Зберегти для всіх'),
+    el('button', { class: 'btn ghost', onclick: () => { closeModal(); stopVisualEditor(); } }, 'Вийти з редактора')
+  ]);
 }
 
 function changeAdminSecretCode() {
