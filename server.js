@@ -188,6 +188,13 @@ CREATE TABLE IF NOT EXISTS gmessages (
   created_at DOUBLE PRECISION NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_gmsg_chat ON gmessages(chat_id, id);
+CREATE TABLE IF NOT EXISTS daily_game_spins (
+  nick TEXT NOT NULL,
+  spin_day TEXT NOT NULL,
+  reward INTEGER NOT NULL DEFAULT 0,
+  created_at DOUBLE PRECISION NOT NULL,
+  PRIMARY KEY (nick, spin_day)
+);
 CREATE TABLE IF NOT EXISTS gift_items (
   id SERIAL PRIMARY KEY,
   title TEXT NOT NULL,
@@ -1349,6 +1356,31 @@ io.on('connection', async socket => {
   });
 
   // ---- Stars and gifts ----
+
+  // Free daily bonus: no stars are staked or deducted. The server grants at most one spin per UTC day.
+  on('game_daily_spin', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const today = new Date().toISOString().slice(0, 10);
+    // All rewards are non-negative; the player never risks their existing balance.
+    const reward = [0, 1, 1, 2, 2, 3][crypto.randomInt(0, 6)];
+    let result;
+    try {
+      result = await tx(async c => {
+        const ins = await c.query(
+          'INSERT INTO daily_game_spins (nick, spin_day, reward, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING RETURNING reward',
+          [me, today, reward, Date.now()]
+        );
+        if (!ins.rowCount) return { already: true };
+        const updated = await c.query('UPDATE users SET stars = stars + $1 WHERE nickname = $2 RETURNING stars', [reward, me]);
+        return { reward, stars: updated.rows[0]?.stars || 0 };
+      });
+    } catch (e) {
+      return ack?.({ ok: false, error: 'server' });
+    }
+    if (result.already) return ack?.({ ok: false, error: 'already_played' });
+    ack?.({ ok: true, reward: result.reward, stars: result.stars });
+  });
 
   on('market_list', async (payload, ack) => {
     if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
