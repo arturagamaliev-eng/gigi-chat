@@ -1950,6 +1950,7 @@ function openAdminSettings() {
         el('button', { class: 'btn ghost', onclick: () => openAdminAudit() }, '📋 Журнал дій адміна'),
         el('button', { class: 'btn ghost', onclick: () => openAdminStats() }, '📊 Статистика'),
         el('button', { class: 'btn ghost', onclick: () => openAdminGroups() }, '👥 Керування групами/каналами'),
+        el('button', { class: 'btn ghost', onclick: () => openAdminRevokePerks() }, '⭐ Керування зірками та Premium користувачів'),
         el('button', { class: 'btn danger', onclick: () => {
           if (!confirm('Очистити всі повідомлення в усіх приватних чатах, групах і каналах? Облікові записи та самі чати залишаться.')) return;
           if (!confirm('Підтверджуєте глобальне очищення історії? Цю дію не можна скасувати.')) return;
@@ -2327,6 +2328,29 @@ function openCreateGift() {
         title: title.value.trim(), description: desc.value.trim(), price: Number(price.value), count: Number(count.value), image,
       }, () => { toast(t('giftCreated')); openMarket(); });
     } }, t('giftCreateBtn'))),
+  ]);
+}
+
+function openAdminRevokePerks() {
+  const nick = el('input', { class: 'field', placeholder: 'Нікнейм користувача', maxlength: '20' });
+  openModal([
+    el('div', { class: 'acc-head' }, '⭐ Керування зірками та Premium'),
+    el('div', { class: 'sub' }, 'Вкажи нікнейм користувача та обери, що потрібно забрати.'),
+    nick,
+    el('div', { class: 'pf-actions', style: 'margin-top:12px' },
+      el('button', { class: 'btn danger', onclick: () => {
+        const target = nick.value.trim();
+        if (!target) return toast('Введи нікнейм користувача');
+        if (!confirm('Обнулити всі зірки користувача «' + target + '»?')) return;
+        adminCall('admin_revoke_perk', { nick: target, mode: 'stars' }, () => { toast('Баланс зірок користувача обнулено'); openAdminRevokePerks(); });
+      } }, '⭐ Видалити всі зірки'),
+      el('button', { class: 'btn danger', onclick: () => {
+        const target = nick.value.trim();
+        if (!target) return toast('Введи нікнейм користувача');
+        if (!confirm('Вимкнути Premium для користувача «' + target + '»?')) return;
+        adminCall('admin_revoke_perk', { nick: target, mode: 'premium' }, () => { toast('Premium користувача вимкнено'); openAdminRevokePerks(); });
+      } }, '💎 Забрати Premium'),
+    ),
   ]);
 }
 
