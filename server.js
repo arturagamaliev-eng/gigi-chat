@@ -1161,6 +1161,29 @@ io.on('connection', async socket => {
     ack?.({ ok: true });
   });
 
+  // Admin review is limited to the private conversation directly related to a complaint.
+  // Every successful access is recorded in the admin audit log.
+  on('admin_complaint_conversation', async (payload, ack) => {
+    const actor = socketNick.get(socket.id);
+    if (!actor) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const id = Number(payload?.complaintId);
+    if (!Number.isInteger(id) || id <= 0) return ack?.({ ok: false, error: 'invalid' });
+    const complaint = await db.one('SELECT id, from_nick, about_nick FROM complaints WHERE id = $1', [id]);
+    if (!complaint) return ack?.({ ok: false, error: 'no_complaint' });
+    const rows = await db.all(
+      `SELECT id, from_nick, to_nick, text, kind, created_at, read_at
+       FROM messages
+       WHERE (from_nick = $1 AND to_nick = $2) OR (from_nick = $2 AND to_nick = $1)
+       ORDER BY id ASC LIMIT 1000`,
+      [complaint.from_nick, complaint.about_nick]);
+    await auditAdmin(actor, 'review_complaint_conversation', `${complaint.from_nick} ↔ ${complaint.about_nick}`, `complaint_id=${id}; messages=${rows.length}`);
+    ack?.({ ok: true, complaint: { id, from: complaint.from_nick, about: complaint.about_nick }, messages: rows.map(r => ({
+      id: r.id, from: r.from_nick, to: r.to_nick, text: r.text, kind: r.kind,
+      created: r.created_at, read: r.read_at,
+    })) });
+  });
+
   // A user posts a story: it is shown to that user and to everyone they have a chat with.
   on('user_story_post', async (payload, ack) => {
     const me = socketNick.get(socket.id);
