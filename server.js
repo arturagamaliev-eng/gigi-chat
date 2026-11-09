@@ -44,7 +44,7 @@ async function sendGiftMessage(from, to, item) {
 
 const isMember = async (id, nick) => Boolean(await db.one('SELECT 1 AS x FROM chat_members WHERE chat_id = $1 AND nick = $2', [id, nick]));
 const membersOf = async id => (await db.all('SELECT nick FROM chat_members WHERE chat_id = $1', [id])).map(r => r.nick);
-const toGMsg = r => ({ id: r.id, chat: r.chat_id, from: r.from_nick, text: r.text, kind: r.kind || 'text', created_at: r.created_at });
+const toGMsg = r => ({ id: r.id, chat: r.chat_id, from: r.from_nick, text: r.text, kind: r.kind || 'text', created_at: r.created_at, pinned: Boolean(r.pinned) });
 
 async function chatSummary(c, me) {
   const members = await membersOf(c.id);
@@ -168,6 +168,13 @@ CREATE TABLE IF NOT EXISTS gift_items (
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS stars INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_invite_day TEXT;
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS author TEXT;
+ALTER TABLE gmessages ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS story_views (
+  story_id INTEGER NOT NULL,
+  nick TEXT NOT NULL,
+  PRIMARY KEY (story_id, nick)
+);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS handle TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until DOUBLE PRECISION;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_handle ON users(lower(handle));
@@ -223,14 +230,9 @@ async function authenticate(payload) {
 
   const user = await findUser(nick);
   if (!user) {
-    const handle = normHandle(payload?.handle);
-    if (!handle) return { ok: false, error: 'handle_required' };
-    if (!handleOk(handle)) return { ok: false, error: 'invalid_handle' };
-    const taken = await db.one('SELECT 1 AS x FROM users WHERE lower(handle) = $1', [handle]);
-    if (taken) return { ok: false, error: 'handle_taken' };
     const { salt, hash } = hashPassword(password);
-    await db.run('INSERT INTO users (nickname, key, pass_salt, pass_hash, handle, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
-      [nick, keyOf(nick), salt, hash, handle, Date.now()]);
+    await db.run('INSERT INTO users (nickname, key, pass_salt, pass_hash, created_at) VALUES ($1, $2, $3, $4, $5)',
+      [nick, keyOf(nick), salt, hash, Date.now()]);
     return createSession(nick);
   }
   if (!checkPassword(password, user.pass_salt, user.pass_hash)) return { ok: false, error: 'nick_taken' };
@@ -245,11 +247,24 @@ async function cleanup() {
   await db.run('DELETE FROM stories WHERE created_at < $1', [now - STORY_MS]);
   await db.run('DELETE FROM media WHERE expires_at < $1', [now]);
   await db.run("DELETE FROM reactions WHERE target_type = 'story' AND target_id NOT IN (SELECT id FROM stories)");
+  await db.run('DELETE FROM story_views WHERE story_id NOT IN (SELECT id FROM stories)');
 }
 
-async function recentStories() {
-  const rows = await db.all('SELECT id, text, media, created_at FROM stories WHERE created_at > $1 ORDER BY id DESC LIMIT 20',
-    [Date.now() - STORY_MS]);
+async function partnersOf(nick) {
+  return (await db.all(
+    'SELECT DISTINCT CASE WHEN from_nick = $1 THEN to_nick ELSE from_nick END AS p FROM messages WHERE from_nick = $1 OR to_nick = $1',
+    [nick])).map(r => r.p);
+}
+
+// gigi chat stories (author is null) are for everyone. A user's own stories are for that
+// user and for the people they have a chat with.
+async function recentStories(me) {
+  const rows = await db.all(
+    `SELECT id, text, media, author, created_at, (SELECT COUNT(*)::int FROM story_views v WHERE v.story_id = stories.id) AS views FROM stories
+     WHERE created_at > $1 AND (author IS NULL OR author = $2 OR author IN (
+       SELECT CASE WHEN from_nick = $2 THEN to_nick ELSE from_nick END FROM messages WHERE from_nick = $2 OR to_nick = $2))
+     ORDER BY id DESC LIMIT 20`,
+    [Date.now() - STORY_MS, me || '']);
   const reacts = await reactionsFor('story', rows.map(r => r.id));
   return rows.map(r => ({ ...r, reactions: reacts.get(r.id) || {} }));
 }
@@ -268,6 +283,7 @@ async function removeUser(nick) {
     await c.query('DELETE FROM chat_members WHERE nick = $1 OR chat_id IN (SELECT id FROM chats WHERE owner = $1)', [nick]);
     await c.query('DELETE FROM chats WHERE owner = $1', [nick]);
     await c.query('DELETE FROM blocks WHERE blocker = $1 OR blocked = $1', [nick]);
+    await c.query('DELETE FROM stories WHERE author = $1', [nick]);
     await c.query('UPDATE gift_items SET owner = NULL, on_shelf = false WHERE owner = $1', [nick]);
     await c.query('DELETE FROM users WHERE nickname = $1', [nick]);
   });
@@ -291,7 +307,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('/api/users', route(async (req, res) => {
   const term = String(req.query.q || '').replace(/[^\p{L}\p{N}_]/gu, '');
   if (!term) return res.json([]);
-  const rows = await db.all('SELECT nickname FROM users WHERE key LIKE $1 OR lower(handle) LIKE $1 ORDER BY nickname LIMIT 20', [`%${keyOf(term)}%`]);
+  const rows = await db.all('SELECT nickname FROM users WHERE key LIKE $1 ORDER BY nickname LIMIT 20', [`%${keyOf(term)}%`]);
   res.json(rows.map(r => r.nickname));
 }));
 
@@ -393,7 +409,7 @@ async function avatarMap() {
 io.on('connection', async socket => {
   socket.emit('presence', onlineList());
   try { socket.emit('avatars', await avatarMap()); } catch (e) { console.error('avatars:', e.message); }
-  try { socket.emit('stories', await recentStories()); } catch (e) { console.error('stories:', e.message); }
+  try { socket.emit('stories', await recentStories('')); } catch (e) { console.error('stories:', e.message); }
 
   // Wraps each handler so a database error never crashes the server.
   const on = (ev, fn) => socket.on(ev, async (...args) => {
@@ -414,8 +430,8 @@ io.on('connection', async socket => {
     online.get(res.nick).add(socket.id);
     socket.join('u:' + res.nick);
     broadcastPresence();
-    const hu = await db.one('SELECT handle FROM users WHERE nickname = $1', [res.nick]);
-    ack?.({ ...res, needHandle: !hu?.handle });
+    socket.emit('stories', await recentStories(res.nick));
+    ack?.(res);
   });
 
   on('message', async (payload, ack) => {
@@ -695,7 +711,7 @@ io.on('connection', async socket => {
     const me = socketNick.get(socket.id);
     const id = Number(payload?.id);
     if (!me || !Number.isInteger(id) || !(await isMember(id, me))) return ack?.({ ok: false, error: 'forbidden' });
-    const rows = await db.all('SELECT id, chat_id, from_nick, text, kind, created_at FROM gmessages WHERE chat_id = $1 ORDER BY id DESC LIMIT 200', [id]);
+    const rows = await db.all('SELECT id, chat_id, from_nick, text, kind, created_at, pinned FROM gmessages WHERE chat_id = $1 ORDER BY id DESC LIMIT 200', [id]);
     const reacts = await reactionsFor('gmsg', rows.map(r => r.id));
     ack?.({ ok: true, messages: rows.reverse().map(r => ({ ...toGMsg(r), reactions: reacts.get(r.id) || {} })) });
   });
@@ -839,6 +855,94 @@ io.on('connection', async socket => {
     if (error) return ack?.({ ok: false, error });
     broadcastPresence();
     ack?.({ ok: true, premium_until: until });
+  });
+
+  // A user posts a story: it is shown to that user and to everyone they have a chat with.
+  on('user_story_post', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
+    const media = typeof payload?.media === 'string' && payload.media ? payload.media : null;
+    if (media && !isOurMedia(media, 'image')) return ack?.({ ok: false, error: 'invalid' });
+    if ((!text && !media) || text.length > 500) return ack?.({ ok: false, error: 'invalid' });
+    const now = Date.now();
+    const row = await db.one('INSERT INTO stories (text, media, author, created_at) VALUES ($1, $2, $3, $4) RETURNING id',
+      [text, media, me, now]);
+    if (media) await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + STORY_MS, mediaIdOf(media)]);
+    const story = { id: row.id, text, media, author: me, created_at: now, reactions: {} };
+    for (const p of [me, ...(await partnersOf(me))]) io.to('u:' + p).emit('story', story);
+    ack?.({ ok: true });
+  });
+
+  // The author can delete their own story.
+  on('user_story_delete', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id);
+    const row = Number.isInteger(id) ? await db.one('SELECT id, media, author FROM stories WHERE id = $1', [id]) : null;
+    if (!row || row.author !== me) return ack?.({ ok: false, error: 'forbidden' });
+    await db.run('DELETE FROM stories WHERE id = $1', [id]);
+    await db.run("DELETE FROM reactions WHERE target_type = 'story' AND target_id = $1", [id]);
+    const mid = mediaIdOf(row.media);
+    if (mid) await db.run('DELETE FROM media WHERE id = $1', [mid]);
+    io.emit('story_deleted', { id });
+    ack?.({ ok: true });
+  });
+
+  // Search: text of your private messages and of messages in the groups you belong to.
+  on('search_messages', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const q = typeof payload?.q === 'string' ? payload.q.trim().slice(0, 100) : '';
+    if (!q) return ack?.({ ok: true, results: [] });
+    const like = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
+    const pm = await db.all(
+      "SELECT id, from_nick, to_nick, text, created_at FROM messages WHERE kind = 'text' AND (from_nick = $1 OR to_nick = $1) AND text ILIKE $2 ORDER BY id DESC LIMIT 30",
+      [me, like]);
+    const gm = await db.all(
+      `SELECT g.id, g.chat_id, g.from_nick, g.text, g.created_at, c.title FROM gmessages g
+       JOIN chats c ON c.id = g.chat_id
+       JOIN chat_members m ON m.chat_id = g.chat_id AND m.nick = $1
+       WHERE g.kind = 'text' AND g.text ILIKE $2 ORDER BY g.id DESC LIMIT 30`,
+      [me, like]);
+    const results = [
+      ...pm.map(r => ({ scope: 'pm', partner: r.from_nick === me ? r.to_nick : r.from_nick, id: r.id, from: r.from_nick, text: r.text, created_at: r.created_at })),
+      ...gm.map(r => ({ scope: 'group', chat: r.chat_id, title: r.title, id: r.id, from: r.from_nick, text: r.text, created_at: r.created_at })),
+    ].sort((a, b) => b.created_at - a.created_at).slice(0, 50);
+    ack?.({ ok: true, results });
+  });
+
+  // The owner of a group or channel pins one message (or unpins it).
+  on('gmsg_pin', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id);
+    const on = payload?.on === true;
+    const row = Number.isInteger(id) ? await db.one('SELECT id, chat_id FROM gmessages WHERE id = $1', [id]) : null;
+    if (!row) return ack?.({ ok: false, error: 'no_message' });
+    const owner = (await db.one('SELECT owner FROM chats WHERE id = $1', [row.chat_id]))?.owner;
+    if (owner !== me) return ack?.({ ok: false, error: 'forbidden' });
+    await db.run('UPDATE gmessages SET pinned = false WHERE chat_id = $1', [row.chat_id]);
+    if (on) await db.run('UPDATE gmessages SET pinned = true WHERE id = $1', [id]);
+    for (const m of await membersOf(row.chat_id)) {
+      io.to('u:' + m).emit('gpinned', { chat: row.chat_id, id: on ? id : null });
+    }
+    ack?.({ ok: true });
+  });
+
+  // Viewing someone else's story is counted once per person; the author gets the new count.
+  on('story_view', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id);
+    const row = Number.isInteger(id) ? await db.one('SELECT id, author FROM stories WHERE id = $1', [id]) : null;
+    if (!row) return ack?.({ ok: false, error: 'no_story' });
+    if (row.author && row.author !== me) {
+      await db.run('INSERT INTO story_views (story_id, nick) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, me]);
+      const v = await db.one('SELECT COUNT(*)::int AS n FROM story_views WHERE story_id = $1', [id]);
+      io.to('u:' + row.author).emit('story_views', { id, views: v.n });
+    }
+    ack?.({ ok: true });
   });
 
   // 15 stars once per day for inviting a friend. The day is counted in UTC.
