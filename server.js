@@ -1504,6 +1504,17 @@ io.on('connection', async socket => {
     ack?.({ ok: true });
   });
 
+  // Admin only: permanently remove every gift item from the market and users' inventories.
+  on('admin_gifts_delete_all', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const result = await db.run('DELETE FROM gift_items');
+    const deleted = Number(result?.rowCount ?? result?.changes ?? 0);
+    await auditAdmin(me, 'delete_all_gifts', 'all_gifts', `deleted=${deleted}`);
+    ack?.({ ok: true, deleted });
+  });
+
   // Toggles one reaction. Messages: only the two people in the chat see it. Stories: everyone.
   on('react', async (payload, ack) => {
     const me = socketNick.get(socket.id);
