@@ -80,6 +80,9 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 #storyDelBtn{margin-top:16px;width:100%;text-align:center}
 .gone{color:var(--muted);font-style:italic}
 :root[data-theme="light"]{--bg:#eef2f7;--panel:#ffffff;--panel2:#e6ebf2;--line:#d5dce6;--out:#d6e7fb;--in:#ffffff;--accent:#2b7bc4;--text:#1b2631;--muted:#66768a;--online:#2fa86a;--danger:#d9534f}
+:root[data-theme="purple"]{--bg:#171225;--panel:#211a33;--panel2:#302545;--line:#44345e;--out:#49316d;--in:#261d38;--accent:#b78cff;--text:#f6efff;--muted:#b9a9ce;--online:#52d69a;--danger:#ff7777}
+:root[data-theme="ocean"]{--bg:#071b2b;--panel:#0d293d;--panel2:#15384e;--line:#24516a;--out:#174766;--in:#0e3047;--accent:#42c6e8;--text:#e8f8ff;--muted:#9cc2d2;--online:#52d69a;--danger:#ff7777}
+:root[data-theme="rose"]{--bg:#28151e;--panel:#38202c;--panel2:#4a2a39;--line:#664052;--out:#71374f;--in:#402532;--accent:#ff8eb7;--text:#fff0f5;--muted:#d6a8b9;--online:#52d69a;--danger:#ff7777}
 .modal-box{max-height:85vh;overflow-y:auto;max-width:460px;font-size:15px;line-height:1.4}
 .pf-head{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:18px}
 .pf-avatar{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;font-size:36px;font-weight:700;color:#fff;position:relative;overflow:hidden}
@@ -236,7 +239,8 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
       <div id="replyBar" class="chan-note" hidden></div>
       <form class="composer" id="composer">
         <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn"></button>
-        <input id="fileInput" type="file" accept="image/*" hidden>
+        <input id="fileInput" type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/*,.pdf,.zip,.doc,.docx,.xls,.xlsx,.csv,.txt" hidden>
+        <button type="button" class="icon" id="recBtn" title="Голосове повідомлення">🎙️</button>
         <textarea id="input" rows="1" data-i18n-ph="typeMessage"></textarea>
         <button class="btn" data-i18n="send"></button>
       </form>
@@ -784,6 +788,8 @@ function mediaNode(m) {
   const stop = e => e.stopPropagation();
   if (m.kind === 'image') return el('img', { src: m.text, alt: '', class: 'media', onclick: e => { stop(e); window.open(m.text, '_blank'); } });
   if (m.kind === 'video') return el('video', { src: m.text, controls: '', playsinline: '', class: 'media', onclick: stop });
+  if (m.kind === 'audio') return el('audio', { src: m.text, controls: '', preload: 'metadata', onclick: stop, style: 'max-width:100%;display:block;margin:6px 0' });
+  if (m.kind === 'file') return el('a', { href: m.text, target: '_blank', rel: 'noopener', onclick: stop, class: 'file-attachment' }, '📎 Відкрити / завантажити файл');
   return null;
 }
 
@@ -793,6 +799,8 @@ function previewText(m) {
   }
   if (m.kind === 'image') return '📷 ' + t('photoLabel');
   if (m.kind === 'video') return '🎬 ' + t('videoLabel');
+  if (m.kind === 'audio') return '🎙️ ' + t('voiceLabel');
+  if (m.kind === 'file') return '📎 Файл';
   return m.text;
 }
 
@@ -806,18 +814,17 @@ function readAsDataURL(blob) {
 }
 
 async function sendMedia(blob) {
-  if (!active && !activeGroup) return;
   if (!socket?.connected) return toast(t('errNetwork'));
   if (blob.size > 15 * 1024 * 1024) return toast(t('fileTooBig'));
-  const clean = new Blob([blob], { type: (blob.type || '').split(';')[0] });
+  const mime = (blob.type || 'application/octet-stream').split(';')[0].toLowerCase();
+  const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
   let data;
-  try { data = await readAsDataURL(clean); }
+  try { data = await readAsDataURL(blob); }
   catch { return toast(t('uploadFailed')); }
   let res;
   try {
     res = await (await fetch('/api/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: localStorage.getItem('gigi_token'), data })
     })).json();
   } catch { return toast(t('uploadFailed')); }
@@ -826,8 +833,9 @@ async function sendMedia(blob) {
     return toast(t(keys[res?.error] || 'uploadFailed'));
   }
   const done = res2 => { if (!res2?.ok) toast(t('messageFailed')); };
-  if (activeGroup) socket.emit('group_send', { id: activeGroup, text: res.url, kind: 'image' }, done);
-  else socket.emit('message', { to: active, text: res.url, kind: res.kind }, done);
+  if (activeGroup) socket.emit('group_send', { id: activeGroup, text: res.url, kind: res.kind || kind }, done);
+  else if (active) socket.emit('message', { to: active, text: res.url, kind: res.kind || kind }, done);
+  else toast(t('selectChat'));
 }
 
 let recorder = null;
@@ -835,7 +843,7 @@ let recChunks = [];
 
 async function toggleRecord() {
   if (recorder) { recorder.stop(); return; }
-  if (!active) return;
+  if (!active && !activeGroup) return;
   if (!window.MediaRecorder) return toast(t('uploadFailed'));
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
@@ -1068,10 +1076,11 @@ $('search').addEventListener('input', e => {
 });
 
 $('attachBtn').addEventListener('click', () => $('fileInput').click());
+$('recBtn').addEventListener('click', toggleRecord);
 $('fileInput').addEventListener('change', e => {
   const f = e.target.files?.[0];
   e.target.value = '';
-  if (f) compressImage(f).then(sendMedia).catch(() => toast(t('uploadFailed')));
+  if (f) (f.type.startsWith('image/') ? compressImage(f) : Promise.resolve(f)).then(sendMedia).catch(() => toast(t('uploadFailed')));
 });
 
 function renderStories() {
@@ -1620,9 +1629,8 @@ function openSettings() {
     openModal([
       el('div', { class: 'acc-head' }, t('settingsTitle')),
       el('div', { class: 'sub' }, t('themeLabel')),
-      el('div', { class: 'pf-actions', style: 'margin:8px 0 16px' },
-        el('button', { class: 'btn' + (theme === 'dark' ? '' : ' ghost'), onclick: () => setTheme('dark') }, t('themeDark')),
-        el('button', { class: 'btn' + (theme === 'light' ? '' : ' ghost'), onclick: () => setTheme('light') }, t('themeLight'))),
+      el('div', { class: 'pf-actions', style: 'margin:8px 0 16px;flex-wrap:wrap' },
+        ...[['dark','🌑 Темна'],['light','☀️ Світла'],['purple','💜 Фіолетова'],['ocean','🌊 Океан'],['rose','🌸 Рожева']].map(([key,label]) => el('button', { class: 'btn' + (theme === key ? '' : ' ghost'), onclick: () => setTheme(key) }, label))),
       el('div', { class: 'acc-head' }, t('premiumTitle')),
       el('div', { class: 'sub' }, myPremium ? t('premiumActive') : t('premiumNone')),
       el('div', { class: 'pf-actions', style: 'margin:8px 0 16px' },
@@ -1691,6 +1699,22 @@ function openAdminAudit() {
   });
 }
 
+function openAdminStats() {
+  adminCall('admin_stats', {}, r => {
+    openModal([el('div', { class: 'acc-head' }, '📊 Статистика Gigi Chat'),
+      ...[['Користувачі',r.users],['Повідомлення',r.messages],['Групи',r.groups],['Канали',r.channels],['Скарги',r.complaints],['Онлайн зараз',r.online]].map(([label,value]) => el('div',{class:'acc-row'},el('div',{class:'meta'},el('div',{class:'name'},label),el('div',{class:'sub'},String(value ?? 0))))) ]);
+  });
+}
+
+function openAdminGroups() {
+  adminCall('admin_groups', {}, r => {
+    const rows = (r.items || []).map(g => el('div', { class: 'acc-row' },
+      el('div', { class: 'meta' }, el('div', { class: 'name' }, (g.kind === 'channel' ? '📣 ' : '👥 ') + g.title), el('div', { class: 'sub' }, 'ID ' + g.id + ' · власник: ' + g.owner + ' · учасників: ' + g.members)),
+      el('button', { class: 'btn danger', onclick: () => { if (!confirm('Видалити «' + g.title + '»?')) return; socket.emit('group_delete', { id: g.id, code: adminCode }, res => { if (!res?.ok) return toast(t('messageFailed')); openAdminGroups(); }); } }, 'Видалити')));
+    openModal([el('div', { class: 'acc-head' }, '👥 Групи та канали'), ...(rows.length ? rows : [el('div',{class:'empty'},'Груп і каналів немає')])]);
+  });
+}
+
 function openAdminSettings() {
   adminCall('admin_complaints', {}, res => {
     const count = res.items.length;
@@ -1713,6 +1737,8 @@ function openAdminSettings() {
         } }, t('notifyBtn')),
         el('button', { class: 'btn ghost', onclick: () => openComplaints() }, t('complaintsBtn', { n: count })),
         el('button', { class: 'btn ghost', onclick: () => openAdminAudit() }, '📋 Журнал дій адміна'),
+        el('button', { class: 'btn ghost', onclick: () => openAdminStats() }, '📊 Статистика'),
+        el('button', { class: 'btn ghost', onclick: () => openAdminGroups() }, '👥 Керування групами/каналами'),
       ),
     ]);
   });
