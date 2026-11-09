@@ -208,6 +208,7 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
       <div class="row">
         <button class="icon" id="myProfileBtn" aria-label="profile" title="Профіль">👤</button>
         <div class="brand">gigi chat</div>
+        <button class="icon" id="searchIdBtn" title="Пошук користувача за ID" aria-label="Пошук за ID">🆔</button>
         <button class="icon" id="searchMsgBtn" data-i18n-title="searchMsgTitle">🔎</button>
         <button class="icon" id="inviteBtn" data-i18n-title="inviteTitle" aria-label="invite">🔗</button>
         <div class="lang">
@@ -230,14 +231,14 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
         <button class="icon" id="photoBtn" data-i18n="photoBtn" hidden></button>
         <input id="avatarInput" type="file" accept="image/*" hidden>
         <input id="groupAvatarInput" type="file" accept="image/*" hidden>
-        <button class="icon" id="groupsBtn" data-i18n-title="groupsBtn">👥</button>
-        <button class="icon" id="adminBtn" data-i18n-title="adminBtn">🔑</button>
+        <button class="icon" id="groupsBtn" data-i18n-title="groupsBtn" hidden>👥</button>
+        <button class="icon" id="adminBtn" data-i18n-title="adminBtn" style="margin-left:auto">🔑</button>
         <button class="icon" id="storyBtn" data-i18n-title="storyBtn" hidden>📖</button>
         <button class="icon" id="storyPhotoBtn" data-i18n-title="storyPhotoBtn" hidden>🖼</button>
         <button class="icon" id="renameBtn" data-i18n="renameBtn" hidden></button>
         <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)" hidden></button>
-        <button class="icon" id="settingsBtn" aria-label="settings" title="Налаштування">⚙</button>
-        <button class="icon" id="logout" aria-label="logout">⎋</button>
+        <button class="icon" id="settingsBtn" aria-label="settings" title="Налаштування" hidden>⚙</button>
+        <button class="icon" id="logout" aria-label="logout" hidden>⎋</button>
       </div>
       <div class="hint" id="net"></div>
     </div>
@@ -1810,6 +1811,19 @@ function buyPremium(months) {
     openSettings();
   });
 }
+
+function searchUserById() {
+  const raw = prompt('Введіть ID користувача:');
+  if (raw === null) return;
+  const id = raw.trim();
+  if (!/^\d{1,20}$/.test(id)) return toast('ID має містити лише цифри');
+  socket.emit('user_lookup_id', { id }, res => {
+    if (!res?.ok) return toast(res?.error === 'not_found' ? 'Користувача з таким ID не знайдено' : 'Не вдалося виконати пошук');
+    closeModal();
+    openProfile(res.user.nick);
+  });
+}
+$('searchIdBtn').addEventListener('click', searchUserById);
 
 $('searchMsgBtn').addEventListener('click', () => {
   const q = prompt('Пошук повідомлень у чатах:');
