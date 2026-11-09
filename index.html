@@ -1,0 +1,2095 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>gigi chat</title>
+<style>
+:root{
+  --bg:#0e1621; --panel:#17212b; --panel2:#1e2c3a; --line:#243447;
+  --out:#2b5278; --in:#182533; --accent:#5ea8e0; --text:#e6edf3; --muted:#7d8b99;
+  --online:#4fd18b; --danger:#e5736b;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-size:15px;overscroll-behavior:none;touch-action:pan-x pan-y}
+button,input,textarea{font:inherit;color:inherit}
+[hidden]{display:none!important}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.login{height:100%;display:grid;place-items:center;padding:24px}
+.card{width:min(360px,100%);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px}
+.card h1{margin:0 0 6px;font-size:22px;font-weight:650;letter-spacing:-.01em}
+.card p{margin:0 0 20px;color:var(--muted);line-height:1.5}
+label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+.field{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px;outline:none}
+.field:focus{border-color:var(--accent)}
+.btn{background:var(--accent);color:#0b1520;border:0;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.hint{font-size:12px;color:var(--muted);margin-top:8px;min-height:16px}
+.error .hint{color:var(--danger)}
+.lang{display:flex;gap:2px;background:var(--bg);border-radius:8px;padding:2px}
+.lang button{background:none;border:0;padding:4px 7px;border-radius:6px;color:var(--muted);cursor:pointer;font-size:12px;font-weight:600}
+.lang button[aria-pressed="true"]{background:var(--panel2);color:var(--text)}
+.icon{background:none;border:0;color:var(--muted);cursor:pointer;padding:6px 8px;border-radius:8px;font-size:13px}
+.icon:hover{color:var(--text);background:var(--panel2)}
+.app{height:100%;display:grid;grid-template-columns:320px 1fr}
+.sidebar{background:var(--panel);display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+.side-top{padding:14px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+.row{display:flex;align-items:center;gap:10px}
+.brand{font-weight:700;letter-spacing:-.01em;flex:1}
+.list{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:6px}
+.item{display:flex;align-items:center;gap:12px;padding:10px;border-radius:10px;cursor:pointer;width:100%;background:none;border:0;text-align:left}
+.item:hover{background:var(--panel2)}
+.item.active{background:var(--out)}
+.avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:600;flex:none;position:relative;color:#fff}
+.dot{position:absolute;right:0;bottom:0;width:11px;height:11px;border-radius:50%;background:var(--online);border:2px solid var(--panel)}
+.meta{min-width:0;flex:1}
+.name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.preview{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.badge{background:var(--accent);color:#0b1520;border-radius:999px;font-size:12px;font-weight:700;padding:1px 7px;min-width:20px;text-align:center}
+.empty{color:var(--muted);text-align:center;padding:28px 16px;line-height:1.5}
+.status{font-size:13px;color:var(--muted)}
+.status.on{color:var(--online)}
+.chat{display:flex;flex-direction:column;min-height:0;background:var(--bg)}
+.chat-view{display:flex;flex-direction:column;flex:1;min-height:0}
+.chat-top{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.back{display:none}
+.messages{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:18px clamp(12px,4vw,48px);display:flex;flex-direction:column;gap:6px}
+.msg{max-width:min(520px,80%);padding:8px 12px;border-radius:14px;background:var(--in);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.4;border-bottom-left-radius:4px}
+.msg.own{align-self:flex-end;background:var(--out);border-bottom-left-radius:14px;border-bottom-right-radius:4px}
+.time{display:block;font-size:11px;color:var(--muted);text-align:right;margin-top:3px}
+.msg.own .time{color:#a9c4de}
+.composer{display:flex;gap:10px;align-items:flex-end;padding:12px 16px;background:var(--panel);border-top:1px solid var(--line)}
+.composer textarea{flex:1;resize:none;max-height:140px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;outline:none;line-height:1.4}
+.composer textarea:focus{border-color:var(--accent)}
+.placeholder{margin:auto;color:var(--muted);text-align:center;padding:24px}
+.stories{display:flex;gap:12px;padding:10px 14px;overflow-x:auto;border-bottom:1px solid var(--line)}
+.stories[hidden]{display:none!important}
+.story{display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;cursor:pointer;color:var(--text);font-size:12px;flex:none}
+.story .ring{width:56px;height:56px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#5ea8e0,#4fd18b)}
+.story.seen .ring{background:var(--line)}
+.story .ring span{display:grid;place-items:center;width:100%;height:100%;border-radius:50%;background:var(--bg);font-weight:700;font-size:18px}
+.viewer{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:25;display:flex;align-items:center;justify-content:center;padding:24px}
+.viewer[hidden]{display:none!important}
+.viewer-box{background:var(--panel);border-radius:16px;padding:32px 28px 28px;max-width:420px;width:100%;position:relative;white-space:pre-wrap;overflow-wrap:anywhere;font-size:18px;line-height:1.5}
+.viewer-title{font-size:13px;color:var(--muted);margin-bottom:12px}
+.viewer-close{position:absolute;top:8px;right:10px}
+.viewer-img{width:100%;max-height:55vh;object-fit:contain;border-radius:12px;margin-bottom:12px;display:block}
+.viewer-img[hidden]{display:none!important}
+.viewer-box{max-height:90vh;overflow-y:auto}
+#storyDelBtn{margin-top:16px;width:100%;text-align:center}
+.gone{color:var(--muted);font-style:italic}
+:root[data-theme="light"]{--bg:#eef2f7;--panel:#ffffff;--panel2:#e6ebf2;--line:#d5dce6;--out:#d6e7fb;--in:#ffffff;--accent:#2b7bc4;--text:#1b2631;--muted:#66768a;--online:#2fa86a;--danger:#d9534f}
+:root[data-theme="purple"]{--bg:#171225;--panel:#211a33;--panel2:#302545;--line:#44345e;--out:#49316d;--in:#261d38;--accent:#b78cff;--text:#f6efff;--muted:#b9a9ce;--online:#52d69a;--danger:#ff7777}
+:root[data-theme="ocean"]{--bg:#071b2b;--panel:#0d293d;--panel2:#15384e;--line:#24516a;--out:#174766;--in:#0e3047;--accent:#42c6e8;--text:#e8f8ff;--muted:#9cc2d2;--online:#52d69a;--danger:#ff7777}
+:root[data-theme="rose"]{--bg:#28151e;--panel:#38202c;--panel2:#4a2a39;--line:#664052;--out:#71374f;--in:#402532;--accent:#ff8eb7;--text:#fff0f5;--muted:#d6a8b9;--online:#52d69a;--danger:#ff7777}
+.modal-box{max-height:85vh;overflow-y:auto;max-width:460px;font-size:15px;line-height:1.4}
+.pf-head{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:18px}
+.pf-avatar{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;font-size:36px;font-weight:700;color:#fff;position:relative;overflow:hidden}
+.pf-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pf-name{font-size:20px;font-weight:650}
+.pf-status{font-size:13px;color:var(--muted)}
+.pf-status.on{color:var(--online)}
+.pf-bio{background:var(--bg);border-radius:12px;padding:12px 14px;margin:12px 0;color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
+.pf-bio.empty{color:var(--muted);font-style:italic}
+.pf-actions{display:flex;flex-direction:column;gap:8px}
+.pf-actions .btn{width:100%}
+.pf-actions .btn.ghost{background:var(--panel2);color:var(--text)}
+.pf-actions .btn.danger{background:var(--danger);color:#fff}
+.acc-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.acc-row .meta{min-width:0;flex:1}
+.acc-row .sub{font-size:12px;color:var(--muted)}
+.acc-row .sub.on{color:var(--online)}
+.acc-row .btn{padding:7px 10px;font-size:13px}
+.acc-head{font-size:18px;font-weight:650;margin-bottom:6px}
+.acc-foot{margin-top:18px}
+.clickable{cursor:pointer}
+.gift-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.gcard{background:var(--bg);border-radius:12px;padding:6px;cursor:pointer;text-align:center;min-width:0}
+.gcard img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;display:block}
+.gcard-name{font-size:12px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gcard-price{font-size:12px;color:#f5c542}
+.shelf{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.shelf img{width:100%;aspect-ratio:1;height:auto}
+body{background-size:cover;background-position:center;background-attachment:fixed}
+body.has-bg .chat,body.has-bg .messages{background:transparent}
+.reacts{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.react{background:var(--panel2);border:0;border-radius:999px;padding:2px 9px;font-size:13px;color:var(--text);cursor:pointer}
+.react.mine{background:var(--accent);color:#0b1520}
+.emoji-bar{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.emoji-bar button{font-size:24px;background:none;border:0;cursor:pointer;padding:4px 6px;border-radius:10px}
+.emoji-bar button:hover{background:var(--panel2)}
+#storyReacts{margin-bottom:8px}
+.chan-note{padding:14px 16px;text-align:center;color:var(--muted);border-top:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;align-items:center;gap:10px}
+.chan-note .btn{min-width:160px}
+.gift-card{display:flex;flex-direction:column;gap:6px;width:240px;max-width:100%}
+.gift-card img{width:100%;max-height:240px;object-fit:cover;border-radius:12px;display:block}
+.gift-title{font-weight:650}
+.gift-desc{font-size:13px;color:var(--muted);white-space:pre-wrap}
+.gift-price{color:#f5c542;font-weight:600}
+.shelf{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.shelf img{width:60px;height:60px;border-radius:12px;object-fit:cover;border:1px solid var(--line)}
+.stories{display:flex;gap:12px;padding:12px 14px;overflow-x:auto;border-bottom:1px solid var(--line)}
+.story{flex:none;width:60px;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;cursor:pointer;color:var(--muted);font-size:11px;padding:0}
+.story-ring{width:52px;height:52px;border-radius:50%;padding:2px;background:linear-gradient(135deg,#5ea8e0,#4fd18b);display:grid;place-items:center}
+.story-ring span{width:100%;height:100%;border-radius:50%;background:var(--panel);display:grid;place-items:center;color:var(--text);font-weight:700;font-size:18px}
+.story.add .story-ring{background:var(--panel2)}
+.story-view{position:fixed;inset:0;background:rgba(5,10,16,.92);z-index:25;display:flex;align-items:center;justify-content:center;padding:24px;cursor:pointer}
+.story-view[hidden]{display:none!important}
+.story-card{max-width:520px;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;font-size:17px;cursor:default}
+.story-meta{color:var(--muted);font-size:13px;margin-bottom:12px}
+.avatar img{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover}
+.chat-top{position:relative}
+.menu{position:absolute;right:12px;top:58px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:15;min-width:200px;padding:6px}
+.menu-item{display:block;width:100%;background:none;border:0;text-align:left;padding:10px 12px;border-radius:8px;cursor:pointer;color:var(--danger)}
+.menu-item:hover{background:var(--panel)}
+.msg img.media,.msg video.media{display:block;max-width:100%;max-height:320px;border-radius:10px;cursor:pointer}
+.msg audio.media{display:block;width:240px;max-width:100%}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:9;max-width:90vw}
+@media (max-width:760px){
+  .app{grid-template-columns:1fr}
+  .sidebar{border-right:0}
+  .app.chat-open .sidebar{display:none}
+  .app:not(.chat-open) .chat{display:none}
+  .back{display:inline-flex}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<section id="login" class="login" hidden>
+  <form class="card" id="loginForm" novalidate>
+    <h1>gigi chat</h1>
+    <p data-i18n="tagline"></p>
+    <label for="nick" data-i18n="nickLabel"></label>
+    <input id="nick" class="field" autocomplete="username" maxlength="20">
+    <label for="pass" data-i18n="passLabel" style="margin-top:14px"></label>
+    <input id="pass" class="field" type="password" autocomplete="current-password" maxlength="100">
+    <div class="hint" id="loginHint"></div>
+    <button class="btn" style="width:100%;margin-top:14px" data-i18n="enter"></button>
+    <div class="lang" style="justify-content:center;margin-top:18px">
+      <button type="button" data-set-lang="en">EN</button>
+      <button type="button" data-set-lang="uk">УК</button>
+      <button type="button" data-set-lang="ru">РУ</button>
+    </div>
+  </form>
+</section>
+
+<section id="app" class="app" hidden>
+  <aside class="sidebar">
+    <div class="side-top">
+      <div class="row">
+        <button class="icon" id="myProfileBtn" aria-label="profile" title="Профіль">👤</button>
+        <div class="brand">gigi chat</div>
+        <button class="icon" id="searchMsgBtn" data-i18n-title="searchMsgTitle">🔎</button>
+        <button class="icon" id="inviteBtn" data-i18n-title="inviteTitle" aria-label="invite">🔗</button>
+        <div class="lang">
+          <button type="button" data-set-lang="en">EN</button>
+          <button type="button" data-set-lang="uk">УК</button>
+          <button type="button" data-set-lang="ru">РУ</button>
+        </div>
+      </div>
+      <input id="search" class="field" type="search" autocomplete="off" data-i18n-ph="search">
+      <div class="row"><select id="folderFilter" class="field" aria-label="Папка чатів"><option value="all">Усі чати</option><option value="personal">Особисті</option><option value="groups">Групи</option><option value="channels">Канали</option></select><button class="icon" id="folderManage" title="Папки">📁</button></div>
+    </div>
+    <input id="storyPhoto" type="file" accept="image/*" hidden>
+    <input id="myStoryPhoto" type="file" accept="image/*" hidden>
+    <input id="bgInput" type="file" accept="image/*" hidden>
+    <div class="stories" id="stories" hidden></div>
+    <div class="list" id="list"></div>
+    <div class="side-top" style="border-top:1px solid var(--line);border-bottom:0">
+      <div class="row">
+        <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+        <button class="icon" id="photoBtn" data-i18n="photoBtn" hidden></button>
+        <input id="avatarInput" type="file" accept="image/*" hidden>
+        <button class="icon" id="marketBtn" data-i18n-title="marketBtn">🛍</button>
+        <button class="icon" id="groupsBtn" data-i18n-title="groupsBtn">👥</button>
+        <button class="icon" id="adminBtn" data-i18n-title="adminBtn">🔑</button>
+        <button class="icon" id="storyBtn" data-i18n-title="storyBtn" hidden>📖</button>
+        <button class="icon" id="storyPhotoBtn" data-i18n-title="storyPhotoBtn" hidden>🖼</button>
+        <button class="icon" id="renameBtn" data-i18n="renameBtn" hidden></button>
+        <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)" hidden></button>
+        <button class="icon" id="settingsBtn" aria-label="settings" title="Налаштування">⚙</button>
+        <button class="icon" id="logout" aria-label="logout">⎋</button>
+      </div>
+      <div class="hint" id="net"></div>
+    </div>
+  </aside>
+  <main class="chat" id="chat">
+    <div class="placeholder" id="placeholder" data-i18n="selectChat"></div>
+    <div class="chat-view" id="chatView" hidden>
+      <header class="chat-top">
+        <button class="icon back" id="back" aria-label="back">←</button>
+        <div class="avatar" id="hAvatar" style="width:40px;height:40px;font-size:15px"></div>
+        <div class="meta">
+          <div class="name" id="hName"></div>
+          <div class="status" id="hStatus"></div>
+        </div>
+        <button class="icon" id="giftChatBtn" title="Подарунок">🎁</button>
+        <button class="icon" id="moreBtn" aria-label="menu">⋮</button>
+      </header>
+      <div id="chatMenu" class="menu" hidden>
+        <button id="complaintBtn" class="menu-item" data-i18n="complaintBtn"></button>
+        <button id="blockChatBtn" class="menu-item" data-i18n="blockBtn"></button>
+        <button id="adminDelBtn" class="menu-item" data-i18n="adminDelete"></button>
+      </div>
+      <div id="pinBar" class="pin-bar" hidden></div>
+      <div class="messages" id="messages"></div>
+      <div id="replyBar" class="chan-note" hidden></div>
+      <form class="composer" id="composer">
+        <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn"></button>
+        <input id="fileInput" type="file" accept="image/*,video/mp4,video/webm,video/quicktime,audio/*,.pdf,.zip,.doc,.docx,.xls,.xlsx,.csv,.txt" hidden>
+        <button type="button" class="icon" id="recBtn" title="Голосове повідомлення">🎙️</button>
+        <textarea id="input" rows="1" data-i18n-ph="typeMessage"></textarea>
+        <button class="btn" data-i18n="send"></button>
+      </form>
+      <div id="chanNote" class="chan-note" hidden></div>
+    </div>
+  </main>
+</section>
+
+<div id="storyView" class="story-view" hidden>
+  <div class="story-card">
+    <div class="story-meta" id="storyMeta"></div>
+    <div id="storyText"></div>
+  </div>
+</div>
+
+<div id="viewer" class="viewer" hidden>
+  <div class="viewer-box">
+    <button class="icon viewer-close" id="viewerClose">✕</button>
+    <div class="viewer-title" id="viewerTitle"></div>
+    <img id="viewerImg" class="viewer-img" alt="" hidden>
+    <div id="viewerText"></div>
+    <div id="storyReacts"></div>
+    <button id="storyDelBtn" class="menu-item" data-i18n="storyDelete"></button>
+  </div>
+</div>
+
+<div id="modal" class="viewer" hidden>
+  <div class="viewer-box modal-box">
+    <button class="icon viewer-close" id="modalClose">✕</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const I18N = {
+  en: {
+    tagline: 'Pick a nickname and password to start chatting',
+    nickLabel: 'Nickname', nickHint: '3–20 characters: letters, digits or _',
+    passLabel: 'Password', errShortPass: 'Password: at least 4 characters',
+    errTaken: 'This nickname is taken or the password is wrong', errSession: 'Session expired. Please log in again.',
+    accountDeleted: 'Your account was deleted.',
+    enter: 'Enter', logout: 'Log out', search: 'Search by nickname',
+    renameBtn: 'Rename', deleteBtn: 'Delete', renamePrompt: 'New nickname (3–20 characters)',
+    renamed: 'Nickname changed', errNickTaken: 'This nickname is taken',
+    confirmDelete: 'Delete your account and all your messages? This cannot be undone.',
+    noChats: 'No chats yet. Search for a friend by nickname.', noResults: 'No one found',
+    selectChat: 'Select a chat to start messaging', typeMessage: 'Write a message…', send: 'Send',
+    online: 'online', offline: 'offline', errInvalidNick: 'Nickname: 3–20 letters, digits or _',
+    errNoUser: 'This user does not exist', errNetwork: 'No connection. Reconnecting…',
+    messageFailed: 'Message not sent', back: 'Back', newMessage: 'New message from {name}', you: 'You',
+    readAt: 'read {time}',
+    confirmDeleteMsg: 'Delete this message for both of you?', msgDeleted: 'A message was deleted',
+    attachBtn: 'File', recBtn: 'Voice', recStop: 'Stop', photoLabel: 'Photo', videoLabel: 'Video', voiceLabel: 'Voice message',
+    storyAdd: 'Story', storyCode: 'Admin code', storyTextPrompt: 'Story text', storyPosted: 'Story posted',
+    photoBtn: 'Photo', photoSaved: 'Photo saved', adminDelete: 'Delete account forever',
+    adminConfirm: 'Delete this account and all its messages forever?', adminCodePrompt: 'Enter the admin code',
+    adminDone: 'Account deleted', badCode: 'Wrong code',
+    storyBtn: 'Story', storyPrompt: 'Story text (up to 500 characters)', storyPosted: 'Story published',
+    storyTitle: 'gigi chat', newStory: 'New story from gigi chat', storyPhotoBtn: 'Photo story',
+    adminBtn: 'Admin', accountsTitle: 'All accounts', noAccounts: 'No accounts yet',
+    deleteAllBtn: 'Delete all accounts', deleteAllConfirm: 'Delete ALL accounts and ALL messages? This cannot be undone.',
+    deleteAllConfirm2: 'Are you really sure? Everything will be lost.', allDeleted: 'All accounts were deleted',
+    profileTitle: 'Profile', aboutLabel: 'About', noBio: 'No description yet', bioPrompt: 'About you (up to 200 characters)',
+    editBio: 'Edit about', changePhoto: 'Change photo', removePhoto: 'Remove photo', writeMsg: 'Write a message',
+    created: 'created', lastSeen: 'last seen {time}', deleteUserConfirm: 'Delete this account and all its messages?',
+    photoRemoved: 'Photo removed', bioSaved: 'Saved', deleteMsgBtn: 'Delete message',
+    groupsBtn: 'Groups', newGroup: 'New group or channel', groupTitle: 'Name', kindGroup: 'Group', kindChannel: 'Channel',
+    createGroup: 'Create', groupCreated: 'Created', groupJoined: 'Joined', groupLeft: 'Left the group',
+    joinBtn: 'Join', leaveBtn: 'Leave', openBtn: 'Open', groupsTitle: 'Groups and channels', noGroups: 'No groups yet',
+    joinToWrite: 'Join to write messages', channelReadOnly: 'Only the owner can post in this channel',
+    groupInfo: '{n} members', channelInfo: '{n} subscribers', groupDeleteBtn: 'Delete',
+    groupDeleteConfirm: 'Delete this group and all its messages?', groupDeleted: 'Deleted',
+    newGroupMsg: 'New message in {title}', ownerCantLeave: 'The owner cannot leave',
+    marketBtn: 'Market', marketTitle: 'Market', myGiftsBtn: 'My gifts', createGiftBtn: 'Create gift',
+    adminStarsBtn: 'Give stars', marketEmpty: 'No gifts for sale', buyBtn: 'Buy', buyConfirm: 'Buy this gift for stars?',
+    sellBtn: 'Sell for {n} ⭐', sellConfirm: 'Sell for {n} stars? You get 80% of the price.', giftSendBtn: 'Send',
+    giftNick: 'Recipient nickname', giftSent: 'Gift sent', giftNoSelf: 'Choose someone else',
+    onShelf: 'On your shelf', shelfOn: 'Show on profile', shelfOff: 'Remove from profile',
+    giftTitleField: 'Gift name (up to 40 characters)', giftDescField: 'Description (optional)', giftPriceField: 'Price in stars',
+    giftPhotoBtn: 'Choose photo', giftPhotoNone: 'No photo chosen', giftPhotoOk: 'Photo added',
+    giftCreated: 'Gift created', giftCreateBtn: 'Create', starsAmount: 'Stars amount', giveStarsBtn: 'Give',
+    giftCountField: 'How many copies (1–100)',
+    inviteTitle: 'Invite a friend', inviteText: 'Join me on gigi chat!', inviteCopied: 'Link copied',
+    handleLabel: 'Username (English letters, digits, _)', handleRequired: 'Enter a username (English letters)',
+    handleInvalid: 'Username: 3–20 English letters, digits or _', handleTaken: 'This username is taken',
+    handlePrompt: 'Choose a username (English letters, 3–20 characters)', handleSaved: 'Username saved',
+    settingsTitle: 'Settings', themeLabel: 'Theme', themeDark: 'Dark', themeLight: 'Light',
+    premiumTitle: 'Premium', premiumActive: 'Premium is active', premiumNone: 'Premium is not active',
+    premium1Btn: 'Premium 1 month: 1000 ⭐', premium12Btn: 'Premium 1 year: 5000 ⭐', premiumBought: 'Premium activated',
+    myStoryBtn: 'Post a story', myStoryPhotoBtn: 'Post a photo story',
+    adminSettingsTitle: 'Admin settings', accountsBtn: 'All users', gigiStoryBtn: 'gigi chat story',
+    gigiStoryPhotoBtn: 'gigi chat photo story', bgSetBtn: 'Change background', bgClearBtn: 'Reset background',
+    bgSaved: 'Background saved', bgCleared: 'Background reset', stopOnBtn: 'Stop all writing',
+    stopOffBtn: 'Allow writing again', stopOn: 'Writing stopped for everyone', stopOff: 'Writing allowed again',
+    writesStopped: 'Writing is temporarily stopped by the administrator', notifyBtn: 'Send notification to all',
+    notifyPrompt: 'Notification text', notifySent: 'Notification sent to all users',
+    complaintBtn: 'Complain', complaintPrompt: 'Describe the problem', complaintSent: 'Complaint sent',
+    complaintsBtn: 'Complaints ({n})', complaintsTitle: 'Complaints', noComplaints: 'No complaints',
+    blockedTitle: 'Blocked users', noBlocked: 'No blocked users', unblockBtn: 'Unblock', blockBtn: 'Block user',
+    blockConfirm: 'Block this user? You will not see each other’s messages.', blocked: 'User blocked', unknown: 'Unknown',
+    inviteRewarded: '+15 stars for the invite!', inviteAlready: 'You already got today\u2019s stars for invites',
+    inviteText: 'Join me in gigi chat:', inviteCopied: 'Link copied', inviteDone: '+15 ⭐ for inviting a friend',
+    inviteAlready: 'You already got today’s reward',
+    starsGiven: 'Stars given', adminGiveBtn: 'Give to user', adminDeleteBtn: 'Delete gift',
+    giftDeleteConfirm: 'Delete this gift from the market?', giftDeleted: 'Gift deleted', noMyGifts: 'You have no gifts yet',
+    giftLabel: 'Gift', giftSold: 'Sold', giftBought: 'Purchased',
+    noStars: 'Not enough stars', soldOut: 'This gift was already bought',
+    broadcastBtn: 'Send to all users', broadcastTitle: 'Send to all users', broadcastCountQ: 'How many of this gift for each user (1–100)',
+    broadcastConfirm: 'Send this gift to every user?', broadcastDone: 'Sent to all users', giftChatTitle: 'Send a gift',
+    photoGone: 'Photo expired', storyAddPhoto: 'Add a photo to the story?', storyDelete: 'Delete story',
+    storyDeleteConfirm: 'Delete this story for everyone?', storyDeleted: 'Story deleted',
+    fileTooBig: 'File is too large (max 15 MB)', uploadFailed: 'Could not send the file',
+    micDenied: 'Allow microphone access to send voice messages', badFile: 'This file type is not supported'
+  },
+  uk: {
+    tagline: 'Оберіть нікнейм і пароль, щоб почати спілкування',
+    nickLabel: 'Нікнейм', nickHint: '3–20 символів: літери, цифри або _',
+    passLabel: 'Пароль', errShortPass: 'Пароль: щонайменше 4 символи',
+    errTaken: 'Цей нікнейм уже зайнятий або пароль невірний', errSession: 'Сеанс завершився. Увійдіть знову.',
+    accountDeleted: 'Акаунт видалено.',
+    enter: 'Увійти', logout: 'Вийти', search: 'Пошук за нікнеймом',
+    renameBtn: 'Нікнейм', deleteBtn: 'Видалити', renamePrompt: 'Новий нікнейм (3–20 символів)',
+    renamed: 'Нікнейм змінено', errNickTaken: 'Цей нікнейм уже зайнятий',
+    confirmDelete: 'Видалити акаунт і всі ваші повідомлення? Це не можна скасувати.',
+    noChats: 'Чатів ще немає. Знайдіть друга за нікнеймом.', noResults: 'Нікого не знайдено',
+    selectChat: 'Оберіть чат, щоб почати листування', typeMessage: 'Напишіть повідомлення…', send: 'Надіслати',
+    online: 'в мережі', offline: 'не в мережі', errInvalidNick: 'Нікнейм: 3–20 літер, цифр або _',
+    errNoUser: 'Такого користувача не існує', errNetwork: 'Немає зв’язку. Перепідключення…',
+    messageFailed: 'Повідомлення не надіслано', back: 'Назад', newMessage: 'Нове повідомлення від {name}', you: 'Ви',
+    readAt: 'прочитано {time}',
+    confirmDeleteMsg: 'Видалити це повідомлення для обох?', msgDeleted: 'Повідомлення видалено',
+    attachBtn: 'Файл', recBtn: 'Голос', recStop: 'Стоп', photoLabel: 'Фото', videoLabel: 'Відео', voiceLabel: 'Голосове повідомлення',
+    storyAdd: 'Історія', storyCode: 'Код адміністратора', storyTextPrompt: 'Текст історії', storyPosted: 'Історію опубліковано',
+    photoBtn: 'Фото', photoSaved: 'Фото збережено', adminDelete: 'Видалити акаунт назавжди',
+    adminConfirm: 'Видалити цей акаунт і всі його повідомлення назавжди?', adminCodePrompt: 'Введіть код адміністратора',
+    adminDone: 'Акаунт видалено', badCode: 'Невірний код',
+    storyBtn: 'Історія', storyPrompt: 'Текст історії (до 500 символів)', storyPosted: 'Історію опубліковано',
+    storyTitle: 'gigi chat', newStory: 'Нова історія від gigi chat', storyPhotoBtn: 'Фото-історія',
+    adminBtn: 'Адмін', accountsTitle: 'Усі акаунти', noAccounts: 'Акаунтів ще немає',
+    deleteAllBtn: 'Видалити всі акаунти', deleteAllConfirm: 'Видалити ВСІ акаунти і ВСІ повідомлення? Це не можна скасувати.',
+    deleteAllConfirm2: 'Ви точно впевнені? Усе буде втрачено.', allDeleted: 'Усі акаунти видалено',
+    profileTitle: 'Профіль', aboutLabel: 'Про себе', noBio: 'Опису ще немає', bioPrompt: 'Про себе (до 200 символів)',
+    editBio: 'Змінити опис', changePhoto: 'Змінити фото', removePhoto: 'Видалити фото', writeMsg: 'Написати',
+    created: 'створено', lastSeen: 'був(ла) в мережі {time}', deleteUserConfirm: 'Видалити цей акаунт і всі його повідомлення?',
+    photoRemoved: 'Фото видалено', bioSaved: 'Збережено', deleteMsgBtn: 'Видалити повідомлення',
+    groupsBtn: 'Групи', newGroup: 'Нова група або канал', groupTitle: 'Назва', kindGroup: 'Група', kindChannel: 'Канал',
+    createGroup: 'Створити', groupCreated: 'Створено', groupJoined: 'Приєднано', groupLeft: 'Вийшли з групи',
+    joinBtn: 'Приєднатися', leaveBtn: 'Вийти з групи', openBtn: 'Відкрити', groupsTitle: 'Групи та канали', noGroups: 'Груп ще немає',
+    joinToWrite: 'Приєднайтеся, щоб писати', channelReadOnly: 'Писати в цьому каналі може лише автор',
+    groupInfo: '{n} учасників', channelInfo: '{n} підписників', groupDeleteBtn: 'Видалити',
+    groupDeleteConfirm: 'Видалити цю групу або канал і всі повідомлення?', groupDeleted: 'Видалено',
+    newGroupMsg: 'Нове повідомлення в {title}', ownerCantLeave: 'Автор не може вийти',
+    marketBtn: 'Маркет', marketTitle: 'Маркет', myGiftsBtn: 'Мої подарунки', createGiftBtn: 'Створити подарунок',
+    adminStarsBtn: 'Видати зірки', marketEmpty: 'Подарунків у продажу немає', buyBtn: 'Купити', buyConfirm: 'Купити цей подарунок за зірки?',
+    sellBtn: 'Продати за {n} ⭐', sellConfirm: 'Продати за {n} зірок? Ви отримаєте 80% ціни.', giftSendBtn: 'Надіслати',
+    giftNick: 'Нікнейм отримувача', giftSent: 'Подарунок надіслано', giftNoSelf: 'Оберіть іншого користувача',
+    onShelf: 'На полиці в профілі', shelfOn: 'Показати в профілі', shelfOff: 'Прибрати з профілю',
+    giftTitleField: 'Назва подарунка (до 40 символів)', giftDescField: 'Опис (необов’язково)', giftPriceField: 'Ціна в зірках',
+    giftPhotoBtn: 'Обрати фото', giftPhotoNone: 'Фото ще не обрано', giftPhotoOk: 'Фото додано',
+    giftCreated: 'Подарунок створено', giftCreateBtn: 'Створити', starsAmount: 'Кількість зірок', giveStarsBtn: 'Видати',
+    giftCountField: 'Скільки примірників (1–100)',
+    inviteTitle: 'Запросити друга', inviteText: 'Приєднуйся до gigi chat!', inviteCopied: 'Посилання скопійовано',
+    handleLabel: 'Юзернейм (англійські літери, цифри, _)', handleRequired: 'Введіть юзернейм англійською',
+    handleInvalid: 'Юзернейм: 3–20 англійських літер, цифр або _', handleTaken: 'Цей юзернейм уже зайнятий',
+    handlePrompt: 'Оберіть юзернейм (англійські літери, 3–20 символів)', handleSaved: 'Юзернейм збережено',
+    settingsTitle: 'Налаштування', themeLabel: 'Тема', themeDark: 'Темна', themeLight: 'Світла',
+    premiumTitle: 'Преміум', premiumActive: 'Преміум активний', premiumNone: 'Преміум не активний',
+    premium1Btn: 'Преміум на місяць: 1000 ⭐', premium12Btn: 'Преміум на рік: 5000 ⭐', premiumBought: 'Преміум активовано',
+    myStoryBtn: 'Опублікувати історію', myStoryPhotoBtn: 'Опублікувати фото-історію',
+    adminSettingsTitle: 'Налаштування адміна', accountsBtn: 'Усі користувачі', gigiStoryBtn: 'Історія gigi chat',
+    gigiStoryPhotoBtn: 'Фото-історія gigi chat', bgSetBtn: 'Змінити фон', bgClearBtn: 'Повернути фон як було',
+    bgSaved: 'Фон збережено', bgCleared: 'Фон повернуто', stopOnBtn: 'Стоп: ніхто не пише',
+    stopOffBtn: 'Дозволити писати знову', stopOn: 'Писати заборонено всім', stopOff: 'Писати знову дозволено',
+    writesStopped: 'Адміністратор тимчасово зупинив листування', notifyBtn: 'Сповіщення всім від gigi chat',
+    notifyPrompt: 'Текст сповіщення', notifySent: 'Сповіщення надіслано всім',
+    complaintBtn: 'Поскаржитися', complaintPrompt: 'Опишіть проблему', complaintSent: 'Скаргу надіслано',
+    complaintsBtn: 'Скарги ({n})', complaintsTitle: 'Скарги', noComplaints: 'Скарг немає',
+    blockedTitle: 'Заблоковані користувачі', noBlocked: 'Заблокованих немає', unblockBtn: 'Розблокувати', blockBtn: 'Заблокувати',
+    blockConfirm: 'Заблокувати цього користувача? Ви не бачитимете повідомлень один одного.', blocked: 'Користувача заблоковано', unknown: 'Невідомо',
+    inviteRewarded: '+15 зірок за запрошення!', inviteAlready: 'Зірки за запрошення сьогодні вже отримано',
+    starsGiven: 'Зірки видано', adminGiveBtn: 'Подарувати користувачу', adminDeleteBtn: 'Видалити подарунок',
+    giftDeleteConfirm: 'Видалити цей подарунок з маркету?', giftDeleted: 'Подарунок видалено', noMyGifts: 'Подарунків ще немає',
+    giftLabel: 'Подарунок', giftSold: 'Продано', giftBought: 'Куплено',
+    noStars: 'Недостатньо зірок', soldOut: 'Цей подарунок уже куплено',
+    broadcastBtn: 'Відправити всім користувачам', broadcastTitle: 'Відправити всім користувачам', broadcastCountQ: 'Скільки таких подарунків кожному (1–100)',
+    broadcastConfirm: 'Надіслати цей подарунок усім користувачам?', broadcastDone: 'Надіслано всім користувачам', giftChatTitle: 'Надіслати подарунок',
+    photoGone: 'Фото вже не доступне', storyAddPhoto: 'Додати фото до історії?', storyDelete: 'Видалити історію',
+    storyDeleteConfirm: 'Видалити цю історію для всіх?', storyDeleted: 'Історію видалено',
+    fileTooBig: 'Файл завеликий (максимум 15 МБ)', uploadFailed: 'Не вдалося надіслати файл',
+    micDenied: 'Дозвольте доступ до мікрофона, щоб надсилати голосові', badFile: 'Цей тип файлу не підтримується'
+  },
+  ru: {
+    tagline: 'Выберите никнейм и пароль, чтобы начать общение',
+    nickLabel: 'Никнейм', nickHint: '3–20 символов: буквы, цифры или _',
+    passLabel: 'Пароль', errShortPass: 'Пароль: минимум 4 символа',
+    errTaken: 'Этот никнейм уже занят или пароль неверный', errSession: 'Сеанс истёк. Войдите снова.',
+    accountDeleted: 'Аккаунт удалён.',
+    enter: 'Войти', logout: 'Выйти', search: 'Поиск по никнейму',
+    renameBtn: 'Никнейм', deleteBtn: 'Удалить', renamePrompt: 'Новый никнейм (3–20 символов)',
+    renamed: 'Никнейм изменён', errNickTaken: 'Этот никнейм уже занят',
+    confirmDelete: 'Удалить аккаунт и все ваши сообщения? Это нельзя отменить.',
+    noChats: 'Чатов пока нет. Найдите друга по никнейму.', noResults: 'Никого не найдено',
+    selectChat: 'Выберите чат, чтобы начать переписку', typeMessage: 'Напишите сообщение…', send: 'Отправить',
+    online: 'в сети', offline: 'не в сети', errInvalidNick: 'Никнейм: 3–20 букв, цифр или _',
+    errNoUser: 'Такого пользователя не существует', errNetwork: 'Нет связи. Переподключение…',
+    messageFailed: 'Сообщение не отправлено', back: 'Назад', newMessage: 'Новое сообщение от {name}', you: 'Вы',
+    readAt: 'прочитано {time}',
+    confirmDeleteMsg: 'Удалить это сообщение у обоих?', msgDeleted: 'Сообщение удалено',
+    attachBtn: 'Файл', recBtn: 'Голос', recStop: 'Стоп', photoLabel: 'Фото', videoLabel: 'Видео', voiceLabel: 'Голосовое сообщение',
+    storyAdd: 'История', storyCode: 'Код администратора', storyTextPrompt: 'Текст истории', storyPosted: 'История опубликована',
+    photoBtn: 'Фото', photoSaved: 'Фото сохранено', adminDelete: 'Удалить аккаунт навсегда',
+    adminConfirm: 'Удалить этот аккаунт и все его сообщения навсегда?', adminCodePrompt: 'Введите код администратора',
+    adminDone: 'Аккаунт удалён', badCode: 'Неверный код',
+    storyBtn: 'История', storyPrompt: 'Текст истории (до 500 символов)', storyPosted: 'История опубликована',
+    storyTitle: 'gigi chat', newStory: 'Новая история от gigi chat', storyPhotoBtn: 'Фото-история',
+    adminBtn: 'Админ', accountsTitle: 'Все аккаунты', noAccounts: 'Аккаунтов пока нет',
+    deleteAllBtn: 'Удалить все аккаунты', deleteAllConfirm: 'Удалить ВСЕ аккаунты и ВСЕ сообщения? Это нельзя отменить.',
+    deleteAllConfirm2: 'Вы точно уверены? Всё будет потеряно.', allDeleted: 'Все аккаунты удалены',
+    profileTitle: 'Профиль', aboutLabel: 'О себе', noBio: 'Описания пока нет', bioPrompt: 'О себе (до 200 символов)',
+    editBio: 'Изменить описание', changePhoto: 'Изменить фото', removePhoto: 'Удалить фото', writeMsg: 'Написать',
+    created: 'создан', lastSeen: 'был(а) в сети {time}', deleteUserConfirm: 'Удалить этот аккаунт и все его сообщения?',
+    photoRemoved: 'Фото удалено', bioSaved: 'Сохранено', deleteMsgBtn: 'Удалить сообщение',
+    groupsBtn: 'Группы', newGroup: 'Новая группа или канал', groupTitle: 'Название', kindGroup: 'Группа', kindChannel: 'Канал',
+    createGroup: 'Создать', groupCreated: 'Создано', groupJoined: 'Присоединено', groupLeft: 'Вы вышли из группы',
+    joinBtn: 'Присоединиться', leaveBtn: 'Выйти из группы', openBtn: 'Открыть', groupsTitle: 'Группы и каналы', noGroups: 'Групп пока нет',
+    joinToWrite: 'Присоединитесь, чтобы писать', channelReadOnly: 'Писать в этом канале может только автор',
+    groupInfo: '{n} участников', channelInfo: '{n} подписчиков', groupDeleteBtn: 'Удалить',
+    groupDeleteConfirm: 'Удалить эту группу или канал и все сообщения?', groupDeleted: 'Удалено',
+    newGroupMsg: 'Новое сообщение в {title}', ownerCantLeave: 'Автор не может выйти',
+    marketBtn: 'Маркет', marketTitle: 'Маркет', myGiftsBtn: 'Мои подарки', createGiftBtn: 'Создать подарок',
+    adminStarsBtn: 'Выдать звёзды', marketEmpty: 'Подарков в продаже нет', buyBtn: 'Купить', buyConfirm: 'Купить этот подарок за звёзды?',
+    sellBtn: 'Продать за {n} ⭐', sellConfirm: 'Продать за {n} звёзд? Вы получите 80% цены.', giftSendBtn: 'Отправить',
+    giftNick: 'Никнейм получателя', giftSent: 'Подарок отправлен', giftNoSelf: 'Выберите другого пользователя',
+    onShelf: 'На полке в профиле', shelfOn: 'Показать в профиле', shelfOff: 'Убрать из профиля',
+    giftTitleField: 'Название подарка (до 40 символов)', giftDescField: 'Описание (необязательно)', giftPriceField: 'Цена в звёздах',
+    giftPhotoBtn: 'Выбрать фото', giftPhotoNone: 'Фото ещё не выбрано', giftPhotoOk: 'Фото добавлено',
+    giftCreated: 'Подарок создан', giftCreateBtn: 'Создать', starsAmount: 'Количество звёзд', giveStarsBtn: 'Выдать',
+    giftCountField: 'Сколько экземпляров (1–100)',
+    inviteTitle: 'Пригласить друга', inviteText: 'Присоединяйся к gigi chat!', inviteCopied: 'Ссылка скопирована',
+    handleLabel: 'Юзернейм (английские буквы, цифры, _)', handleRequired: 'Введите юзернейм латиницей',
+    handleInvalid: 'Юзернейм: 3–20 латинских букв, цифр или _', handleTaken: 'Этот юзернейм уже занят',
+    handlePrompt: 'Выберите юзернейм (латиница, 3–20 символов)', handleSaved: 'Юзернейм сохранён',
+    settingsTitle: 'Настройки', themeLabel: 'Тема', themeDark: 'Тёмная', themeLight: 'Светлая',
+    premiumTitle: 'Премиум', premiumActive: 'Премиум активен', premiumNone: 'Премиум не активен',
+    premium1Btn: 'Премиум на месяц: 1000 ⭐', premium12Btn: 'Премиум на год: 5000 ⭐', premiumBought: 'Премиум активирован',
+    myStoryBtn: 'Опубликовать историю', myStoryPhotoBtn: 'Опубликовать фото-историю',
+    adminSettingsTitle: 'Настройки админа', accountsBtn: 'Все пользователи', gigiStoryBtn: 'История gigi chat',
+    gigiStoryPhotoBtn: 'Фото-история gigi chat', bgSetBtn: 'Изменить фон', bgClearBtn: 'Вернуть фон как было',
+    bgSaved: 'Фон сохранён', bgCleared: 'Фон возвращён', stopOnBtn: 'Стоп: никто не пишет',
+    stopOffBtn: 'Разрешить писать снова', stopOn: 'Писать запрещено всем', stopOff: 'Писать снова разрешено',
+    writesStopped: 'Администратор временно остановил переписку', notifyBtn: 'Уведомление всем от gigi chat',
+    notifyPrompt: 'Текст уведомления', notifySent: 'Уведомление отправлено всем',
+    complaintBtn: 'Пожаловаться', complaintPrompt: 'Опишите проблему', complaintSent: 'Жалоба отправлена',
+    complaintsBtn: 'Жалобы ({n})', complaintsTitle: 'Жалобы', noComplaints: 'Жалоб нет',
+    blockedTitle: 'Заблокированные пользователи', noBlocked: 'Заблокированных нет', unblockBtn: 'Разблокировать', blockBtn: 'Заблокировать',
+    blockConfirm: 'Заблокировать этого пользователя? Вы не будете видеть сообщения друг друга.', blocked: 'Пользователь заблокирован', unknown: 'Неизвестно',
+    inviteRewarded: '+15 звёзд за приглашение!', inviteAlready: 'Звёзды за приглашение сегодня уже получены',
+    starsGiven: 'Звёзды выданы', adminGiveBtn: 'Подарить пользователю', adminDeleteBtn: 'Удалить подарок',
+    giftDeleteConfirm: 'Удалить этот подарок из маркета?', giftDeleted: 'Подарок удалён', noMyGifts: 'Подарков пока нет',
+    giftLabel: 'Подарок', giftSold: 'Продано', giftBought: 'Куплено',
+    noStars: 'Недостаточно звёзд', soldOut: 'Этот подарок уже куплен',
+    broadcastBtn: 'Отправить всем пользователям', broadcastTitle: 'Отправить всем пользователям', broadcastCountQ: 'Сколько таких подарков каждому (1–100)',
+    broadcastConfirm: 'Отправить этот подарок всем пользователям?', broadcastDone: 'Отправлено всем пользователям', giftChatTitle: 'Отправить подарок',
+    photoGone: 'Фото уже недоступно', storyAddPhoto: 'Добавить фото к истории?', storyDelete: 'Удалить историю',
+    storyDeleteConfirm: 'Удалить эту историю для всех?', storyDeleted: 'История удалена',
+    fileTooBig: 'Файл слишком большой (максимум 15 МБ)', uploadFailed: 'Не удалось отправить файл',
+    micDenied: 'Разрешите доступ к микрофону, чтобы отправлять голосовые', badFile: 'Этот тип файла не поддерживается'
+  }
+};
+const LOCALES = { en: 'en-US', uk: 'uk-UA', ru: 'ru-RU' };
+const NICK_RE = /^[\p{L}\p{N}_]{3,20}$/u;
+
+let lang = localStorage.getItem('gigi_lang') || (navigator.language || 'en').slice(0, 2);
+if (!I18N[lang]) lang = 'en';
+
+let me = localStorage.getItem('gigi_nick') || null;
+let socket = null;
+let pending = null;
+let online = new Set();
+let chats = new Map();
+let cache = new Map();
+let results = [];
+let search = '';
+let active = null;
+let netKey = null;
+let avatars = new Map(); // nick -> image url
+let stories = [];        // newest first
+const seenStories = new Set(JSON.parse(localStorage.getItem('gigi_seen') || '[]'));
+const userInfo = new Map();  // nick -> { online, lastSeen, avatar, bio }
+let adminCode = null;        // kept only while this page is open
+let groups = new Map();      // id -> group or channel summary
+let gcache = new Map();      // id -> messages of that group
+let activeGroup = null;      // id of the open group or channel (active is null then)
+let groupResults = [];       // groups and channels matching the search text
+let myPremium = false;       // true while your premium is active
+let writesStopped = false;   // true while the admin has stopped all writing
+let replyTarget = null, editTarget = null;
+let chatFolders = JSON.parse(localStorage.getItem('gigi_folders') || '{}');
+let mutedChats = new Set(JSON.parse(localStorage.getItem('gigi_muted') || '[]'));
+
+const $ = id => document.getElementById(id);
+const enc = encodeURIComponent;
+
+// Shows any unexpected error at the bottom of the screen, so it can be reported.
+window.addEventListener('error', e => { try { toast('⚠ ' + (e.message || 'error')); } catch {} });
+window.addEventListener('unhandledrejection', e => {
+  try { toast('⚠ ' + (e.reason?.message || e.reason || 'error')); } catch {}
+});
+const t = (k, vars = {}) => (I18N[lang][k] ?? I18N.en[k] ?? k).replace(/\{(\w+)\}/g, (_, v) => vars[v] ?? '');
+const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % 360; };
+const avatarBg = nick => `hsl(${hue(nick)} 45% 42%)`;
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n[k] = v;
+    else n.setAttribute(k, v);
+  }
+  n.append(...kids);
+  return n;
+};
+const unreadTotal = () => [...chats.values()].reduce((s, c) => s + (c.unread || 0), 0);
+const fmtTime = d => new Intl.DateTimeFormat(LOCALES[lang], { hour: '2-digit', minute: '2-digit' }).format(new Date(d));
+
+function applyI18n() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(n => n.textContent = t(n.dataset.i18n));
+  document.querySelectorAll('[data-i18n-ph]').forEach(n => n.placeholder = t(n.dataset.i18nPh));
+  document.querySelectorAll('[data-i18n-title]').forEach(n => n.title = t(n.dataset.i18nTitle));
+  $('logout').title = t('logout');
+  $('back').title = t('back');
+  document.querySelectorAll('[data-set-lang]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.setLang === lang)));
+  const h = $('loginHint'); if (h.dataset.key) h.textContent = t(h.dataset.key);
+  if (netKey) $('net').textContent = t(netKey);
+  document.title = unreadTotal() ? `(${unreadTotal()}) gigi chat` : 'gigi chat';
+  renderList(); renderHeader(); if (active) renderMessages();
+}
+
+function setHint(key, isErr = false) {
+  const h = $('loginHint');
+  h.dataset.key = key; h.textContent = t(key);
+  $('loginForm').classList.toggle('error', isErr);
+}
+
+function toast(msg) {
+  const n = $('toast');
+  n.textContent = msg; n.hidden = false;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => n.hidden = true, 2800);
+}
+
+function showLogin() { $('app').hidden = true; $('login').hidden = false; }
+function showApp() {
+  $('login').hidden = true; $('app').hidden = false;
+  $('meName').textContent = me;
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
+  loadChats();
+  refreshGroups();
+}
+function forget() {
+  me = null;
+  localStorage.removeItem('gigi_nick');
+  localStorage.removeItem('gigi_token');
+}
+function closeChat() {
+  active = null;
+  activeGroup = null;
+  $('app').classList.remove('chat-open');
+  $('chatView').hidden = true;
+  $('placeholder').hidden = false;
+  renderList();
+}
+
+function setNet(ok) { netKey = ok ? null : 'errNetwork'; $('net').textContent = ok ? '' : t('errNetwork'); }
+
+function markRead(nick) {
+  if (socket?.connected) socket.emit('read', { with: nick });
+}
+
+// Rename a contact everywhere on this page (chat list, cached messages, open chat).
+function renameLocal(from, to) {
+  if (chats.has(from)) { const c = chats.get(from); chats.delete(from); chats.set(to, c); }
+  if (cache.has(from)) { const list = cache.get(from); cache.delete(from); cache.set(to, list); }
+  for (const list of cache.values()) for (const m of list) {
+    if (m.from === from) m.from = to;
+    if (m.to === from) m.to = to;
+  }
+  for (const c of chats.values()) if (c.last) {
+    if (c.last.from === from) c.last.from = to;
+    if (c.last.to === from) c.last.to = to;
+  }
+  if (active === from) active = to;
+}
+
+function createSocket() {
+  socket = io();
+  socket.on('connect', () => {
+    setNet(true);
+    let payload = null;
+    if (pending) { payload = pending; pending = null; }
+    else if (localStorage.getItem('gigi_token')) payload = { token: localStorage.getItem('gigi_token') };
+    if (payload) socket.emit('login', payload, onLogin);
+  });
+  socket.on('disconnect', () => setNet(false));
+  socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); if (active) refreshInfo(active); });
+  socket.on('message', onMessage);
+  socket.on('msg_deleted', onMsgDeleted);
+  socket.on('msg_edited', m => { for (const list of cache.values()) { const x=list.find(v=>v.id===m.id); if(x){x.text=m.text;x.edited_at=m.edited_at;} } if(active) renderMessages(); });
+  socket.on('stories', list => { stories = list || []; renderStories(); });
+  socket.on('story', s => {
+    stories = [s, ...stories.filter(x => x.id !== s.id)];
+    renderStories();
+    if (!s.author) toast(t('newStory'));
+  });
+  socket.on('story_deleted', ({ id }) => {
+    stories = stories.filter(s => s.id !== id);
+    renderStories();
+    if (Number($('storyDelBtn').dataset.id) === id) $('viewer').hidden = true;
+  });
+  socket.on('avatars', obj => { avatars = new Map(Object.entries(obj || {})); renderList(); renderHeader(); });
+  socket.on('avatar', ({ nick, url }) => {
+    if (url) avatars.set(nick, url); else avatars.delete(nick);
+    renderList(); renderHeader();
+    if (nick === me && $('modal').hidden === false) openProfile(me);
+  });
+  socket.on('reaction', ({ type, id, reactions }) => {
+    if (type === 'gmsg') {
+      for (const list of gcache.values()) for (const m of list) if (m.id === id) m.reactions = reactions;
+      if (activeGroup) renderMessages();
+      return;
+    }
+    if (type === 'msg') {
+      for (const list of cache.values()) for (const m of list) if (m.id === id) m.reactions = reactions;
+      if (active) renderMessages();
+      return;
+    }
+    const s = stories.find(x => x.id === id);
+    if (s) s.reactions = reactions;
+    renderStories();
+    if (s && Number($('storyDelBtn').dataset.id) === id && !$('viewer').hidden) renderStoryReacts(s);
+  });
+  socket.on('gmessage', ({ chat, msg }) => {
+    const list = gcache.get(chat);
+    if (list && !list.some(x => x.id === msg.id)) list.push(msg);
+    const g = groups.get(chat);
+    if (g) {
+      g.last = msg;
+      if (msg.from !== me && activeGroup !== chat) {
+        g.unread = (g.unread || 0) + 1;
+        toast(t('newGroupMsg', { title: g.title }));
+      }
+      if (activeGroup === chat) g.unread = 0;
+    }
+    if (activeGroup === chat) renderMessages();
+    renderList();
+  });
+  socket.on('gmsg_deleted', ({ chat, id }) => {
+    const list = gcache.get(chat);
+    if (list) gcache.set(chat, list.filter(m => m.id !== id));
+    if (activeGroup === chat) renderMessages();
+    refreshGroups();
+  });
+  socket.on('group_deleted', ({ id }) => {
+    groups.delete(id);
+    gcache.delete(id);
+    if (activeGroup === id) closeChat();
+    renderList();
+  });
+  socket.on('app_config', c => {
+    writesStopped = Boolean(c?.stopped);
+    if (c?.bg) {
+      document.body.style.backgroundImage = `url("${c.bg}")`;
+      document.body.classList.add('has-bg');
+    } else {
+      document.body.style.backgroundImage = '';
+      document.body.classList.remove('has-bg');
+    }
+    renderComposer();
+  });
+  socket.on('all_deleted', () => {
+    sessionStorage.setItem('gigi_flash', 'allDeleted');
+    forget();
+    location.reload();
+  });
+  socket.on('read', ({ by, at }) => {
+    let changed = false;
+    for (const m of cache.get(by) || []) {
+      if (m.from === me && !m.read_at) { m.read_at = at; changed = true; }
+    }
+    if (changed && active === by) renderMessages();
+  });
+  socket.on('renamed', ({ from, to }) => {
+    if (from === me) {
+      me = to;
+      localStorage.setItem('gigi_nick', me);
+      $('meName').textContent = me;
+    }
+    renameLocal(from, to);
+    renderList(); renderHeader(); if (active) renderMessages();
+  });
+  socket.on('user_deleted', ({ nick }) => {
+    chats.delete(nick); cache.delete(nick);
+    if (active === nick) closeChat();
+    renderList();
+  });
+  socket.on('account_deleted', () => {
+    sessionStorage.setItem('gigi_flash', 'accountDeleted');
+    forget();
+    location.reload();
+  });
+}
+
+function onLogin(res) {
+  if (!res?.ok) {
+    if (res?.error === 'bad_session') { forget(); showLogin(); setHint('errSession', true); return; }
+    showLogin();
+    const keys = { invalid_nick: 'errInvalidNick', invalid_password: 'errShortPass', nick_taken: 'errTaken',
+      handle_required: 'handleRequired', invalid_handle: 'handleInvalid', handle_taken: 'handleTaken' };
+    setHint(keys[res?.error] || 'errNetwork', true);
+    return;
+  }
+  me = res.nick;
+  localStorage.setItem('gigi_nick', me);
+  if (res.token) localStorage.setItem('gigi_token', res.token);
+  loadMe();
+  showApp();
+}
+
+function mediaNode(m) {
+  if (m.kind === 'gone') return el('span', { class: 'gone' }, t('photoGone'));
+  if (m.kind === 'gift') {
+    let g = null;
+    try { g = JSON.parse(m.text); } catch {}
+    if (!g) return el('span', {}, '🎁 ' + t('giftLabel'));
+    return el('div', { class: 'gift-card' },
+      el('img', { src: g.image, alt: '' }),
+      el('div', { class: 'gift-title' }, g.title),
+      g.description ? el('div', { class: 'gift-desc' }, g.description) : el('span', { hidden: '' }),
+      el('div', { class: 'gift-price' }, '⭐ ' + g.price + (g.count > 1 ? '  × ' + g.count : '')));
+  }
+  if (!m.kind || m.kind === 'text') return null;
+  const stop = e => e.stopPropagation();
+  if (m.kind === 'image') return el('img', { src: m.text, alt: '', class: 'media', onclick: e => { stop(e); window.open(m.text, '_blank'); } });
+  if (m.kind === 'video') return el('video', { src: m.text, controls: '', playsinline: '', class: 'media', onclick: stop });
+  if (m.kind === 'audio') return el('audio', { src: m.text, controls: '', preload: 'metadata', onclick: stop, style: 'max-width:100%;display:block;margin:6px 0' });
+  if (m.kind === 'file') return el('a', { href: m.text, target: '_blank', rel: 'noopener', onclick: stop, class: 'file-attachment' }, '📎 Відкрити / завантажити файл');
+  return null;
+}
+
+function previewText(m) {
+  if (m.kind === 'gift') {
+    try { return '🎁 ' + JSON.parse(m.text).title; } catch { return '🎁 ' + t('giftLabel'); }
+  }
+  if (m.kind === 'image') return '📷 ' + t('photoLabel');
+  if (m.kind === 'video') return '🎬 ' + t('videoLabel');
+  if (m.kind === 'audio') return '🎙️ ' + t('voiceLabel');
+  if (m.kind === 'file') return '📎 Файл';
+  return m.text;
+}
+
+function readAsDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+async function sendMedia(blob) {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  if (blob.size > 15 * 1024 * 1024) return toast(t('fileTooBig'));
+  const mime = (blob.type || 'application/octet-stream').split(';')[0].toLowerCase();
+  const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
+  let data;
+  try { data = await readAsDataURL(blob); }
+  catch { return toast(t('uploadFailed')); }
+  let res;
+  try {
+    res = await (await fetch('/api/upload', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: localStorage.getItem('gigi_token'), data })
+    })).json();
+  } catch { return toast(t('uploadFailed')); }
+  if (!res?.ok) {
+    const keys = { too_big: 'fileTooBig', bad_type: 'badFile' };
+    return toast(t(keys[res?.error] || 'uploadFailed'));
+  }
+  const done = res2 => { if (!res2?.ok) toast(t('messageFailed')); };
+  if (activeGroup) socket.emit('group_send', { id: activeGroup, text: res.url, kind: res.kind || kind }, done);
+  else if (active) socket.emit('message', { to: active, text: res.url, kind: res.kind || kind }, done);
+  else toast(t('selectChat'));
+}
+
+let recorder = null;
+let recChunks = [];
+
+async function toggleRecord() {
+  if (recorder) { recorder.stop(); return; }
+  if (!active && !activeGroup) return;
+  if (!window.MediaRecorder) return toast(t('uploadFailed'));
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { return toast(t('micDenied')); }
+  recChunks = [];
+  recorder = new MediaRecorder(stream);
+  recorder.ondataavailable = e => { if (e.data.size) recChunks.push(e.data); };
+  recorder.onstop = () => {
+    const type = recorder.mimeType || 'audio/webm';
+    stream.getTracks().forEach(tr => tr.stop());
+    recorder = null;
+    $('recBtn').textContent = t('recBtn');
+    const blob = new Blob(recChunks, { type });
+    if (blob.size) sendMedia(blob);
+  };
+  recorder.start();
+  $('recBtn').textContent = t('recStop');
+}
+
+function deleteMessage(m) {
+  if (m.from !== me && !(myPremium && !activeGroup)) return;
+  if (!confirm(t('confirmDeleteMsg'))) return;
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit(activeGroup ? 'gmsg_delete' : 'msg_delete', { id: m.id }, res => { if (!res?.ok) toast(t('messageFailed')); });
+}
+
+function onMsgDeleted({ id, from, to }) {
+  const partner = from === me ? to : from;
+  const list = cache.get(partner);
+  if (list) cache.set(partner, list.filter(m => m.id !== id));
+  const c = chats.get(partner);
+  if (c?.last?.id === id) c.last = null;
+  if (active === partner) renderMessages();
+  renderList();
+  loadChats();
+  if (from !== me) toast(t('msgDeleted'));
+}
+
+function onMessage(m) {
+  const partner = m.from === me ? m.to : m.from;
+  const list = cache.get(partner);
+  if (list && !list.some(x => x.id === m.id)) list.push(m);
+
+  const c = chats.get(partner) || { last: null, unread: 0 };
+  c.last = m;
+  if (m.from !== me && partner !== active) {
+    c.unread = (c.unread || 0) + 1;
+    if (!mutedChats.has(partner)) toast(t('newMessage', { name: partner }));
+    if (!mutedChats.has(partner) && document.hidden && 'Notification' in window && Notification.permission === 'granted')
+      new Notification('gigi chat', { body: t('newMessage', { name: partner }) });
+  }
+  chats.set(partner, c);
+
+  if (partner === active) {
+    c.unread = 0;
+    renderMessages();
+    if (m.from !== me) markRead(partner);
+  }
+  renderList();
+  document.title = unreadTotal() ? `(${unreadTotal()}) gigi chat` : 'gigi chat';
+}
+
+async function loadChats() {
+  try {
+    const rows = await (await fetch(`/api/chats?me=${enc(me)}`)).json();
+    for (const r of rows) chats.set(r.nick, { last: r.last, unread: chats.get(r.nick)?.unread || 0 });
+    renderList();
+  } catch {}
+}
+
+async function openChat(nick) {
+  active = nick;
+  activeGroup = null;
+  if (!chats.has(nick)) chats.set(nick, { last: null, unread: 0 });
+  chats.get(nick).unread = 0;
+  if (search) { search = ''; results = []; $('search').value = ''; }
+  $('placeholder').hidden = true;
+  $('chatView').hidden = false;
+  $('app').classList.add('chat-open');
+  renderHeader(); renderList(); renderMessages(); renderComposer();
+
+  const rows = await (await fetch(`/api/history?me=${enc(me)}&with=${enc(nick)}`)).json();
+  const existing = cache.get(nick) || [];
+  const ids = new Set(rows.map(r => r.id));
+  cache.set(nick, [...rows, ...existing.filter(m => !ids.has(m.id))]);
+  if (active === nick) { renderMessages(); markRead(nick); }
+  refreshInfo(nick);
+  $('input').focus();
+}
+
+function chatItem(nick) {
+  const info = chats.get(nick) || {};
+  const av = el('div', { class: 'avatar' }, nick[0].toUpperCase());
+  applyAvatar(av, nick);
+  if (online.has(nick)) av.append(el('span', { class: 'dot' }));
+  const preview = info.last ? (info.last.from === me ? t('you') + ': ' : '') + previewText(info.last) : '';
+  const btn = el('button', { class: 'item' + (nick === active ? ' active' : ''), onclick: () => openChat(nick) },
+    av,
+    el('div', { class: 'meta' }, el('div', { class: 'name' }, displayName(nick)), el('div', { class: 'preview' }, preview)));
+  if (info.unread) btn.append(el('span', { class: 'badge' }, String(info.unread)));
+  return btn;
+}
+
+function renderList() {
+  const list = $('list');
+  list.replaceChildren();
+  const folder = $('folderFilter')?.value || 'all';
+  const items = search
+    ? results
+    : [...chats.keys()].filter(nick => folder === 'all' || (chatFolders[nick] || 'personal') === folder).filter(nick => !mutedChats.has(nick) || folder !== 'muted').sort((a, b) => (chats.get(b).last?.created_at || 0) - (chats.get(a).last?.created_at || 0));
+  if (!items.length && !groupResults.length && (search || ![...groups.values()].some(g => g.joined))) {
+    list.append(el('div', { class: 'empty' }, t(search ? 'noResults' : 'noChats')));
+    return;
+  }
+  for (const nick of items) list.append(chatItem(nick));
+  if (search) {
+    for (const g of groupResults) list.append(groupItem(g));
+  } else {
+    const joined = [...groups.values()].filter(g => g.joined)
+      .sort((a, b) => (b.last?.created_at || 0) - (a.last?.created_at || 0));
+    for (const g of joined) list.append(groupItem(g));
+  }
+}
+
+function renderHeader() {
+  if (activeGroup) return renderGroupHeader();
+  if (!active) return;
+  const on = online.has(active);
+  $('hName').textContent = displayName(active);
+  const av = $('hAvatar');
+  applyAvatar(av, active);
+  av.style.background = avatarBg(active);
+  const st = $('hStatus');
+  st.textContent = statusText(active);
+  st.classList.toggle('on', on);
+}
+
+function messageMeta(m) {
+  if (m.from !== me) return fmtTime(m.created_at);
+  if (m.read_at) return `${fmtTime(m.created_at)} · ✓✓ ${t('readAt', { time: fmtTime(m.read_at) })}`;
+  return `${fmtTime(m.created_at)} · ✓`;
+}
+
+function renderMessages() {
+  const box = $('messages');
+  // Jump to the newest message only when opening a chat or when already at the bottom.
+  const chatKey = activeGroup ? 'g' + activeGroup : String(active);
+  const atBottom = box.dataset.chat !== chatKey || box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  const prevTop = box.scrollTop;
+  box.dataset.chat = chatKey;
+  box.replaceChildren();
+  const msgType = activeGroup ? 'gmsg' : 'msg';
+  for (const m of (activeGroup ? gcache.get(activeGroup) : cache.get(active)) || []) {
+    const own = m.from === me;
+    const quote = m.reply_to ? (activeGroup ? (gcache.get(activeGroup)||[]) : (cache.get(active)||[])).find(x=>x.id===m.reply_to) : null;
+    const contents = [];
+    if (quote) contents.push(el('div', { class: 'preview', style: 'border-left:2px solid var(--accent);padding-left:8px;margin-bottom:5px' }, '↪ ' + quote.from + ': ' + String(quote.text || '').slice(0,100)));
+    contents.push(mediaNode(m) ?? m.text);
+    if (m.edited_at) contents.push(el('span', { class: 'preview' }, ' · змінено'));
+    box.append(el('div', { class: 'msg' + (own ? ' own' : ''), onclick: () => openMsgMenu(m, msgType) },
+      ...contents,
+      reactRow(m.reactions, msgType, m.id),
+      el('span', { class: 'time' }, messageMeta(m))));
+  }
+  box.scrollTop = atBottom ? box.scrollHeight : prevTop;
+}
+
+$('loginForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const nick = $('nick').value.trim();
+  const password = $('pass').value;
+  if (!NICK_RE.test(nick)) return setHint('errInvalidNick', true);
+  if (password.length < 4) return setHint('errShortPass', true);
+  setHint('nickHint');
+  const payload = { nick, password };
+  $('pass').value = '';
+  if (socket?.connected) socket.emit('login', payload, onLogin);
+  else if (!socket) { pending = payload; createSocket(); }
+  else pending = payload;
+});
+
+$('composer').addEventListener('submit', e => {
+  e.preventDefault();
+  const input = $('input');
+  const text = input.value.trim();
+  if (!text || (!active && !activeGroup)) return;
+  if (!socket?.connected) return toast(t('errNetwork'));
+  const done = res => {
+    if (res?.ok) { replyTarget = null; editTarget = null; $('replyBar').hidden = true; return; }
+    const key = res?.error === 'read_only' || res?.error === 'forbidden' ? 'channelReadOnly'
+      : res?.error === 'no_user' ? 'errNoUser' : 'messageFailed';
+    toast(t(key));
+  };
+  if (editTarget && !activeGroup) socket.emit('msg_edit', { id: editTarget.id, text }, done);
+  else if (activeGroup) socket.emit('group_send', { id: activeGroup, text, kind: 'text' }, done);
+  else socket.emit('message', { to: active, text, reply_to: replyTarget?.id || null }, done);
+  input.value = ''; input.style.height = 'auto';
+  input.focus();
+});
+
+$('input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('composer').requestSubmit(); }
+});
+$('input').addEventListener('input', e => {
+  e.target.style.height = 'auto';
+  e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
+});
+
+$('folderFilter').addEventListener('change', renderList);
+$('folderManage').addEventListener('click', () => { const f=prompt('Фільтр: all / personal / groups / channels / muted','all'); if(['all','personal','groups','channels'].includes(f)){$('folderFilter').value=f;renderList();} else if(f==='muted'){const muted=[...mutedChats];toast('Вимкнені чати: '+(muted.join(', ')||'немає'));} });
+
+let searchTimer;
+$('search').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    search = e.target.value.trim();
+    if (!search) { results = []; return renderList(); }
+    try {
+      const names = await (await fetch(`/api/users?q=${enc(search)}`)).json();
+      results = names.filter(n => n !== me);
+    } catch { results = []; }
+    const filterGroups = () => {
+      const q = search.toLowerCase();
+      groupResults = [...groups.values()].filter(g => g.title.toLowerCase().includes(q));
+      renderList();
+    };
+    if (socket?.connected) refreshGroups(filterGroups);
+    else filterGroups();
+  }, 250);
+});
+
+$('attachBtn').addEventListener('click', () => $('fileInput').click());
+$('recBtn').addEventListener('click', toggleRecord);
+$('fileInput').addEventListener('change', e => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (f) (f.type.startsWith('image/') ? compressImage(f) : Promise.resolve(f)).then(sendMedia).catch(() => toast(t('uploadFailed')));
+});
+
+function renderStories() {
+  const box = $('stories');
+  box.replaceChildren();
+  box.hidden = stories.length === 0;
+  for (const s of stories) {
+    box.append(el('button', { class: 'story' + (seenStories.has(s.id) ? ' seen' : ''), onclick: () => openStory(s) },
+      el('span', { class: 'ring' }, el('span', {}, 'G')),
+      el('span', {}, s.author ? displayName(s.author) : t('storyTitle'))));
+  }
+}
+
+function openStory(s) {
+  $('viewerTitle').textContent = s.author ? displayName(s.author) : t('storyTitle');
+  $('viewerText').textContent = s.text || '';
+  $('viewerImg').hidden = !s.media;
+  if (s.media) $('viewerImg').src = s.media;
+  $('storyDelBtn').dataset.id = String(s.id);
+  renderStoryReacts(s);
+  $('viewer').hidden = false;
+  seenStories.add(s.id);
+  localStorage.setItem('gigi_seen', JSON.stringify([...seenStories].slice(-200)));
+  renderStories();
+}
+
+$('viewerClose').addEventListener('click', () => { $('viewer').hidden = true; });
+$('viewer').addEventListener('click', e => { if (e.target.id === 'viewer') $('viewer').hidden = true; });
+
+let pendingStory = null;
+
+// Shrinks a photo to at most 1280 px and JPEG quality 75%, so it stays small.
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale);
+      c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      c.toBlob(b => (b ? resolve(b) : reject(new Error('blob'))), 'image/jpeg', 0.75);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+async function uploadBlob(blob) {
+  const data = await readAsDataURL(blob);
+  const res = await (await fetch('/api/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: localStorage.getItem('gigi_token'), data })
+  })).json();
+  if (!res?.ok) throw new Error(res?.error || 'upload');
+  return res.url;
+}
+
+function postStory(code, text, media) {
+  socket.emit('story_post', { code, text, media }, res => {
+    if (res?.ok) return toast(t('storyPosted'));
+    toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
+  });
+}
+
+$('storyBtn').addEventListener('click', () => {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  const code = prompt(t('adminCodePrompt'));
+  if (!code) return;
+  const text = (prompt(t('storyPrompt')) || '').trim();
+  if (!text) return;
+  postStory(code, text, null);
+});
+
+// Opened directly by the tap, so the browser allows the file picker.
+$('storyPhotoBtn').addEventListener('click', () => {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  $('storyPhoto').click();
+});
+
+$('storyPhoto').addEventListener('change', async e => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (!f) return;
+  const code = prompt(t('adminCodePrompt'));
+  if (!code) return;
+  const text = (prompt(t('storyPrompt')) || '').trim();
+  try {
+    const media = await uploadBlob(await compressImage(f));
+    postStory(code, text, media);
+  } catch {
+    toast(t('uploadFailed'));
+  }
+});
+
+$('storyDelBtn').addEventListener('click', () => {
+  const id = Number($('storyDelBtn').dataset.id);
+  if (!confirm(t('storyDeleteConfirm'))) return;
+  const own = stories.find(x => x.id === id);
+  if (own?.author && own.author === me) {
+    socket.emit('user_story_delete', { id }, res => {
+      if (res?.ok) { $('viewer').hidden = true; return toast(t('storyDeleted')); }
+      toast(t('messageFailed'));
+    });
+    return;
+  }
+  const code = prompt(t('adminCodePrompt'));
+  if (!code) return;
+  socket.emit('story_delete', { id, code }, res => {
+    if (res?.ok) { $('viewer').hidden = true; return toast(t('storyDeleted')); }
+    toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
+  });
+});
+
+const fmtDateTime = ts => new Intl.DateTimeFormat(LOCALES[lang], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(ts));
+
+function statusText(nick) {
+  if (!nick) return '';
+  if (userInfo.get(nick)?.hidden) return t('unknown');
+  if (online.has(nick)) return t('online');
+  const info = userInfo.get(nick);
+  if (info?.lastSeen) return t('lastSeen', { time: fmtDateTime(info.lastSeen) });
+  return t('offline');
+}
+
+function refreshInfo(nick) {
+  if (!socket?.connected || !nick) return;
+  socket.emit('user_info', { nick }, res => {
+    if (!res?.ok) return;
+    userInfo.set(nick, res.info);
+    if (active === nick) renderHeader();
+  });
+}
+
+function openModal(html) {
+  $('modalBody').replaceChildren(...html);
+  $('modal').hidden = false;
+}
+
+function closeModal() { $('modal').hidden = true; }
+
+function avatarNode(nick, url, size) {
+  const av = el('div', { class: 'pf-avatar' }, nick[0].toUpperCase());
+  av.style.background = avatarBg(nick);
+  if (size) { av.style.width = size + 'px'; av.style.height = size + 'px'; av.style.fontSize = Math.round(size / 2.6) + 'px'; }
+  if (url) av.replaceChildren(el('img', { src: url, alt: '' }));
+  return av;
+}
+
+function openProfile(nick) {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('user_info', { nick }, res => {
+    if (!res?.ok) return toast(t('errNoUser'));
+    const info = res.info;
+    userInfo.set(nick, info);
+    const mine = nick === me;
+    const avatarUrl = info.avatar || avatars.get(nick) || null;
+    const status = el('div', { class: 'pf-status' + (info.online ? ' on' : '') }, statusText(nick));
+    const bio = el('div', { class: 'pf-bio' + (info.bio ? '' : ' empty') }, info.bio || t('noBio'));
+    const actions = el('div', { class: 'pf-actions' });
+    if (mine) {
+      actions.append(
+        el('button', { class: 'btn', onclick: () => $('photoBtn').click() }, t('changePhoto')),
+        ...(avatarUrl ? [el('button', { class: 'btn ghost', onclick: () => socket.emit('set_avatar', { url: null }, () => toast(t('photoRemoved'))) }, t('removePhoto'))] : []),
+        el('button', { class: 'btn ghost', onclick: () => {
+          const text = prompt(t('bioPrompt'), info.bio || '');
+          if (text === null) return;
+          socket.emit('set_bio', { bio: text }, () => { toast(t('bioSaved')); openProfile(me); });
+        } }, t('editBio')),
+        el('button', { class: 'btn', onclick: () => postMyStory() }, t('myStoryBtn')),
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('myStoryPhoto').click(); } }, t('myStoryPhotoBtn')),
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('renameBtn').click(); } }, t('renameBtn')),
+        el('button', { class: 'btn danger', onclick: () => { closeModal(); $('deleteBtn').click(); } }, t('deleteBtn')),
+      );
+    } else {
+      actions.append(el('button', { class: 'btn', onclick: () => { closeModal(); openChat(nick); } }, t('writeMsg')),
+        el('button', { class: 'btn danger', onclick: () => blockUser(nick) }, t('blockBtn')));
+    }
+    openModal([
+      el('div', { class: 'pf-head' },
+        avatarNode(nick, avatarUrl, 96),
+        el('div', { class: 'pf-name' }, nick),
+        status),
+      el('div', { class: 'pf-title acc-head' }, t('aboutLabel')),
+      bio,
+      shelfNode(info.shelf),
+      actions,
+    ]);
+  });
+}
+
+function openAccounts(users) {
+  const list = el('div', {});
+  for (const u of users) {
+    const sub = u.online ? t('online') : (u.lastSeen ? t('lastSeen', { time: fmtDateTime(u.lastSeen) }) : t('offline'));
+    list.append(el('div', { class: 'acc-row' },
+      avatarNode(u.nick, null, 40),
+      el('div', { class: 'meta' },
+        el('div', { class: 'name' }, u.nick),
+        el('div', { class: 'sub' + (u.online ? ' on' : '') }, sub + ' · ' + t('created') + ' ' + fmtDateTime(u.created))),
+      el('button', { class: 'btn danger', onclick: () => adminDeleteOne(u.nick) }, t('deleteBtn'))));
+  }
+  if (!users.length) list.append(el('div', { class: 'empty' }, t('noAccounts')));
+  openModal([
+    el('div', { class: 'acc-head' }, t('accountsTitle') + ' (' + users.length + ')'),
+    list,
+    el('div', { class: 'acc-foot' },
+      el('button', { class: 'btn danger', style: 'width:100%', onclick: adminDeleteAll }, t('deleteAllBtn'))),
+  ]);
+}
+
+function adminLoadAccounts() {
+  socket.emit('admin_list', { code: adminCode }, res => {
+    if (!res?.ok) {
+      adminCode = null;
+      return toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
+    }
+    openAccounts(res.users);
+  });
+}
+
+function adminDeleteOne(nick) {
+  if (!confirm(t('deleteUserConfirm'))) return;
+  socket.emit('admin_delete', { nick, code: adminCode }, res => {
+    if (!res?.ok) return toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
+    toast(t('adminDone'));
+    adminLoadAccounts();
+  });
+}
+
+function adminDeleteAll() {
+  if (!confirm(t('deleteAllConfirm'))) return;
+  if (!confirm(t('deleteAllConfirm2'))) return;
+  socket.emit('admin_delete_all', { code: adminCode }, res => {
+    if (!res?.ok) toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
+  });
+}
+
+$('adminBtn').addEventListener('click', () => {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  if (adminCode) return openAdminSettings();
+  const code = prompt(t('adminCodePrompt'));
+  if (!code) return;
+  adminCode = code;
+  openAdminSettings();
+});
+
+$('modalClose').addEventListener('click', closeModal);
+$('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+$('hName').addEventListener('click', () => { if (activeGroup) openGroupInfo(activeGroup); else if (active) openProfile(active); });
+$('hAvatar').addEventListener('click', () => { if (activeGroup) openGroupInfo(activeGroup); else if (active) openProfile(active); });
+$('meName').addEventListener('click', () => { if (me) openProfile(me); });
+
+const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+
+function toggleReact(type, id, emoji) {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('react', { type, id, emoji }, res => {
+    if (!res?.ok) toast(t(res?.error === 'forbidden' ? 'errNoUser' : 'messageFailed'));
+  });
+}
+
+// Shows the counts under a message or story; a tap on a chip toggles your own reaction.
+function reactRow(reactions, type, id) {
+  const keys = Object.keys(reactions || {});
+  if (!keys.length) return el('span', { hidden: '' });
+  return el('div', { class: 'reacts' }, ...keys.map(emoji => {
+    const users = reactions[emoji];
+    return el('button', {
+      class: 'react' + (users.includes(me) ? ' mine' : ''),
+      onclick: e => { e.stopPropagation(); toggleReact(type, id, emoji); },
+    }, emoji + ' ' + users.length);
+  }));
+}
+
+function emojiBar(type, id, onPicked) {
+  return el('div', { class: 'emoji-bar' }, ...EMOJIS.map(emoji =>
+    el('button', { onclick: () => { if (onPicked) onPicked(); toggleReact(type, id, emoji); } }, emoji)));
+}
+
+function openMsgMenu(m, type = 'msg') {
+  const items = [emojiBar(type, m.id, closeModal)];
+  items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); replyTarget=m; editTarget=null; $('replyBar').hidden=false; $('replyBar').textContent='Відповідь на '+m.from+': '+String(m.text||'').slice(0,100)+'  ✕'; $('replyBar').onclick=()=>{replyTarget=null;$('replyBar').hidden=true;}; $('input').focus(); } }, '↩ Відповісти з цитатою'));
+  if (type === 'msg' && m.from === me && m.kind === 'text') items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); editTarget=m; replyTarget=null; $('input').value=m.text; $('replyBar').hidden=false; $('replyBar').textContent='Редагування повідомлення · Enter — зберегти'; $('input').focus(); } }, '✎ Редагувати'));
+  if (type === 'msg') items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); const to=prompt('Переслати користувачу (нікнейм):'); if(!to?.trim()) return; socket.emit('message',{to:to.trim(),text:'Переслано від '+m.from+':\n'+m.text,kind:'text'},r=>toast(r?.ok?'Переслано':'Не вдалося переслати')); } }, '➦ Переслати'));
+  if (m.from === me || (myPremium && type === 'msg')) items.push(el('button', { class: 'btn danger', style: 'width:100%', onclick: () => { closeModal(); deleteMessage(m); } }, t('deleteMsgBtn')));
+  if (type === 'msg') items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); const f=prompt('Папка: personal / groups / channels',chatFolders[active]||'personal'); if(['personal','groups','channels'].includes(f)){chatFolders[active]=f;localStorage.setItem('gigi_folders',JSON.stringify(chatFolders));renderList();} const mute=confirm('Вимкнути сповіщення для цього чату?'); if(mute)mutedChats.add(active);else mutedChats.delete(active);localStorage.setItem('gigi_muted',JSON.stringify([...mutedChats])); } }, '📁 Папка / 🔕 Сповіщення'));
+  openModal(items);
+}
+
+function renderStoryReacts(s) {
+  $('storyReacts').replaceChildren(reactRow(s.reactions, 'story', s.id), emojiBar('story', s.id));
+}
+
+function refreshGroups(done) {
+  if (!socket?.connected) return;
+  socket.emit('group_list', {}, res => {
+    if (!res?.ok) return;
+    const unread = new Map([...groups].map(([id, g]) => [id, g.unread || 0]));
+    groups = new Map(res.chats.map(c => [c.id, { ...c, unread: unread.get(c.id) || 0 }]));
+    renderList();
+    renderHeader();
+    renderComposer();
+    if (done) done();
+  });
+}
+
+function groupItem(g) {
+  const av = el('div', { class: 'avatar' }, g.kind === 'channel' ? '📢' : '👥');
+  av.style.background = avatarBg(g.title);
+  const preview = g.last ? (g.last.from === me ? t('you') + ': ' : '') + previewText(g.last) : '';
+  const btn = el('button', { class: 'item' + (g.id === activeGroup ? ' active' : ''), onclick: () => openGroup(g.id) },
+    av,
+    el('div', { class: 'meta' }, el('div', { class: 'name' }, g.title), el('div', { class: 'preview' }, preview)));
+  if (g.unread) btn.append(el('span', { class: 'badge' }, String(g.unread)));
+  return btn;
+}
+
+function renderGroupHeader() {
+  const g = groups.get(activeGroup);
+  if (!g) return;
+  $('hName').textContent = g.title;
+  const av = $('hAvatar');
+  av.textContent = g.kind === 'channel' ? '📢' : '👥';
+  av.style.background = avatarBg(g.title);
+  const st = $('hStatus');
+  st.textContent = g.kind === 'channel' ? t('channelInfo', { n: g.members }) : t('groupInfo', { n: g.members });
+  st.classList.remove('on');
+}
+
+function renderComposer() {
+  if (writesStopped) {
+    $('composer').hidden = true;
+    $('chanNote').hidden = false;
+    $('chanNote').replaceChildren(el('div', {}, t('writesStopped')));
+    return;
+  }
+  const g = activeGroup ? groups.get(activeGroup) : null;
+  const note = $('chanNote');
+  const notMember = Boolean(g) && !g.joined;
+  const readOnly = Boolean(g) && g.kind === 'channel' && g.owner !== me;
+  $('composer').hidden = notMember || readOnly;
+  note.hidden = !(notMember || readOnly);
+  if (!note.hidden) {
+    note.replaceChildren(el('div', {}, notMember ? t('joinToWrite') : t('channelReadOnly')));
+    if (notMember) note.append(el('button', { class: 'btn', onclick: () => joinGroup(g.id) }, t('joinBtn')));
+  }
+}
+
+function openGroup(id) {
+  active = null;
+  activeGroup = id;
+  const g = groups.get(id);
+  if (g) g.unread = 0;
+  if (search) { search = ''; results = []; $('search').value = ''; }
+  $('placeholder').hidden = true;
+  $('chatView').hidden = false;
+  $('app').classList.add('chat-open');
+  renderHeader(); renderList(); renderMessages(); renderComposer();
+  socket.emit('group_history', { id }, res => {
+    if (!res?.ok) return;
+    const existing = gcache.get(id) || [];
+    const ids = new Set(res.messages.map(m => m.id));
+    gcache.set(id, [...res.messages, ...existing.filter(m => !ids.has(m.id))]);
+    if (activeGroup === id) renderMessages();
+  });
+  $('input').focus();
+}
+
+function joinGroup(id) {
+  socket.emit('group_join', { id }, res => {
+    if (!res?.ok) return toast(t('messageFailed'));
+    toast(t('groupJoined'));
+    refreshGroups(() => { if (activeGroup === id) openGroup(id); });
+  });
+}
+
+function leaveGroup(id) {
+  socket.emit('group_leave', { id }, res => {
+    if (!res?.ok) return toast(t(res?.error === 'owner' ? 'ownerCantLeave' : 'messageFailed'));
+    toast(t('groupLeft'));
+    gcache.delete(id);
+    if (activeGroup === id) closeChat();
+    refreshGroups();
+  });
+}
+
+function deleteGroup(id) {
+  if (!confirm(t('groupDeleteConfirm'))) return;
+  const payload = { id };
+  if (groups.get(id)?.owner !== me) {
+    const code = adminCode || prompt(t('adminCodePrompt'));
+    if (!code) return;
+    payload.code = code;
+  }
+  socket.emit('group_delete', payload, res => {
+    closeModal();
+    if (!res?.ok) return toast(t(res?.error === 'forbidden' ? 'badCode' : 'messageFailed'));
+    toast(t('groupDeleted'));
+    refreshGroups();
+  });
+}
+
+function openGroupInfo(id) {
+  const g = groups.get(id);
+  if (!g) return;
+  const isOwner = g.owner === me;
+  const btns = [];
+  if (!g.joined) btns.push(el('button', { class: 'btn', onclick: () => { closeModal(); joinGroup(id); } }, t('joinBtn')));
+  else if (!isOwner) btns.push(el('button', { class: 'btn ghost', onclick: () => { closeModal(); leaveGroup(id); } }, t('leaveBtn')));
+  btns.push(el('button', { class: 'btn danger', onclick: () => deleteGroup(id) }, t('groupDeleteBtn')));
+  const head = el('div', { class: 'pf-avatar' }, g.kind === 'channel' ? '📢' : '👥');
+  head.style.background = avatarBg(g.title);
+  openModal([
+    el('div', { class: 'pf-head' }, head, el('div', { class: 'pf-name' }, g.title)),
+    el('div', { class: 'pf-status' }, (g.kind === 'channel' ? t('kindChannel') : t('kindGroup')) + ' · ' +
+      (g.kind === 'channel' ? t('channelInfo', { n: g.members }) : t('groupInfo', { n: g.members }))),
+    el('div', { class: 'pf-actions' }, ...btns),
+  ]);
+}
+
+function openCreateGroup() {
+  let kind = 'group';
+  const title = el('input', { class: 'field', maxlength: '40', placeholder: t('groupTitle') });
+  const kindBox = el('div', { class: 'pf-actions' });
+  const drawKind = () => kindBox.replaceChildren(
+    el('button', { class: 'btn' + (kind === 'group' ? '' : ' ghost'), onclick: () => { kind = 'group'; drawKind(); } }, t('kindGroup')),
+    el('button', { class: 'btn' + (kind === 'channel' ? '' : ' ghost'), onclick: () => { kind = 'channel'; drawKind(); } }, t('kindChannel')));
+  drawKind();
+  openModal([
+    el('div', { class: 'acc-head' }, t('newGroup')),
+    kindBox,
+    el('div', { style: 'height:10px' }),
+    title,
+    el('div', { class: 'pf-actions acc-foot' }, el('button', { class: 'btn', onclick: () => {
+      const name = title.value.trim();
+      if (!name) return toast(t('groupTitle'));
+      socket.emit('group_create', { kind, title: name }, res => {
+        if (!res?.ok) return toast(t('messageFailed'));
+        toast(t('groupCreated'));
+        refreshGroups(() => { closeModal(); openGroup(res.id); });
+      });
+    } }, t('createGroup'))),
+  ]);
+}
+
+function openGroupsModal() {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('group_list', {}, res => {
+    if (!res?.ok) return toast(t('messageFailed'));
+    const unread = new Map([...groups].map(([id, g]) => [id, g.unread || 0]));
+    groups = new Map(res.chats.map(c => [c.id, { ...c, unread: unread.get(c.id) || 0 }]));
+    renderList();
+    const rows = res.chats.map(c => {
+      const av = el('div', { class: 'avatar', style: `width:40px;height:40px;background:${avatarBg(c.title)}` }, c.kind === 'channel' ? '📢' : '👥');
+      const sub = (c.kind === 'channel' ? t('kindChannel') : t('kindGroup')) + ' · ' +
+        (c.kind === 'channel' ? t('channelInfo', { n: c.members }) : t('groupInfo', { n: c.members }));
+      const btn = c.joined
+        ? el('button', { class: 'btn', onclick: () => { closeModal(); openGroup(c.id); } }, t('openBtn'))
+        : el('button', { class: 'btn', onclick: () => joinGroup(c.id) }, t('joinBtn'));
+      return el('div', { class: 'acc-row' }, av,
+        el('div', { class: 'meta', onclick: () => { closeModal(); openGroupInfo(c.id); } },
+          el('div', { class: 'name' }, c.title), el('div', { class: 'sub' }, sub)),
+        btn, el('button', { class: 'btn danger', onclick: () => deleteGroup(c.id) }, t('groupDeleteBtn')));
+    });
+    openModal([
+      el('div', { class: 'acc-head' }, t('groupsTitle')),
+      el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
+        el('button', { class: 'btn', onclick: () => { closeModal(); openCreateGroup(); } }, t('newGroup'))),
+      ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noGroups'))]),
+    ]);
+  });
+}
+
+$('groupsBtn').addEventListener('click', openGroupsModal);
+
+const displayName = n => (n === 'gigi_chat' ? 'gigi chat' : n);
+
+// Opens the list of your gifts; one tap sends that gift to the open chat's person.
+function openSendGiftToChat(nick) {
+  socket.emit('gifts_mine', {}, res => {
+    if (!res?.ok) return toast(t('messageFailed'));
+    if (!res.items.length) return toast(t('noMyGifts'));
+    openModal([
+      el('div', { class: 'acc-head' }, t('giftChatTitle') + ' → ' + displayName(nick)),
+      ...res.items.map(it => el('div', { class: 'acc-row' },
+        el('img', { src: it.image, alt: '', style: 'width:48px;height:48px;border-radius:12px;object-fit:cover' }),
+        el('div', { class: 'meta' }, el('div', { class: 'name' }, it.title), el('div', { class: 'sub' }, '⭐ ' + it.price)),
+        el('button', { class: 'btn', onclick: () => socket.emit('gift_send', { id: it.id, to: nick }, r => {
+          if (!r?.ok) return toast(t(r?.error === 'no_user' ? 'errNoUser' : r?.error === 'self' ? 'giftNoSelf' : 'messageFailed'));
+          closeModal();
+          toast(t('giftSent'));
+        }) }, t('giftSendBtn')))),
+    ]);
+  });
+}
+
+function openBroadcast(it) {
+  const count = el('input', { class: 'field', type: 'number', min: '1', max: '100', value: '1' });
+  openModal([
+    el('div', { class: 'acc-head' }, t('broadcastTitle')),
+    el('div', { class: 'sub' }, t('broadcastCountQ')),
+    count,
+    el('div', { class: 'pf-actions acc-foot' }, el('button', { class: 'btn', onclick: () => {
+      const n = Number(count.value);
+      if (!Number.isInteger(n) || n < 1 || n > 100) return toast(t('broadcastCountQ'));
+      if (!confirm(t('broadcastConfirm'))) return;
+      adminCall('admin_gift_broadcast', { id: it.id, count: n }, () => { closeModal(); toast(t('broadcastDone')); });
+    } }, t('broadcastBtn'))),
+  ]);
+}
+
+$('giftChatBtn').addEventListener('click', () => { if (active) openSendGiftToChat(active); });
+
+function loadMe() {
+  if (!socket?.connected) return;
+  socket.emit('me_info', {}, r => { if (r?.ok) myPremium = r.premium_until > Date.now(); });
+}
+
+function askHandle() {
+  const h = prompt(t('handlePrompt'));
+  if (!h) return;
+  socket.emit('set_handle', { handle: h }, r => {
+    if (r?.ok) return toast(t('handleSaved'));
+    toast(t(r?.error === 'handle_taken' ? 'handleTaken' : 'handleInvalid'));
+    askHandle();
+  });
+}
+
+function setTheme(th) {
+  localStorage.setItem('gigi_theme', th);
+  document.documentElement.dataset.theme = th;
+  openSettings();
+}
+
+function openSettings() {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  const theme = document.documentElement.dataset.theme || 'dark';
+  socket.emit('blocked_list', {}, res => {
+    const rows = (res?.ok ? res.nicks : []).map(n => el('div', { class: 'acc-row' },
+      avatarNode(n, null, 40),
+      el('div', { class: 'meta' }, el('div', { class: 'name' }, n)),
+      el('button', { class: 'btn ghost', onclick: () => unblockUser(n) }, t('unblockBtn'))));
+    openModal([
+      el('div', { class: 'acc-head' }, t('settingsTitle')),
+      el('div', { class: 'sub' }, t('themeLabel')),
+      el('div', { class: 'pf-actions', style: 'margin:8px 0 16px;flex-wrap:wrap' },
+        ...[['dark','🌑 Темна'],['light','☀️ Світла'],['purple','💜 Фіолетова'],['ocean','🌊 Океан'],['rose','🌸 Рожева']].map(([key,label]) => el('button', { class: 'btn' + (theme === key ? '' : ' ghost'), onclick: () => setTheme(key) }, label))),
+      el('div', { class: 'acc-head' }, t('premiumTitle')),
+      el('div', { class: 'sub' }, myPremium ? t('premiumActive') : t('premiumNone')),
+      el('div', { class: 'pf-actions', style: 'margin:8px 0 16px' },
+        el('button', { class: 'btn', onclick: () => buyPremium(1) }, t('premium1Btn')),
+        el('button', { class: 'btn', onclick: () => buyPremium(12) }, t('premium12Btn'))),
+      el('div', { class: 'acc-head' }, t('blockedTitle')),
+      ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noBlocked'))]),
+    ]);
+  });
+}
+
+function unblockUser(nick) {
+  socket.emit('unblock', { nick }, () => openSettings());
+}
+
+function blockUser(nick) {
+  if (!confirm(t('blockConfirm'))) return;
+  socket.emit('block', { nick }, res => {
+    if (!res?.ok) return toast(t(res?.error === 'no_user' ? 'errNoUser' : 'messageFailed'));
+    toast(t('blocked'));
+    closeModal();
+  });
+}
+
+function buyPremium(months) {
+  socket.emit('premium_buy', { months }, res => {
+    if (!res?.ok) return toast(t(res?.error === 'no_stars' ? 'noStars' : 'messageFailed'));
+    myPremium = true;
+    toast(t('premiumBought'));
+    openSettings();
+  });
+}
+
+$('settingsBtn').addEventListener('click', openSettings);
+$('blockChatBtn').addEventListener('click', () => { $('chatMenu').hidden = true; if (active) blockUser(active); });
+
+// One gift as a square card in the grid.
+function giftCard(it, mine) {
+  return el('div', { class: 'gcard', onclick: () => openGiftDetail(it, mine) },
+    el('img', { src: it.image, alt: '' }),
+    el('div', { class: 'gcard-name' }, it.title),
+    el('div', { class: 'gcard-price' }, mine && it.on_shelf ? t('onShelf') : '⭐ ' + it.price));
+}
+
+function openMyGifts() {
+  socket.emit('gifts_mine', {}, res => {
+    if (!res?.ok) return toast(t('messageFailed'));
+    const cards = res.items.map(it => giftCard(it, true));
+    openModal([
+      el('div', { class: 'acc-head' }, t('myGiftsBtn') + ' · ⭐ ' + res.stars),
+      el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
+        el('button', { class: 'btn ghost', onclick: () => openMarket() }, t('marketTitle'))),
+      ...(cards.length ? [el('div', { class: 'gift-grid' }, ...cards)] : [el('div', { class: 'empty' }, t('noMyGifts'))]),
+    ]);
+  });
+}
+
+// Admin settings: opened by the 🔑 button after the admin code.
+function openAdminAudit() {
+  adminCall('admin_audit_list', {}, r => {
+    const rows = (r.items || []).map(a => el('div', { class: 'acc-row' },
+      el('div', { class: 'meta' },
+        el('div', { class: 'name' }, a.action + ' · ' + (a.target || '')),
+        el('div', { class: 'sub' }, a.actor + ' · ' + new Date(Number(a.created_at)).toLocaleString() + ' ' + (a.details || '')))));
+    openModal([el('div', { class: 'acc-head' }, 'Журнал дій адміністратора'), ...rows]);
+  });
+}
+
+function openAdminStats() {
+  adminCall('admin_stats', {}, r => {
+    openModal([el('div', { class: 'acc-head' }, '📊 Статистика Gigi Chat'),
+      ...[['Користувачі',r.users],['Повідомлення',r.messages],['Групи',r.groups],['Канали',r.channels],['Скарги',r.complaints],['Онлайн зараз',r.online]].map(([label,value]) => el('div',{class:'acc-row'},el('div',{class:'meta'},el('div',{class:'name'},label),el('div',{class:'sub'},String(value ?? 0))))) ]);
+  });
+}
+
+function openAdminGroups() {
+  adminCall('admin_groups', {}, r => {
+    const rows = (r.items || []).map(g => el('div', { class: 'acc-row' },
+      el('div', { class: 'meta' }, el('div', { class: 'name' }, (g.kind === 'channel' ? '📣 ' : '👥 ') + g.title), el('div', { class: 'sub' }, 'ID ' + g.id + ' · власник: ' + g.owner + ' · учасників: ' + g.members)),
+      el('button', { class: 'btn danger', onclick: () => { if (!confirm('Видалити «' + g.title + '»?')) return; socket.emit('group_delete', { id: g.id, code: adminCode }, res => { if (!res?.ok) return toast(t('messageFailed')); openAdminGroups(); }); } }, 'Видалити')));
+    openModal([el('div', { class: 'acc-head' }, '👥 Групи та канали'), ...(rows.length ? rows : [el('div',{class:'empty'},'Груп і каналів немає')])]);
+  });
+}
+
+function openAdminSettings() {
+  adminCall('admin_complaints', {}, res => {
+    const count = res.items.length;
+    openModal([
+      el('div', { class: 'acc-head' }, t('adminSettingsTitle')),
+      el('div', { class: 'pf-actions', style: 'margin-bottom:10px' },
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); adminLoadAccounts(); } }, t('accountsBtn')),
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('storyBtn').click(); } }, t('gigiStoryBtn')),
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('storyPhotoBtn').click(); } }, t('gigiStoryPhotoBtn')),
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('bgInput').click(); } }, t('bgSetBtn')),
+        el('button', { class: 'btn ghost', onclick: () => adminCall('admin_set_bg', { url: '' }, () => toast(t('bgCleared'))) }, t('bgClearBtn')),
+        el('button', { class: 'btn ghost', onclick: () => adminCall('admin_stop', { on: !writesStopped }, () => {
+          toast(writesStopped ? t('stopOff') : t('stopOn'));
+          closeModal();
+        }) }, writesStopped ? t('stopOffBtn') : t('stopOnBtn')),
+        el('button', { class: 'btn ghost', onclick: () => {
+          const text = (prompt(t('notifyPrompt')) || '').trim();
+          if (!text) return;
+          adminCall('admin_notify', { text }, () => toast(t('notifySent')));
+        } }, t('notifyBtn')),
+        el('button', { class: 'btn ghost', onclick: () => openComplaints() }, t('complaintsBtn', { n: count })),
+        el('button', { class: 'btn ghost', onclick: () => openAdminAudit() }, '📋 Журнал дій адміна'),
+        el('button', { class: 'btn ghost', onclick: () => openAdminStats() }, '📊 Статистика'),
+        el('button', { class: 'btn ghost', onclick: () => openAdminGroups() }, '👥 Керування групами/каналами'),
+      ),
+    ]);
+  });
+}
+
+function openComplaints() {
+  adminCall('admin_complaints', {}, res => {
+    const rows = res.items.map(c => el('div', { class: 'acc-row' },
+      el('div', { class: 'meta' },
+        el('div', { class: 'name' }, c.from + ' → ' + c.about),
+        el('div', { class: 'sub' }, fmtDateTime(c.created) + ' · ' + c.text)),
+      el('button', { class: 'btn danger', onclick: () => adminCall('admin_complaint_delete', { id: c.id }, () => openComplaints()) }, t('deleteBtn'))));
+    openModal([
+      el('div', { class: 'acc-head' }, t('complaintsTitle')),
+      ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noComplaints'))]),
+    ]);
+  });
+}
+
+
+$('bgInput').addEventListener('change', async e => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (!f) return;
+  try {
+    const url = await uploadBlob(await compressImage(f));
+    adminCall('admin_set_bg', { url }, () => toast(t('bgSaved')));
+  } catch {
+    toast(t('uploadFailed'));
+  }
+});
+
+$('complaintBtn').addEventListener('click', () => {
+  $('chatMenu').hidden = true;
+  if (!active) return;
+  const text = (prompt(t('complaintPrompt')) || '').trim();
+  if (!text) return;
+  socket.emit('complaint', { nick: active, text }, res => {
+    toast(res?.ok ? t('complaintSent') : t('messageFailed'));
+  });
+});
+
+function postMyStory() {
+  const text = (prompt(t('storyPrompt')) || '').trim();
+  if (!text) return;
+  closeModal();
+  socket.emit('user_story_post', { text }, res => {
+    toast(res?.ok ? t('storyPosted') : t('messageFailed'));
+  });
+}
+
+$('myStoryPhoto').addEventListener('change', async e => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (!f) return;
+  const text = (prompt(t('storyPrompt')) || '').trim();
+  try {
+    const media = await uploadBlob(await compressImage(f));
+    socket.emit('user_story_post', { text, media }, res => {
+      toast(res?.ok ? t('storyPosted') : t('messageFailed'));
+    });
+  } catch {
+    toast(t('uploadFailed'));
+  }
+});
+
+function shelfNode(items) {
+  if (!items || !items.length) return el('span', { hidden: '' });
+  return el('div', { class: 'shelf' }, ...items.map(g => el('img', { src: g.image, alt: g.title, title: g.title })));
+}
+
+// Admin actions ask for the admin code once, then remember it while the page is open.
+function adminCall(ev, data, done) {
+  const code = adminCode || prompt(t('adminCodePrompt'));
+  if (!code) return;
+  socket.emit(ev, { ...data, code }, res => {
+    if (res?.ok) { adminCode = code; if (done) done(res); return; }
+    if (res?.error === 'bad_code') adminCode = null;
+    toast(t(res?.error === 'bad_code' ? 'badCode' : res?.error === 'no_user' ? 'errNoUser' : 'messageFailed'));
+  });
+}
+
+function marketRow(it) {
+  const thumb = el('img', { src: it.image, alt: '', style: 'width:52px;height:52px;border-radius:12px;object-fit:cover' });
+  return el('div', { class: 'acc-row', onclick: () => openGiftDetail(it, false) },
+    thumb,
+    el('div', { class: 'meta' }, el('div', { class: 'name' }, it.title), el('div', { class: 'sub' }, '⭐ ' + it.price)),
+    el('button', { class: 'btn', onclick: e => { e.stopPropagation(); buyGift(it); } }, t('buyBtn')));
+}
+
+function openMarket() {
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('gifts_mine', {}, mine => {
+    if (!mine?.ok) return toast(t('messageFailed'));
+    socket.emit('market_list', {}, res => {
+      if (!res?.ok) return toast(t('messageFailed'));
+      const rows = [el('div', { class: 'gift-grid' }, ...res.items.map(it => giftCard(it, false)))];
+      openModal([
+        el('div', { class: 'acc-head' }, t('marketTitle') + ' · ⭐ ' + mine.stars),
+        el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
+          el('button', { class: 'btn ghost', onclick: () => openMyGifts() }, t('myGiftsBtn')),
+          el('button', { class: 'btn ghost', onclick: () => openCreateGift() }, t('createGiftBtn')),
+          el('button', { class: 'btn ghost', onclick: () => openAdminStars() }, t('adminStarsBtn'))),
+        ...(rows.length ? rows : [el('div', { class: 'empty' }, t('marketEmpty'))]),
+      ]);
+    });
+  });
+}
+
+function buyGift(it) {
+  if (!confirm(t('buyConfirm'))) return;
+  socket.emit('gift_buy', { id: it.id }, res => {
+    if (!res?.ok) return toast(t(res?.error === 'no_stars' ? 'noStars' : res?.error === 'sold_out' ? 'soldOut' : 'messageFailed'));
+    toast(t('giftBought'));
+    openMarket();
+  });
+}
+
+function openMyGiftsList() {
+  socket.emit('gifts_mine', {}, res => {
+    if (!res?.ok) return toast(t('messageFailed'));
+    const rows = res.items.map(it => el('div', { class: 'acc-row', onclick: () => openGiftDetail(it, true) },
+      el('img', { src: it.image, alt: '', style: 'width:52px;height:52px;border-radius:12px;object-fit:cover' }),
+      el('div', { class: 'meta' }, el('div', { class: 'name' }, it.title),
+        el('div', { class: 'sub' }, it.on_shelf ? t('onShelf') : '⭐ ' + it.price))));
+    openModal([
+      el('div', { class: 'acc-head' }, t('myGiftsBtn') + ' · ⭐ ' + res.stars),
+      el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
+        el('button', { class: 'btn ghost', onclick: () => openMarket() }, t('marketTitle'))),
+      ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noMyGifts'))]),
+    ]);
+  });
+}
+
+function openGiftDetail(it, mine) {
+  const btns = [];
+  if (mine) {
+    btns.push(el('button', { class: 'btn ghost', onclick: () => toggleShelf(it) }, it.on_shelf ? t('shelfOff') : t('shelfOn')));
+    btns.push(el('button', { class: 'btn ghost', onclick: () => sellGift(it) }, t('sellBtn', { n: Math.floor(it.price * 0.8) })));
+  } else {
+    btns.push(el('button', { class: 'btn', onclick: () => buyGift(it) }, t('buyBtn')));
+  }
+  btns.push(el('button', { class: 'btn ghost', onclick: () => adminGiveGift(it) }, t('adminGiveBtn')));
+  btns.push(el('button', { class: 'btn', onclick: () => openBroadcast(it) }, t('broadcastBtn')));
+  btns.push(el('button', { class: 'btn danger', onclick: () => adminDeleteGift(it) }, t('adminDeleteBtn')));
+  openModal([
+    el('img', { src: it.image, alt: '', style: 'width:100%;border-radius:14px;max-height:340px;object-fit:cover' }),
+    el('div', { class: 'pf-name', style: 'margin-top:12px' }, it.title),
+    el('div', { class: 'pf-bio' + (it.description ? '' : ' empty') }, it.description || t('noBio')),
+    el('div', { class: 'gift-price' }, '⭐ ' + it.price),
+    el('div', { class: 'pf-actions' }, ...btns),
+  ]);
+}
+
+function sendGift(it) {
+  const to = (prompt(t('giftNick')) || '').trim();
+  if (!to) return;
+  socket.emit('gift_send', { id: it.id, to }, res => {
+    if (!res?.ok) return toast(t(res?.error === 'no_user' ? 'errNoUser' : res?.error === 'self' ? 'giftNoSelf' : 'messageFailed'));
+    closeModal();
+    toast(t('giftSent'));
+  });
+}
+
+function sellGift(it) {
+  const amount = Math.floor(it.price * 0.8);
+  if (!confirm(t('sellConfirm', { n: amount }))) return;
+  socket.emit('gift_sell', { id: it.id }, res => {
+    if (!res?.ok) return toast(t('messageFailed'));
+    toast(t('giftSold'));
+    openMyGifts();
+  });
+}
+
+function toggleShelf(it) {
+  socket.emit('gift_shelf', { id: it.id, on: !it.on_shelf }, res => {
+    if (!res?.ok) return toast(t('messageFailed'));
+    openMyGifts();
+  });
+}
+
+function adminGiveGift(it) {
+  const nick = (prompt(t('giftNick')) || '').trim();
+  if (!nick) return;
+  adminCall('admin_gift_give', { id: it.id, nick }, () => { closeModal(); toast(t('giftSent')); });
+}
+
+function adminDeleteGift(it) {
+  if (!confirm(t('giftDeleteConfirm'))) return;
+  adminCall('admin_gift_delete', { id: it.id }, () => { closeModal(); toast(t('giftDeleted')); openMarket(); });
+}
+
+function openCreateGift() {
+  let image = null;
+  const title = el('input', { class: 'field', maxlength: '40', placeholder: t('giftTitleField') });
+  const desc = el('input', { class: 'field', maxlength: '200', placeholder: t('giftDescField') });
+  const price = el('input', { class: 'field', type: 'number', min: '1', placeholder: t('giftPriceField') });
+  const count = el('input', { class: 'field', type: 'number', min: '1', max: '100', value: '1', placeholder: t('giftCountField') });
+  const status = el('div', { class: 'sub' }, t('giftPhotoNone'));
+  const file = el('input', { type: 'file', accept: 'image/*', hidden: '' });
+  file.addEventListener('change', async e => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    try {
+      image = await uploadBlob(await compressImage(f));
+      status.textContent = t('giftPhotoOk');
+    } catch {
+      toast(t('uploadFailed'));
+    }
+  });
+  openModal([
+    el('div', { class: 'acc-head' }, t('createGiftBtn')),
+    el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => file.click() }, t('giftPhotoBtn')),
+    file, status,
+    el('div', { style: 'height:8px' }), title,
+    el('div', { style: 'height:8px' }), desc,
+    el('div', { style: 'height:8px' }), price,
+    el('div', { style: 'height:8px' }), count,
+    el('div', { class: 'pf-actions acc-foot' }, el('button', { class: 'btn', onclick: () => {
+      if (!image) return toast(t('giftPhotoNone'));
+      adminCall('admin_gift_create', {
+        title: title.value.trim(), description: desc.value.trim(), price: Number(price.value), count: Number(count.value), image,
+      }, () => { toast(t('giftCreated')); openMarket(); });
+    } }, t('giftCreateBtn'))),
+  ]);
+}
+
+function openAdminStars() {
+  const nick = el('input', { class: 'field', placeholder: t('giftNick'), maxlength: '20', value: me || '' });
+  const amount = el('input', { class: 'field', type: 'number', min: '1', placeholder: t('starsAmount') });
+  openModal([
+    el('div', { class: 'acc-head' }, t('adminStarsBtn')),
+    nick,
+    el('div', { style: 'height:8px' }), amount,
+    el('div', { class: 'pf-actions acc-foot' }, el('button', { class: 'btn', onclick: () => {
+      adminCall('admin_stars', { nick: nick.value.trim(), amount: Number(amount.value) }, () => {
+        toast(t('starsGiven'));
+        openMarket();
+      });
+    } }, t('giveStarsBtn'))),
+  ]);
+}
+
+$('marketBtn').addEventListener('click', openMarket);
+
+const INVITE_URL = 'https://sites.google.com/view/gigichatdownloader/gigi';
+
+// Copies the invite text and opens the share sheet. The 15 stars are given once per day.
+$('inviteBtn').addEventListener('click', () => {
+  const text = t('inviteText') + ' ' + INVITE_URL;
+  navigator.clipboard?.writeText(text).then(() => toast(t('inviteCopied'))).catch(() => {});
+  if (navigator.share) navigator.share({ text, url: INVITE_URL }).catch(() => {});
+  if (!socket?.connected) return;
+  socket.emit('invite_reward', {}, res => {
+    if (res?.ok) toast(t('inviteRewarded'));
+    else if (res?.error === 'already') toast(t('inviteAlready'));
+  });
+});
+$('myProfileBtn').addEventListener('click', () => { if (me) openProfile(me); });
+
+function applyAvatar(node, nick) {
+  node.replaceChildren(nick[0].toUpperCase());
+  node.style.background = avatarBg(nick);
+  const url = avatars.get(nick);
+  if (url) node.replaceChildren(el('img', { src: url, alt: '' }));
+}
+
+$('photoBtn').addEventListener('click', () => $('avatarInput').click());
+$('avatarInput').addEventListener('change', async e => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  if (!f) return;
+  if (!f.type.startsWith('image/')) return toast(t('badFile'));
+  if (f.size > 15 * 1024 * 1024) return toast(t('fileTooBig'));
+  if (!socket?.connected) return toast(t('errNetwork'));
+  let res;
+  try {
+    const data = await readAsDataURL(new Blob([f], { type: f.type.split(';')[0] }));
+    res = await (await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: localStorage.getItem('gigi_token'), data })
+    })).json();
+  } catch { return toast(t('uploadFailed')); }
+  if (!res?.ok || res.kind !== 'image') return toast(t('badFile'));
+  socket.emit('set_avatar', { url: res.url }, ack => toast(ack?.ok ? t('photoSaved') : t('messageFailed')));
+});
+
+$('moreBtn').addEventListener('click', e => { e.stopPropagation(); $('chatMenu').hidden = !$('chatMenu').hidden; });
+document.addEventListener('click', () => { $('chatMenu').hidden = true; });
+
+$('adminDelBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  $('chatMenu').hidden = true;
+  if (!active) return;
+  if (!confirm(t('adminConfirm'))) return;
+  const code = prompt(t('adminCodePrompt'));
+  if (!code) return;
+  socket.emit('admin_delete', { nick: active, code }, res => {
+    if (res?.ok) return toast(t('adminDone'));
+    const keys = { bad_code: 'badCode', no_user: 'errNoUser' };
+    toast(t(keys[res?.error] || 'messageFailed'));
+  });
+});
+
+$('back').addEventListener('click', closeChat);
+
+$('renameBtn').addEventListener('click', () => {
+  const input = prompt(t('renamePrompt'), me);
+  if (input === null) return;
+  const nick = input.trim();
+  if (!NICK_RE.test(nick)) return toast(t('errInvalidNick'));
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('rename', { nick }, res => {
+    if (!res?.ok) return toast(t(res?.error === 'nick_taken' ? 'errNickTaken' : 'errInvalidNick'));
+    toast(t('renamed'));
+  });
+});
+
+$('deleteBtn').addEventListener('click', () => {
+  if (!confirm(t('confirmDelete'))) return;
+  if (!socket?.connected) return toast(t('errNetwork'));
+  socket.emit('delete', {}, res => { if (!res?.ok) toast(t('messageFailed')); });
+});
+
+$('logout').addEventListener('click', () => {
+  forget();
+  location.reload();
+});
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-set-lang]');
+  if (!b) return;
+  lang = b.dataset.setLang;
+  localStorage.setItem('gigi_lang', lang);
+  applyI18n();
+});
+
+document.documentElement.dataset.theme = localStorage.getItem('gigi_theme') || 'dark';
+applyI18n();
+setHint('nickHint');
+if (localStorage.getItem('gigi_token') && me) {
+  showApp();
+  createSocket();
+} else {
+  forget();
+  showLogin();
+  const flash = sessionStorage.getItem('gigi_flash');
+  if (flash) { sessionStorage.removeItem('gigi_flash'); setHint(flash); }
+}
+</script>
+</body>
+</html>
