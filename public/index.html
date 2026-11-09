@@ -234,6 +234,8 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
       <div id="chatMenu" class="menu" hidden>
         <button id="complaintBtn" class="menu-item" data-i18n="complaintBtn"></button>
         <button id="blockChatBtn" class="menu-item" data-i18n="blockBtn"></button>
+        <button id="removeContactSelfBtn" class="menu-item">🗑️ Видалити контакт для себе</button>
+        <button id="removeContactBothBtn" class="menu-item">⚠️ Видалити контакт і всю історію для обох</button>
         <button id="adminDelBtn" class="menu-item" data-i18n="adminDelete"></button>
       </div>
       <div id="pinBar" class="pin-bar" hidden></div>
@@ -652,6 +654,14 @@ function createSocket() {
   });
   socket.on('disconnect', () => setNet(false));
   socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); if (active) refreshInfo(active); });
+  socket.on('conversation_removed_both', ({ a, b }) => {
+    const other = a === me ? b : (b === me ? a : null);
+    if (!other) return;
+    chats.delete(other); cache.delete(other);
+    if (active === other) closeChat();
+    renderList();
+    toast('Контакт і переписку видалено для обох');
+  });
   socket.on('message', onMessage);
   socket.on('msg_deleted', onMsgDeleted);
   socket.on('msg_edited', m => { for (const list of cache.values()) { const x=list.find(v=>v.id===m.id); if(x){x.text=m.text;x.edited_at=m.edited_at;} } if(active) renderMessages(); });
@@ -972,6 +982,7 @@ function renderList() {
 }
 
 function renderHeader() {
+  $('removeContactSelfBtn').hidden = false; $('removeContactBothBtn').hidden = false;
   if (activeGroup) return renderGroupHeader();
   if (!active) return;
   const on = online.has(active);
@@ -1451,6 +1462,7 @@ function groupItem(g) {
 }
 
 function renderGroupHeader() {
+  $('removeContactSelfBtn').hidden = true; $('removeContactBothBtn').hidden = true;
   const g = groups.get(activeGroup);
   if (!g) return;
   $('hName').textContent = g.title;
@@ -1753,6 +1765,25 @@ $('searchMsgBtn').addEventListener('click', () => {
 });
 $('settingsBtn').addEventListener('click', openSettings);
 $('blockChatBtn').addEventListener('click', () => { $('chatMenu').hidden = true; if (active) blockUser(active); });
+$('removeContactSelfBtn').addEventListener('click', () => {
+  $('chatMenu').hidden = true; if (!active || activeGroup) return;
+  const nick = active;
+  if (!confirm(`Видалити контакт ${nick} тільки для себе? У співрозмовника історія залишиться.`)) return;
+  socket.emit('conversation_remove', { nick, mode: 'self' }, res => {
+    if (!res?.ok) return toast('Не вдалося видалити контакт');
+    chats.delete(nick); cache.delete(nick); if (active === nick) closeChat(); renderList(); toast('Контакт видалено тільки для тебе');
+  });
+});
+$('removeContactBothBtn').addEventListener('click', () => {
+  $('chatMenu').hidden = true; if (!active || activeGroup) return;
+  const nick = active;
+  if (!confirm(`УВАГА! Видалити контакт ${nick} і всю історію повідомлень для ОБОХ сторін? Це незворотно.`)) return;
+  if (!confirm('Підтверди остаточне видалення всієї переписки для обох учасників.')) return;
+  socket.emit('conversation_remove', { nick, mode: 'both' }, res => {
+    if (!res?.ok) return toast('Не вдалося видалити переписку');
+    chats.delete(nick); cache.delete(nick); if (active === nick) closeChat(); renderList(); toast('Контакт і переписку видалено для обох');
+  });
+});
 
 // One gift as a square card in the grid.
 function giftCard(it, mine) {
