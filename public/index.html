@@ -204,6 +204,7 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
         <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
         <button class="icon" id="photoBtn" data-i18n="photoBtn" hidden></button>
         <input id="avatarInput" type="file" accept="image/*" hidden>
+        <input id="groupAvatarInput" type="file" accept="image/*" hidden>
         <button class="icon" id="marketBtn" data-i18n-title="marketBtn">🛍</button>
         <button class="icon" id="groupsBtn" data-i18n-title="groupsBtn">👥</button>
         <button class="icon" id="adminBtn" data-i18n-title="adminBtn">🔑</button>
@@ -538,6 +539,7 @@ let adminCode = null;        // kept only while this page is open
 let groups = new Map();      // id -> group or channel summary
 let gcache = new Map();      // id -> messages of that group
 let activeGroup = null;      // id of the open group or channel (active is null then)
+let pendingGroupAvatar = null;
 let groupResults = [];       // groups and channels matching the search text
 let myPremium = false;       // true while your premium is active
 let writesStopped = false;   // true while the admin has stopped all writing
@@ -720,6 +722,17 @@ function createSocket() {
     if (list) gcache.set(chat, list.filter(m => m.id !== id));
     if (activeGroup === chat) renderMessages();
     refreshGroups();
+  });
+  socket.on('group_avatar', ({ id, url }) => {
+    const g = groups.get(id); if (g) g.avatar = url || null;
+    renderList(); if (activeGroup === id) renderGroupHeader();
+  });
+  socket.on('histories_cleared', () => {
+    cache.clear(); gcache.clear();
+    for (const g of groups.values()) { g.last = null; g.unread = 0; }
+    if (active) renderMessages();
+    if (activeGroup) renderMessages();
+    renderList();
   });
   socket.on('group_deleted', ({ id }) => {
     groups.delete(id);
@@ -1297,19 +1310,27 @@ function openProfile(nick) {
 
 function openAccounts(users) {
   const list = el('div', {});
-  for (const u of users) {
+  const searchBox = el('input', { class: 'field', placeholder: 'Пошук за ID або ніком', value: '' });
+  const draw = () => {
+    list.replaceChildren();
+    const q = searchBox.value.trim().toLowerCase();
+    const filtered = users.filter(u => !q || String(u.id).includes(q) || u.nick.toLowerCase().includes(q));
+    for (const u of filtered) {
     const sub = u.online ? t('online') : (u.lastSeen ? t('lastSeen', { time: fmtDateTime(u.lastSeen) }) : t('offline'));
     list.append(el('div', { class: 'acc-row' },
       avatarNode(u.nick, null, 40),
       el('div', { class: 'meta' },
-        el('div', { class: 'name' }, u.nick),
+        el('div', { class: 'name' }, u.nick + ' · ID ' + u.id),
         el('div', { class: 'sub' + (u.online ? ' on' : '') }, sub + ' · ' + t('created') + ' ' + fmtDateTime(u.created))),
       el('button', { class: 'btn danger', onclick: () => adminDeleteOne(u.nick) }, t('deleteBtn'))));
   }
-  if (!users.length) list.append(el('div', { class: 'empty' }, t('noAccounts')));
+    if (!filtered.length) list.append(el('div', { class: 'empty' }, t('noAccounts')));
+  };
+  searchBox.addEventListener('input', draw);
+  draw();
   openModal([
     el('div', { class: 'acc-head' }, t('accountsTitle') + ' (' + users.length + ')'),
-    list,
+    searchBox, list,
     el('div', { class: 'acc-foot' },
       el('button', { class: 'btn danger', style: 'width:100%', onclick: adminDeleteAll }, t('deleteAllBtn'))),
   ]);
@@ -1412,9 +1433,15 @@ function refreshGroups(done) {
   });
 }
 
-function groupItem(g) {
-  const av = el('div', { class: 'avatar' }, g.kind === 'channel' ? '📢' : '👥');
+function groupAvatarNode(g, size = 44) {
+  const av = el('div', { class: 'avatar', style: `width:${size}px;height:${size}px` }, g.kind === 'channel' ? '📢' : '👥');
   av.style.background = avatarBg(g.title);
+  if (g.avatar) av.replaceChildren(el('img', { src: g.avatar, alt: '' }));
+  return av;
+}
+
+function groupItem(g) {
+  const av = groupAvatarNode(g);
   const preview = g.last ? (g.last.from === me ? t('you') + ': ' : '') + previewText(g.last) : '';
   const btn = el('button', { class: 'item' + (g.id === activeGroup ? ' active' : ''), onclick: () => openGroup(g.id) },
     av,
@@ -1430,6 +1457,7 @@ function renderGroupHeader() {
   const av = $('hAvatar');
   av.textContent = g.kind === 'channel' ? '📢' : '👥';
   av.style.background = avatarBg(g.title);
+  if (g.avatar) av.replaceChildren(el('img', { src: g.avatar, alt: '' }));
   const st = $('hStatus');
   st.textContent = g.kind === 'channel' ? t('channelInfo', { n: g.members }) : t('groupInfo', { n: g.members });
   st.classList.remove('on');
@@ -1528,6 +1556,8 @@ function openGroupInfo(id) {
   if (isOwner) btns.push(el('button', { class: 'btn ghost', onclick: () => openGroupModeration(id) }, '👑 Учасники та модератори'));
   const head = el('div', { class: 'pf-avatar' }, g.kind === 'channel' ? '📢' : '👥');
   head.style.background = avatarBg(g.title);
+  if (g.avatar) head.append(el('img', { src: g.avatar, alt: '', style: 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%' }));
+  if (isOwner) btns.push(el('button', { class: 'btn ghost', onclick: () => { closeModal(); pendingGroupAvatar = id; $('groupAvatarInput').click(); } }, '🖼 Змінити фото'));
   openModal([
     el('div', { class: 'pf-head' }, head, el('div', { class: 'pf-name' }, g.title)),
     el('div', { class: 'pf-status' }, (g.kind === 'channel' ? t('kindChannel') : t('kindGroup')) + ' · ' +
@@ -1585,7 +1615,7 @@ function openGroupsModal() {
     groups = new Map(res.chats.map(c => [c.id, { ...c, unread: unread.get(c.id) || 0 }]));
     renderList();
     const rows = res.chats.map(c => {
-      const av = el('div', { class: 'avatar', style: `width:40px;height:40px;background:${avatarBg(c.title)}` }, c.kind === 'channel' ? '📢' : '👥');
+      const av = groupAvatarNode(c, 40);
       const sub = (c.kind === 'channel' ? t('kindChannel') : t('kindGroup')) + ' · ' +
         (c.kind === 'channel' ? t('channelInfo', { n: c.members }) : t('groupInfo', { n: c.members }));
       const btn = c.joined
@@ -1767,7 +1797,14 @@ function openAdminGroups() {
   adminCall('admin_groups', {}, r => {
     const rows = (r.items || []).map(g => el('div', { class: 'acc-row' },
       el('div', { class: 'meta' }, el('div', { class: 'name' }, (g.kind === 'channel' ? '📣 ' : '👥 ') + g.title), el('div', { class: 'sub' }, 'ID ' + g.id + ' · власник: ' + g.owner + ' · учасників: ' + g.members)),
-      el('button', { class: 'btn danger', onclick: () => { if (!confirm('Видалити «' + g.title + '»?')) return; socket.emit('group_delete', { id: g.id, code: adminCode }, res => { if (!res?.ok) return toast(t('messageFailed')); openAdminGroups(); }); } }, 'Видалити')));
+      el('div', { class: 'pf-actions' },
+        el('button', { class: 'btn ghost', onclick: () => {
+          const nick = (prompt('Нік користувача, якого додати до «' + g.title + '»:') || '').trim();
+          if (!nick) return;
+          adminCall('admin_add_member', { chatId: g.id, nick }, r => { toast(r.already ? 'Користувач уже є в чаті' : 'Користувача додано'); openAdminGroups(); });
+        } }, '➕ Додати користувача'),
+        el('button', { class: 'btn ghost', onclick: () => { pendingGroupAvatar = g.id; $('groupAvatarInput').click(); } }, '🖼 Фото'),
+        el('button', { class: 'btn danger', onclick: () => { if (!confirm('Видалити «' + g.title + '»?')) return; socket.emit('group_delete', { id: g.id, code: adminCode }, res => { if (!res?.ok) return toast(t('messageFailed')); openAdminGroups(); }); } }, 'Видалити'))));
     openModal([el('div', { class: 'acc-head' }, '👥 Групи та канали'), ...(rows.length ? rows : [el('div',{class:'empty'},'Груп і каналів немає')])]);
   });
 }
@@ -1796,6 +1833,11 @@ function openAdminSettings() {
         el('button', { class: 'btn ghost', onclick: () => openAdminAudit() }, '📋 Журнал дій адміна'),
         el('button', { class: 'btn ghost', onclick: () => openAdminStats() }, '📊 Статистика'),
         el('button', { class: 'btn ghost', onclick: () => openAdminGroups() }, '👥 Керування групами/каналами'),
+        el('button', { class: 'btn danger', onclick: () => {
+          if (!confirm('Очистити всі повідомлення в усіх приватних чатах, групах і каналах? Облікові записи та самі чати залишаться.')) return;
+          if (!confirm('Підтверджуєте глобальне очищення історії? Цю дію не можна скасувати.')) return;
+          adminCall('admin_clear_histories', {}, r => { toast('Історію очищено: ' + (r.private + r.group) + ' повідомлень'); });
+        } }, '🗑 Очистити історію всіх чатів'),
       ),
     ]);
   });
@@ -2065,6 +2107,24 @@ function applyAvatar(node, nick) {
 }
 
 $('photoBtn').addEventListener('click', () => $('avatarInput').click());
+$('groupAvatarInput').addEventListener('change', async e => {
+  const f = e.target.files?.[0];
+  e.target.value = '';
+  const id = pendingGroupAvatar; pendingGroupAvatar = null;
+  if (!f || !id) return;
+  if (!f.type.startsWith('image/') || f.size > 15 * 1024 * 1024) return toast(t('badFile'));
+  try {
+    const url = await uploadBlob(await compressImage(f));
+    socket.emit('group_set_avatar', { id, url, code: adminCode || undefined }, res => {
+      if (!res?.ok) return toast(res?.error === 'forbidden' ? t('badCode') : t('messageFailed'));
+      const g = groups.get(id); if (g) g.avatar = url;
+      refreshGroups(() => { if (activeGroup === id) renderGroupHeader(); });
+      toast('Фото групи/каналу збережено');
+      if (!$('modal').hidden) openGroupInfo(id);
+    });
+  } catch { toast(t('uploadFailed')); }
+});
+
 $('avatarInput').addEventListener('change', async e => {
   const f = e.target.files?.[0];
   e.target.value = '';
