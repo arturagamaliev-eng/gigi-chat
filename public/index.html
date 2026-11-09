@@ -2025,7 +2025,6 @@ function openMarket() {
         el('div', { class: 'acc-head' }, t('marketTitle') + ' · ⭐ ' + mine.stars),
         el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
           el('button', { class: 'btn ghost', onclick: () => openMarket() }, '🎁 Подарунки'),
-          el('button', { class: 'btn', onclick: () => openGames(mine.stars) }, '🎮 Ігри'),
           el('button', { class: 'btn ghost', onclick: () => openMyGifts() }, t('myGiftsBtn')),
           el('button', { class: 'btn ghost', onclick: () => openCreateGift() }, t('createGiftBtn')),
           el('button', { class: 'btn ghost', onclick: () => openAdminStars() }, t('adminStarsBtn')),
@@ -2038,49 +2037,6 @@ function openMarket() {
       ]);
     });
   });
-}
-
-function openGames(starsNow) {
-  const symbols = ['🍒', '🍋', '🍇', '⭐', '🔔', '💎'];
-  let spinning = false;
-  const reel = el('div', { style: 'font-size:48px;letter-spacing:8px;padding:18px 8px;background:var(--surface-2);border-radius:16px;margin:14px 0' }, '🍒  ⭐  🍋');
-  const result = el('div', { class: 'sub', style: 'min-height:24px;margin:8px 0 16px' }, 'Безкоштовна гра для розваги — зірки не використовуються.');
-  const spinButton = el('button', { class: 'btn', style: 'width:100%' }, '🎰 Крутити');
-  spinButton.onclick = () => {
-    if (spinning) return;
-    spinning = true;
-    spinButton.disabled = true;
-    result.textContent = 'Барабани крутяться…';
-    let ticks = 0;
-    const timer = setInterval(() => {
-      const roll = () => symbols[Math.floor(Math.random() * symbols.length)];
-      reel.textContent = `${roll()}  ${roll()}  ${roll()}`;
-      ticks++;
-      if (ticks >= 10) {
-        clearInterval(timer);
-        const finalRoll = [0, 1, 2].map(() => symbols[Math.floor(Math.random() * symbols.length)]);
-        reel.textContent = finalRoll.join('  ');
-        result.textContent = finalRoll.every(x => x === finalRoll[0])
-          ? '✨ Три однакові символи! Гарна комбінація!'
-          : 'Дякуємо за гру! Спробуй ще раз.';
-        spinning = false;
-        spinButton.disabled = false;
-      }
-    }, 100);
-  };
-  openModal([
-    el('div', { class: 'acc-head' }, '🎮 Ігри'),
-    el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
-      el('button', { class: 'btn ghost', onclick: () => openMarket() }, '🎁 Подарунки'),
-      el('button', { class: 'btn', onclick: () => openGames(starsNow) }, '🎮 Ігри')),
-    el('div', { class: 'acc-card', style: 'padding:18px;text-align:center' },
-      el('div', { class: 'acc-head' }, '🎰 Слоти'),
-      el('div', { class: 'sub' }, 'Безкоштовна аркадна гра. Ставок, списання та виграшу зірок немає.'),
-      reel,
-      result,
-      spinButton,
-      el('div', { class: 'sub', style: 'margin-top:12px' }, 'Твій баланс залишається незмінним: ⭐ ' + Number(starsNow || 0)))
-  ]);
 }
 
 function buyGift(it) {
