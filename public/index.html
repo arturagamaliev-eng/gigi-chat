@@ -1843,15 +1843,34 @@ function openAdminSettings() {
   });
 }
 
+function openComplaintConversation(complaintId) {
+  adminCall('admin_complaint_conversation', { complaintId }, res => {
+    const rows = (res.messages || []).map(m => el('div', { class: 'acc-row' },
+      el('div', { class: 'meta' },
+        el('div', { class: 'name' }, m.from + ' → ' + m.to),
+        el('div', { class: 'sub' }, fmtDateTime(m.created) + (m.kind && m.kind !== 'text' ? ' · ' + m.kind : '')),
+        el('div', { style: 'white-space:pre-wrap;overflow-wrap:anywhere;margin-top:6px' }, m.text || '[повідомлення без тексту]'))));
+    openModal([
+      el('div', { class: 'acc-head' }, '🔎 Перевірка скарги · ' + res.complaint.from + ' ↔ ' + res.complaint.about),
+      el('div', { class: 'sub', style: 'margin-bottom:10px' }, 'Показано приватну переписку заявника з користувачем, на якого поскаржилися. Перегляд записано в журналі дій адміністратора.'),
+      ...(rows.length ? rows : [el('div', { class: 'empty' }, 'У цій приватній переписці повідомлень не знайдено')]),
+      el('button', { class: 'btn ghost', onclick: () => openComplaints() }, '← До скарг'),
+    ]);
+  });
+}
+
 function openComplaints() {
   adminCall('admin_complaints', {}, res => {
     const rows = res.items.map(c => el('div', { class: 'acc-row' },
       el('div', { class: 'meta' },
         el('div', { class: 'name' }, c.from + ' → ' + c.about),
         el('div', { class: 'sub' }, fmtDateTime(c.created) + ' · ' + c.text)),
-      el('button', { class: 'btn danger', onclick: () => adminCall('admin_complaint_delete', { id: c.id }, () => openComplaints()) }, t('deleteBtn'))));
+      el('div', { class: 'pf-actions' },
+        el('button', { class: 'btn ghost', onclick: () => openComplaintConversation(c.id) }, '💬 Переглянути пов’язану переписку'),
+        el('button', { class: 'btn danger', onclick: () => adminCall('admin_complaint_delete', { id: c.id }, () => openComplaints()) }, t('deleteBtn')))));
     openModal([
       el('div', { class: 'acc-head' }, t('complaintsTitle')),
+      el('div', { class: 'sub', style: 'margin-bottom:10px' }, 'Перегляд доступний лише в межах конкретної скарги; кожне відкриття фіксується в журналі адміністратора.'),
       ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noComplaints'))]),
     ]);
   });
