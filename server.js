@@ -67,7 +67,7 @@ async function chatSummary(c, me) {
   const members = await membersOf(c.id);
   const last = await db.one('SELECT id, chat_id, from_nick, text, kind, created_at FROM gmessages WHERE chat_id = $1 ORDER BY id DESC LIMIT 1', [c.id]);
   return {
-    id: c.id, kind: c.kind, title: c.title, owner: c.owner,
+    id: c.id, kind: c.kind, title: c.title, owner: c.owner, avatar: c.avatar || null,
     members: members.length, joined: members.includes(me), last: last ? toGMsg(last) : null,
   };
 }
@@ -158,6 +158,8 @@ CREATE TABLE IF NOT EXISTS stories (
 
 const EXTRA_SCHEMA = `
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS media TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS user_id BIGSERIAL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen DOUBLE PRECISION;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS status_text TEXT;
@@ -166,8 +168,10 @@ CREATE TABLE IF NOT EXISTS chats (
   kind TEXT NOT NULL,
   title TEXT NOT NULL,
   owner TEXT NOT NULL,
-  created_at DOUBLE PRECISION NOT NULL
+  created_at DOUBLE PRECISION NOT NULL,
+  avatar TEXT
 );
+ALTER TABLE chats ADD COLUMN IF NOT EXISTS avatar TEXT;
 CREATE TABLE IF NOT EXISTS chat_members (
   chat_id INTEGER NOT NULL,
   nick TEXT NOT NULL,
@@ -627,19 +631,22 @@ io.on('connection', async socket => {
   on('admin_groups', async (payload, ack) => {
     if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
-    const rows = await db.all('SELECT c.id, c.kind, c.title, c.owner, c.created_at, COUNT(m.nick)::int AS members FROM chats c LEFT JOIN chat_members m ON m.chat_id = c.id GROUP BY c.id ORDER BY c.created_at DESC LIMIT 300');
+    const rows = await db.all('SELECT c.id, c.kind, c.title, c.owner, c.avatar, c.created_at, COUNT(m.nick)::int AS members FROM chats c LEFT JOIN chat_members m ON m.chat_id = c.id GROUP BY c.id ORDER BY c.created_at DESC LIMIT 300');
     ack?.({ ok: true, items: rows });
   });
 
   on('admin_list', async (payload, ack) => {
     if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
-    const rows = await db.all('SELECT nickname, avatar, bio, last_seen, created_at FROM users ORDER BY nickname');
+    const q = String(payload?.q || '').trim().slice(0, 80);
+    const rows = await db.all(
+      `SELECT user_id, nickname, avatar, bio, last_seen, created_at FROM users
+       WHERE ($1 = '' OR nickname ILIKE $2 OR user_id::text = $1)
+       ORDER BY nickname`,
+      [q, `%${q.replace(/[\\%_]/g, '\\$&')}%`]);
     ack?.({ ok: true, users: rows.map(r => ({
-      nick: r.nickname,
-      online: online.has(r.nickname),
-      lastSeen: r.last_seen,
-      created: r.created_at,
+      id: r.user_id, nick: r.nickname, online: online.has(r.nickname),
+      lastSeen: r.last_seen, created: r.created_at,
     })) });
   });
 
@@ -663,6 +670,61 @@ io.on('connection', async socket => {
     socketNick.clear();
     io.emit('all_deleted');
     ack?.({ ok: true });
+  });
+
+
+  on('admin_clear_histories', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const counts = await db.one(
+      'SELECT (SELECT COUNT(*)::int FROM messages) AS private_count, (SELECT COUNT(*)::int FROM gmessages) AS group_count');
+    await tx(async c => {
+      await c.query("DELETE FROM reactions WHERE target_type IN ('msg', 'gmsg')");
+      await c.query('DELETE FROM poll_votes');
+      await c.query('DELETE FROM messages');
+      await c.query('DELETE FROM gmessages');
+    });
+    await auditAdmin(me, 'clear_all_histories', 'all_chats',
+      `private=${counts.private_count}; group=${counts.group_count}`);
+    io.emit('histories_cleared');
+    ack?.({ ok: true, private: counts.private_count, group: counts.group_count });
+  });
+
+  on('admin_add_member', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const id = Number(payload?.chatId);
+    const target = (await findUser(String(payload?.nick || '')))?.nickname;
+    const chat = Number.isInteger(id) ? await db.one('SELECT id, title FROM chats WHERE id = $1', [id]) : null;
+    if (!chat) return ack?.({ ok: false, error: 'no_chat' });
+    if (!target) return ack?.({ ok: false, error: 'no_user' });
+    const existed = await isMember(id, target);
+    await db.run('INSERT INTO chat_members (chat_id, nick) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, target]);
+    await db.run("INSERT INTO group_roles (chat_id, nick, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING", [id, target]);
+    if (!existed) await auditAdmin(me, 'add_group_member', target, `chat=${id}; title=${chat.title}`);
+    ack?.({ ok: true, already: existed });
+  });
+
+  on('group_set_avatar', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id);
+    const chat = Number.isInteger(id) ? await db.one('SELECT id, owner, title, avatar FROM chats WHERE id = $1', [id]) : null;
+    if (!chat) return ack?.({ ok: false, error: 'no_chat' });
+    const isAdmin = adminOk(payload?.code);
+    if (chat.owner !== me && !isAdmin) return ack?.({ ok: false, error: 'forbidden' });
+    const raw = payload?.url;
+    if (raw && !isOurMedia(String(raw), 'image')) return ack?.({ ok: false, error: 'invalid' });
+    const oldId = mediaIdOf(chat.avatar);
+    const url = raw ? String(raw) : null;
+    await db.run('UPDATE chats SET avatar = $1 WHERE id = $2', [url, id]);
+    if (url) await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [Date.now() + AVATAR_MS, mediaIdOf(url)]);
+    if (oldId && chat.avatar !== url) await db.run('DELETE FROM media WHERE id = $1', [oldId]);
+    await auditAdmin(me, 'change_group_avatar', String(id), `${chat.title}; via=${isAdmin ? 'admin' : 'owner'}`);
+    io.emit('group_avatar', { id, url });
+    ack?.({ ok: true, avatar: url });
   });
 
   on('admin_delete', async (payload, ack) => {
@@ -776,7 +838,7 @@ io.on('connection', async socket => {
   // Public list of every group and channel; "joined" tells whether this user is a member.
   on('group_list', async (payload, ack) => {
     const me = socketNick.get(socket.id) || '';
-    const rows = await db.all('SELECT id, kind, title, owner, created_at FROM chats ORDER BY id DESC LIMIT 200');
+    const rows = await db.all('SELECT id, kind, title, owner, avatar, created_at FROM chats ORDER BY id DESC LIMIT 200');
     const out = [];
     for (const c of rows) out.push(await chatSummary(c, me));
     ack?.({ ok: true, chats: out });
