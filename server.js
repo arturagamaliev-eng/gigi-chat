@@ -139,10 +139,15 @@ CREATE TABLE IF NOT EXISTS messages (
   text TEXT NOT NULL,
   kind TEXT NOT NULL DEFAULT 'text',
   created_at DOUBLE PRECISION NOT NULL,
-  read_at DOUBLE PRECISION
+  read_at DOUBLE PRECISION,
+  reply_to INTEGER,
+  edited_at DOUBLE PRECISION
 );
 CREATE INDEX IF NOT EXISTS idx_msg_from ON messages(from_nick, id);
 CREATE INDEX IF NOT EXISTS idx_msg_to ON messages(to_nick, id);
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to INTEGER;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at DOUBLE PRECISION;
+CREATE TABLE IF NOT EXISTS admin_audit (id SERIAL PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, target TEXT, details TEXT, created_at DOUBLE PRECISION NOT NULL);
 CREATE TABLE IF NOT EXISTS stories (
   id SERIAL PRIMARY KEY,
   text TEXT NOT NULL,
@@ -230,7 +235,8 @@ CREATE TABLE IF NOT EXISTS media (
 `;
 
 const findUser = nick => db.one('SELECT nickname, key, pass_salt, pass_hash FROM users WHERE key = $1', [keyOf(nick)]);
-const toMsg = r => ({ id: r.id, from: r.from_nick, to: r.to_nick, text: r.text, created_at: r.created_at, read_at: r.read_at ?? null, kind: r.kind || 'text' });
+const toMsg = r => ({ id: r.id, from: r.from_nick, to: r.to_nick, text: r.text, created_at: r.created_at, read_at: r.read_at ?? null, kind: r.kind || 'text', reply_to: r.reply_to ?? null, edited_at: r.edited_at ?? null });
+const auditAdmin = (actor, action, target, details='') => db.run('INSERT INTO admin_audit (actor, action, target, details, created_at) VALUES ($1,$2,$3,$4,$5)', [actor, action, target || null, details, Date.now()]);
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   return { salt, hash: crypto.scryptSync(password, salt, 64).toString('hex') };
@@ -480,10 +486,10 @@ io.on('connection', async socket => {
 
     const now = Date.now();
     const row = await db.one(
-      'INSERT INTO messages (from_nick, to_nick, text, kind, created_at) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-      [me, to, text, kind, now]);
+      'INSERT INTO messages (from_nick, to_nick, text, kind, created_at, reply_to) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+      [me, to, text, kind, now, Number.isInteger(Number(payload?.reply_to)) ? Number(payload.reply_to) : null]);
     if (kind === 'image') await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + CHAT_MEDIA_MS, mediaIdOf(text)]);
-    const msg = { id: row.id, from: me, to, text, created_at: now, read_at: null, kind };
+    const msg = { id: row.id, from: me, to, text, created_at: now, read_at: null, kind, reply_to: Number.isInteger(Number(payload?.reply_to)) ? Number(payload.reply_to) : null, edited_at: null };
     io.to('u:' + to).to('u:' + me).emit('message', msg);
     ack?.({ ok: true, msg });
   });
@@ -497,6 +503,27 @@ io.on('connection', async socket => {
     const now = Date.now();
     const r = await db.run('UPDATE messages SET read_at = $1 WHERE from_nick = $2 AND to_nick = $3 AND read_at IS NULL', [now, partner, me]);
     if (r.rowCount > 0) io.to('u:' + partner).emit('read', { by: me, at: now });
+  });
+
+  on('msg_edit', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const id = Number(payload?.id), text = typeof payload?.text === 'string' ? payload.text.trim() : '';
+    if (!Number.isInteger(id) || !text || text.length > MAX_TEXT) return ack?.({ ok: false, error: 'invalid' });
+    const row = await db.one("SELECT id, from_nick, to_nick, kind FROM messages WHERE id = $1", [id]);
+    if (!row || row.from_nick !== me || row.kind !== 'text') return ack?.({ ok: false, error: 'forbidden' });
+    const now = Date.now();
+    await db.run('UPDATE messages SET text = $1, edited_at = $2 WHERE id = $3', [text, now, id]);
+    const msg = { id, from: me, to: row.to_nick, text, edited_at: now };
+    io.to('u:' + row.to_nick).to('u:' + me).emit('msg_edited', msg);
+    ack?.({ ok: true, msg });
+  });
+
+  on('admin_audit_list', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const rows = await db.all('SELECT actor, action, target, details, created_at FROM admin_audit ORDER BY id DESC LIMIT 200');
+    ack?.({ ok: true, items: rows });
   });
 
   on('msg_delete', async (payload, ack) => {
@@ -609,6 +636,7 @@ io.on('connection', async socket => {
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     const target = (await findUser(String(payload?.nick || '')))?.nickname;
     if (!target) return ack?.({ ok: false, error: 'no_user' });
+    await auditAdmin(me, 'delete_account', target);
     await removeUser(target);
     const sockets = [...(online.get(target) || [])];
     online.delete(target);
@@ -797,6 +825,7 @@ io.on('connection', async socket => {
     const c = Number.isInteger(id) ? await db.one('SELECT id, owner FROM chats WHERE id = $1', [id]) : null;
     if (!c) return ack?.({ ok: false, error: 'no_chat' });
     if (c.owner !== me && !adminOk(payload?.code)) return ack?.({ ok: false, error: 'forbidden' });
+    if (c.owner !== me) await auditAdmin(me, 'delete_group', String(id), c.title);
     const imgs = (await db.all("SELECT text FROM gmessages WHERE chat_id = $1 AND kind = 'image'", [id])).map(r => r.text);
     await tx(async cl => {
       await cl.query("DELETE FROM reactions WHERE target_type = 'gmsg' AND target_id IN (SELECT id FROM gmessages WHERE chat_id = $1)", [id]);
