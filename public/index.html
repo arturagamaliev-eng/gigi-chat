@@ -180,6 +180,8 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
  .mobile-nav-item .mobile-nav-icon{font-size:22px}
  .mobile-nav-avatar{width:29px;height:29px}
 }
+
+.pf-id{font-size:13px;line-height:1.35;color:var(--muted,#9bb6c7);margin-top:3px;letter-spacing:.2px}
 </style>
 </head>
 <body>
@@ -1339,6 +1341,7 @@ function openProfile(nick) {
       el('div', { class: 'pf-head' },
         avatarNode(nick, avatarUrl, 96),
         el('div', { class: 'pf-name' }, nick),
+        el('div', { class: 'pf-id' }, 'ID: ' + (info.id ?? '—')),
         status),
       statusLine,
       el('div', { class: 'pf-title acc-head' }, t('aboutLabel')),
