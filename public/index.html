@@ -1721,6 +1721,8 @@ function openSettings() {
       el('div', { class: 'sub' }, t('themeLabel')),
       el('div', { class: 'pf-actions', style: 'margin:8px 0 16px;flex-wrap:wrap' },
         ...[['dark','🌑 Темна'],['light','☀️ Світла'],['purple','💜 Фіолетова'],['ocean','🌊 Океан'],['rose','🌸 Рожева']].map(([key,label]) => el('button', { class: 'btn' + (theme === key ? '' : ' ghost'), onclick: () => setTheme(key) }, label))),
+      el('div', { class: 'acc-head' }, '🔒 Безпека акаунта'),
+      el('button', { class: 'btn ghost', style: 'width:100%;margin:8px 0 16px', onclick: changeAccountPassword }, '🔑 Змінити пароль акаунта'),
       el('div', { class: 'acc-head' }, t('premiumTitle')),
       el('div', { class: 'sub' }, myPremium ? t('premiumActive') : t('premiumNone')),
       el('div', { class: 'pf-actions', style: 'margin:8px 0 16px' },
@@ -1729,6 +1731,22 @@ function openSettings() {
       el('div', { class: 'acc-head' }, t('blockedTitle')),
       ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noBlocked'))]),
     ]);
+  });
+}
+
+function changeAccountPassword() {
+  const currentPassword = prompt('Введіть поточний пароль акаунта:');
+  if (currentPassword === null) return;
+  const newPassword = prompt('Введіть новий пароль (4–100 символів):');
+  if (newPassword === null) return;
+  const confirmPassword = prompt('Повторіть новий пароль:');
+  if (confirmPassword === null) return;
+  if (newPassword.length < 4 || newPassword.length > 100) return toast('Пароль має містити 4–100 символів');
+  if (newPassword !== confirmPassword) return toast('Нові паролі не збігаються');
+  socket.emit('change_password', { currentPassword, newPassword, token: localStorage.getItem('gigi_token') }, res => {
+    if (!res?.ok) return toast(res?.error === 'wrong_password' ? 'Поточний пароль неправильний' : 'Не вдалося змінити пароль');
+    toast('Пароль акаунта змінено');
+    openSettings();
   });
 }
 
@@ -1861,6 +1879,7 @@ function openAdminSettings() {
           adminCall('admin_notify', { text }, () => toast(t('notifySent')));
         } }, t('notifyBtn')),
         el('button', { class: 'btn ghost', onclick: () => openComplaints() }, t('complaintsBtn', { n: count })),
+        el('button', { class: 'btn ghost', onclick: changeAdminSecretCode }, '🔐 Змінити секретний код адміна'),
         el('button', { class: 'btn ghost', onclick: () => openAdminAudit() }, '📋 Журнал дій адміна'),
         el('button', { class: 'btn ghost', onclick: () => openAdminStats() }, '📊 Статистика'),
         el('button', { class: 'btn ghost', onclick: () => openAdminGroups() }, '👥 Керування групами/каналами'),
@@ -1871,6 +1890,23 @@ function openAdminSettings() {
         } }, '🗑 Очистити історію всіх чатів'),
       ),
     ]);
+  });
+}
+
+function changeAdminSecretCode() {
+  const currentCode = prompt('Введіть поточний секретний код адміністратора:');
+  if (currentCode === null) return;
+  const newCode = prompt('Введіть новий секретний код (6–100 символів):');
+  if (newCode === null) return;
+  const confirmCode = prompt('Повторіть новий секретний код:');
+  if (confirmCode === null) return;
+  if (newCode.trim().length < 6 || newCode.trim().length > 100) return toast('Код має містити 6–100 символів');
+  if (newCode !== confirmCode) return toast('Коди не збігаються');
+  socket.emit('admin_change_code', { currentCode, newCode }, res => {
+    if (!res?.ok) return toast(res?.error === 'bad_code' ? 'Поточний код неправильний' : 'Не вдалося змінити код');
+    adminCode = newCode.trim();
+    toast('Секретний код адміністратора змінено');
+    openAdminSettings();
   });
 }
 
