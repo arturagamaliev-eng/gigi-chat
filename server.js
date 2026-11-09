@@ -28,12 +28,14 @@ const DAY_MS = 24 * 3600 * 1000;
 
 let appBg = null;          // background photo URL, or null for the default
 let writesStopped = false; // true while nobody can write messages
+let visualRules = {}; // administrator-managed visual overrides
 
 async function loadSettings() {
   for (const r of await db.all('SELECT k, v FROM app_settings')) {
     if (r.k === 'bg') appBg = r.v || null;
     if (r.k === 'stopped') writesStopped = r.v === '1';
     if (r.k === 'admin_code' && r.v) adminSecretCode = r.v;
+    if (r.k === 'visual_rules') { try { visualRules = JSON.parse(r.v || '{}') || {}; } catch { visualRules = {}; } }
   }
 }
 
@@ -41,7 +43,7 @@ async function saveSetting(k, v) {
   await db.run('INSERT INTO app_settings (k, v) VALUES ($1, $2) ON CONFLICT (k) DO UPDATE SET v = excluded.v', [k, v]);
 }
 
-const configPayload = () => ({ bg: appBg, stopped: writesStopped });
+const configPayload = () => ({ bg: appBg, stopped: writesStopped, visualRules });
 const handleOk = h => /^[a-z0-9_]{3,20}$/.test(h);
 const normHandle = s => String(s || '').trim().replace(/^@/, '').toLowerCase();
 const isPremium = async nick => Boolean(await db.one('SELECT 1 AS x FROM users WHERE nickname = $1 AND premium_until > $2', [nick, Date.now()]));
@@ -516,6 +518,39 @@ io.on('connection', async socket => {
     adminSecretCode = next;
     await auditAdmin(me, 'change_admin_code', me, 'Адміністратор змінив секретний код');
     ack?.({ ok: true });
+  });
+
+  on('admin_visual_save', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const incoming = payload?.rules;
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming) || Object.keys(incoming).length > 300) return ack?.({ ok: false, error: 'invalid_rules' });
+    const clean = {};
+    for (const [selector, rule] of Object.entries(incoming)) {
+      if (typeof selector !== 'string' || selector.length > 1000 || !selector.startsWith('body > ') || !rule || typeof rule !== 'object') continue;
+      const out = {};
+      if (typeof rule.text === 'string' && rule.text.length <= 200) out.text = rule.text;
+      for (const key of ['color', 'backgroundColor']) {
+        const v = rule[key];
+        if (typeof v === 'string' && /^(#[0-9a-fA-F]{3,8}|rgba?\([\d\s.,%]+\)|hsla?\([\d\s.,%]+\)|[a-zA-Z]{3,20})$/.test(v)) out[key] = v;
+      }
+      for (const key of ['fontSize', 'borderRadius']) {
+        const n = Number(rule[key]);
+        if (Number.isFinite(n)) out[key] = Math.max(key === 'fontSize' ? 8 : 0, Math.min(key === 'fontSize' ? 72 : 50, n)) + 'px';
+      }
+      for (const key of ['translateX', 'translateY']) {
+        const n = Number(rule[key]);
+        if (Number.isFinite(n)) out[key] = Math.max(-500, Math.min(500, n)) + 'px';
+      }
+      if (typeof rule.hidden === 'boolean') out.hidden = rule.hidden;
+      if (Object.keys(out).length) clean[selector] = out;
+    }
+    visualRules = clean;
+    await saveSetting('visual_rules', JSON.stringify(visualRules));
+    await auditAdmin(me, 'visual_editor_save', 'site', `Збережено правил: ${Object.keys(clean).length}`);
+    io.emit('app_config', configPayload());
+    ack?.({ ok: true, count: Object.keys(clean).length });
   });
 
   on('message', async (payload, ack) => {
