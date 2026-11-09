@@ -160,6 +160,7 @@ const EXTRA_SCHEMA = `
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS media TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen DOUBLE PRECISION;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status_text TEXT;
 CREATE TABLE IF NOT EXISTS chats (
   id SERIAL PRIMARY KEY,
   kind TEXT NOT NULL,
@@ -233,6 +234,8 @@ CREATE TABLE IF NOT EXISTS media (
   mime TEXT NOT NULL,
   expires_at DOUBLE PRECISION NOT NULL
 );
+CREATE TABLE IF NOT EXISTS poll_votes (message_id INTEGER NOT NULL, nick TEXT NOT NULL, option_index INTEGER NOT NULL, PRIMARY KEY(message_id, nick));
+CREATE TABLE IF NOT EXISTS group_roles (chat_id INTEGER NOT NULL, nick TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'member', PRIMARY KEY(chat_id, nick));
 `;
 
 const findUser = nick => db.one('SELECT nickname, key, pass_salt, pass_hash FROM users WHERE key = $1', [keyOf(nick)]);
@@ -582,11 +585,11 @@ io.on('connection', async socket => {
   on('user_info', async (payload, ack) => {
     const u = await findUser(String(payload?.nick || ''));
     if (!u) return ack?.({ ok: false, error: 'no_user' });
-    const row = await db.one('SELECT nickname, avatar, bio, last_seen, premium_until FROM users WHERE nickname = $1', [u.nickname]);
+    const row = await db.one('SELECT nickname, avatar, bio, status_text, last_seen, premium_until FROM users WHERE nickname = $1', [u.nickname]);
     if (row.premium_until > Date.now()) {
       return ack?.({ ok: true, info: {
         nick: row.nickname, hidden: true, online: false, lastSeen: null,
-        avatar: row.avatar, bio: row.bio,
+        avatar: row.avatar, bio: row.bio, statusText: row.status_text || '',
         shelf: await db.all('SELECT id, title, image FROM gift_items WHERE owner = $1 AND on_shelf = true', [row.nickname]),
       } });
     }
@@ -595,9 +598,18 @@ io.on('connection', async socket => {
       online: online.has(row.nickname),
       lastSeen: row.last_seen,
       avatar: row.avatar,
-      bio: row.bio,
+      bio: row.bio, statusText: row.status_text || '',
       shelf: await db.all('SELECT id, title, image FROM gift_items WHERE owner = $1 AND on_shelf = true', [row.nickname]),
     } });
+  });
+
+  on('set_profile_status', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const status = typeof payload?.status === 'string' ? payload.status.trim().slice(0, 80) : '';
+    await db.run('UPDATE users SET status_text = $1 WHERE nickname = $2', [status || null, me]);
+    io.emit('profile_status', { nick: me, statusText: status });
+    ack?.({ ok: true, statusText: status });
   });
 
   // Admin only: every account, including ones with no chats yet.
@@ -757,6 +769,7 @@ io.on('connection', async socket => {
     const row = await db.one('INSERT INTO chats (kind, title, owner, created_at) VALUES ($1, $2, $3, $4) RETURNING id',
       [kind, title, me, Date.now()]);
     await db.run('INSERT INTO chat_members (chat_id, nick) VALUES ($1, $2)', [row.id, me]);
+    await db.run("INSERT INTO group_roles (chat_id, nick, role) VALUES ($1, $2, 'owner') ON CONFLICT DO NOTHING", [row.id, me]);
     ack?.({ ok: true, id: row.id });
   });
 
@@ -776,6 +789,7 @@ io.on('connection', async socket => {
     const c = Number.isInteger(id) ? await db.one('SELECT id FROM chats WHERE id = $1', [id]) : null;
     if (!c) return ack?.({ ok: false, error: 'no_chat' });
     await db.run('INSERT INTO chat_members (chat_id, nick) VALUES ($1, $2) ON CONFLICT DO NOTHING', [id, me]);
+    await db.run("INSERT INTO group_roles (chat_id, nick, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING", [id, me]);
     ack?.({ ok: true });
   });
 
@@ -787,6 +801,7 @@ io.on('connection', async socket => {
     if (!c) return ack?.({ ok: false, error: 'no_chat' });
     if (c.owner === me) return ack?.({ ok: false, error: 'owner' });
     await db.run('DELETE FROM chat_members WHERE chat_id = $1 AND nick = $2', [id, me]);
+    await db.run('DELETE FROM group_roles WHERE chat_id = $1 AND nick = $2', [id, me]);
     ack?.({ ok: true });
   });
 
@@ -796,7 +811,18 @@ io.on('connection', async socket => {
     if (!me || !Number.isInteger(id) || !(await isMember(id, me))) return ack?.({ ok: false, error: 'forbidden' });
     const rows = await db.all('SELECT id, chat_id, from_nick, text, kind, created_at, pinned FROM gmessages WHERE chat_id = $1 ORDER BY id DESC LIMIT 200', [id]);
     const reacts = await reactionsFor('gmsg', rows.map(r => r.id));
-    ack?.({ ok: true, messages: rows.reverse().map(r => ({ ...toGMsg(r), reactions: reacts.get(r.id) || {} })) });
+    const messages = [];
+    for (const r of rows.reverse()) {
+      const m = { ...toGMsg(r), reactions: reacts.get(r.id) || {} };
+      if (m.kind === 'poll') {
+        const votes = await db.all('SELECT option_index, COUNT(*)::int AS n FROM poll_votes WHERE message_id = $1 GROUP BY option_index', [m.id]);
+        const mine = await db.one('SELECT option_index FROM poll_votes WHERE message_id = $1 AND nick = $2', [m.id, me]);
+        m.pollResults = votes.reduce((a, v) => ({ ...a, [v.option_index]: v.n }), {});
+        m.myVote = mine ? mine.option_index : null;
+      }
+      messages.push(m);
+    }
+    ack?.({ ok: true, messages });
   });
 
   on('group_send', async (payload, ack) => {
@@ -820,6 +846,66 @@ io.on('connection', async socket => {
     ack?.({ ok: true, msg });
   });
 
+  // Create a group poll. Each member may select one option; a new vote replaces the old one.
+  on('group_poll_create', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    const id = Number(payload?.id);
+    const question = typeof payload?.question === 'string' ? payload.question.trim().slice(0, 180) : '';
+    const options = Array.isArray(payload?.options) ? payload.options.map(x => String(x).trim().slice(0, 100)).filter(Boolean).slice(0, 8) : [];
+    const c = Number.isInteger(id) ? await db.one('SELECT id, kind, owner FROM chats WHERE id = $1', [id]) : null;
+    if (!me || !c || !(await isMember(id, me))) return ack?.({ ok: false, error: 'forbidden' });
+    if (writesStopped || (c.kind === 'channel' && c.owner !== me)) return ack?.({ ok: false, error: 'read_only' });
+    if (!question || options.length < 2 || new Set(options.map(x => x.toLowerCase())).size < 2) return ack?.({ ok: false, error: 'invalid_poll' });
+    const text = JSON.stringify({ question, options });
+    const now = Date.now();
+    const row = await db.one("INSERT INTO gmessages (chat_id, from_nick, text, kind, created_at) VALUES ($1, $2, $3, 'poll', $4) RETURNING id", [id, me, text, now]);
+    const msg = { id: row.id, chat: id, from: me, text, kind: 'poll', created_at: now, reactions: {}, pollResults: {}, myVote: null };
+    for (const m of await membersOf(id)) io.to('u:' + m).emit('gmessage', { chat: id, msg });
+    ack?.({ ok: true, msg });
+  });
+
+  on('poll_vote', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    const id = Number(payload?.id), option = Number(payload?.option);
+    const poll = Number.isInteger(id) ? await db.one("SELECT id, chat_id, text FROM gmessages WHERE id = $1 AND kind = 'poll'", [id]) : null;
+    if (!me || !poll || !(await isMember(poll.chat_id, me))) return ack?.({ ok: false, error: 'forbidden' });
+    let data; try { data = JSON.parse(poll.text); } catch { return ack?.({ ok: false, error: 'invalid_poll' }); }
+    if (!Number.isInteger(option) || option < 0 || option >= data.options.length) return ack?.({ ok: false, error: 'invalid_option' });
+    await db.run('INSERT INTO poll_votes (message_id, nick, option_index) VALUES ($1, $2, $3) ON CONFLICT (message_id, nick) DO UPDATE SET option_index = excluded.option_index', [id, me, option]);
+    const votes = await db.all('SELECT option_index, COUNT(*)::int AS n FROM poll_votes WHERE message_id = $1 GROUP BY option_index', [id]);
+    const pollResults = votes.reduce((a, v) => ({ ...a, [v.option_index]: v.n }), {});
+    for (const member of await membersOf(poll.chat_id)) io.to('u:' + member).emit('poll_updated', { chat: poll.chat_id, id, pollResults, myVote: member === me ? option : undefined });
+    ack?.({ ok: true, pollResults, myVote: option });
+  });
+
+  // Owners manage members and moderators; platform admins can also remove/promote using the admin code.
+  on('group_moderate', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    const id = Number(payload?.id), target = String(payload?.nick || '').trim(), action = String(payload?.action || '');
+    const c = Number.isInteger(id) ? await db.one('SELECT id, owner FROM chats WHERE id = $1', [id]) : null;
+    if (!me || !c || !target || !(await isMember(id, target))) return ack?.({ ok: false, error: 'no_member' });
+    const admin = adminOk(payload?.code);
+    if (c.owner !== me && !admin) return ack?.({ ok: false, error: 'forbidden' });
+    if (target === c.owner) return ack?.({ ok: false, error: 'owner_protected' });
+    if (action === 'remove') {
+      await db.run('DELETE FROM chat_members WHERE chat_id = $1 AND nick = $2', [id, target]);
+      await db.run('DELETE FROM group_roles WHERE chat_id = $1 AND nick = $2', [id, target]);
+      await db.run('DELETE FROM poll_votes WHERE message_id IN (SELECT id FROM gmessages WHERE chat_id = $1) AND nick = $2', [id, target]);
+      io.to('u:' + target).emit('group_removed', { id });
+    } else if (action === 'moderator' || action === 'member') {
+      await db.run('INSERT INTO group_roles (chat_id, nick, role) VALUES ($1, $2, $3) ON CONFLICT (chat_id, nick) DO UPDATE SET role = excluded.role', [id, target, action]);
+    } else return ack?.({ ok: false, error: 'invalid_action' });
+    ack?.({ ok: true });
+  });
+
+  on('group_moderators', async (payload, ack) => {
+    const me = socketNick.get(socket.id), id = Number(payload?.id);
+    const c = Number.isInteger(id) ? await db.one('SELECT id, owner FROM chats WHERE id = $1', [id]) : null;
+    if (!me || !c || !(await isMember(id, me)) || (c.owner !== me && !adminOk(payload?.code))) return ack?.({ ok: false, error: 'forbidden' });
+    const members = await db.all("SELECT m.nick, COALESCE(r.role, CASE WHEN m.nick = $2 THEN 'owner' ELSE 'member' END) AS role FROM chat_members m LEFT JOIN group_roles r ON r.chat_id = m.chat_id AND r.nick = m.nick WHERE m.chat_id = $1 ORDER BY CASE WHEN m.nick = $2 THEN 0 ELSE 1 END, m.nick", [id, c.owner]);
+    ack?.({ ok: true, members });
+  });
+
   // A group message can be deleted by its sender or by the group's owner.
   on('gmsg_delete', async (payload, ack) => {
     const me = socketNick.get(socket.id);
@@ -828,8 +914,10 @@ io.on('connection', async socket => {
     const row = Number.isInteger(id) ? await db.one('SELECT id, chat_id, from_nick, kind, text FROM gmessages WHERE id = $1', [id]) : null;
     if (!row) return ack?.({ ok: false, error: 'no_message' });
     const owner = (await db.one('SELECT owner FROM chats WHERE id = $1', [row.chat_id]))?.owner;
-    if (row.from_nick !== me && owner !== me) return ack?.({ ok: false, error: 'forbidden' });
+    const role = (await db.one('SELECT role FROM group_roles WHERE chat_id = $1 AND nick = $2', [row.chat_id, me]))?.role;
+    if (row.from_nick !== me && owner !== me && role !== 'moderator' && !adminOk(payload?.code)) return ack?.({ ok: false, error: 'forbidden' });
     const members = await membersOf(row.chat_id);
+    await db.run('DELETE FROM poll_votes WHERE message_id = $1', [id]);
     await db.run('DELETE FROM gmessages WHERE id = $1', [id]);
     await db.run("DELETE FROM reactions WHERE target_type = 'gmsg' AND target_id = $1", [id]);
     if (row.kind === 'image') {
@@ -851,6 +939,8 @@ io.on('connection', async socket => {
     if (c.owner !== me) await auditAdmin(me, 'delete_group', String(id), c.title);
     const imgs = (await db.all("SELECT text FROM gmessages WHERE chat_id = $1 AND kind = 'image'", [id])).map(r => r.text);
     await tx(async cl => {
+      await cl.query('DELETE FROM poll_votes WHERE message_id IN (SELECT id FROM gmessages WHERE chat_id = $1)', [id]);
+      await cl.query('DELETE FROM group_roles WHERE chat_id = $1', [id]);
       await cl.query("DELETE FROM reactions WHERE target_type = 'gmsg' AND target_id IN (SELECT id FROM gmessages WHERE chat_id = $1)", [id]);
       await cl.query('DELETE FROM gmessages WHERE chat_id = $1', [id]);
       await cl.query('DELETE FROM chat_members WHERE chat_id = $1', [id]);
