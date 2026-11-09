@@ -182,18 +182,6 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
 }
 
 .pf-id{font-size:13px;line-height:1.35;color:var(--muted,#9bb6c7);margin-top:3px;letter-spacing:.2px}
-
-/* Secondary account actions moved into the reserved strip above bottom navigation. */
-.account-tools{padding:10px 18px 8px!important}
-.account-tools-main{min-height:42px;align-items:center}
-.account-tools-secondary{display:flex;align-items:center;justify-content:center;gap:18px;min-height:48px;padding:3px 12px 0}
-.account-tools-secondary .icon{width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;border-radius:14px}
-@media(max-width:760px){
- .account-tools{padding:10px 18px 8px!important}
- .account-tools-secondary{justify-content:center;gap:24px;min-height:54px;padding-top:5px}
- .account-tools-secondary .icon{width:44px;height:44px;font-size:21px}
-}
-
 </style>
 </head>
 <body>
@@ -239,22 +227,20 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
     <input id="bgInput" type="file" accept="image/*" hidden>
     <div class="stories" id="stories" hidden></div>
     <div class="list" id="list"></div>
-    <div class="side-top account-tools" style="border-top:1px solid var(--line);border-bottom:0">
-      <div class="row account-tools-main">
+    <div class="side-top" style="border-top:1px solid var(--line);border-bottom:0">
+      <div class="row">
         <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
         <button class="icon" id="photoBtn" data-i18n="photoBtn" hidden></button>
         <input id="avatarInput" type="file" accept="image/*" hidden>
         <input id="groupAvatarInput" type="file" accept="image/*" hidden>
+        <button class="icon" id="groupsBtn" data-i18n-title="groupsBtn" hidden>👥</button>
         <button class="icon" id="adminBtn" data-i18n-title="adminBtn" style="margin-left:auto">🔑</button>
         <button class="icon" id="storyBtn" data-i18n-title="storyBtn" hidden>📖</button>
         <button class="icon" id="storyPhotoBtn" data-i18n-title="storyPhotoBtn" hidden>🖼</button>
         <button class="icon" id="renameBtn" data-i18n="renameBtn" hidden></button>
         <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)" hidden></button>
-      </div>
-      <div class="account-tools-secondary" aria-label="Додаткові дії">
-        <button class="icon" id="groupsBtn" data-i18n-title="groupsBtn" title="Групи" hidden>👥</button>
         <button class="icon" id="settingsBtn" aria-label="settings" title="Налаштування" hidden>⚙</button>
-        <button class="icon" id="logout" aria-label="logout" title="Вийти" hidden>⎋</button>
+        <button class="icon" id="logout" aria-label="logout" hidden>⎋</button>
       </div>
       <div class="hint" id="net"></div>
     </div>
