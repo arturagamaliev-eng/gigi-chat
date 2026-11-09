@@ -2,77 +2,124 @@
 <html lang="uk">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gigi Chat</title>
 <style>
-:root{--bg:#f4f5f8;--panel:#fff;--text:#202332;--accent:#6d5dfc;--bubble:#e9e7ff}
-body[data-theme="dark"]{--bg:#151722;--panel:#202331;--text:#f4f5fb;--bubble:#35314f}
-body[data-theme="ocean"]{--bg:#eaf7fb;--panel:#fff;--text:#153448;--accent:#087eaa;--bubble:#d7f1fb}
-body[data-theme="pink"]{--bg:#fff0f6;--panel:#fff;--text:#4b2035;--accent:#d9468f;--bubble:#ffe0ee}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px system-ui,sans-serif}
-.app{max-width:900px;margin:auto;height:100dvh;display:flex;flex-direction:column;padding:12px;gap:10px}
-header,.composer,.toolbar,.message{background:var(--panel);border-radius:14px;padding:12px}
-header{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-h1{font-size:20px;margin:0}.toolbar{display:flex;gap:8px;flex-wrap:wrap}
-input,button,select{font:inherit;border-radius:10px;border:1px solid #c8cad4;padding:9px;background:var(--panel);color:var(--text)}
-button{cursor:pointer}button.primary{background:var(--accent);color:white;border:0}
-#messages{flex:1;overflow:auto;display:flex;flex-direction:column;gap:8px}
-.message{max-width:88%;align-self:flex-start;white-space:pre-wrap;overflow-wrap:anywhere}
-.message.mine{align-self:flex-end;background:var(--bubble)}.meta{font-size:12px;opacity:.7;margin-bottom:4px}.actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
-.actions button{font-size:12px;padding:5px 7px}.composer{display:flex;gap:8px;flex-wrap:wrap}.composer input[type=text]{flex:1;min-width:130px}
-#status{font-size:13px;opacity:.75}.hint{font-size:12px;opacity:.75}
-.stickers{display:flex;gap:5px;flex-wrap:wrap}.sticker{font-size:26px;padding:2px 8px}
+:root{--bg:#eef2f7;--panel:#fff;--text:#172033;--muted:#6d7890;--accent:#6d5dfc;--line:#e5e9f1;--bubble:#f0f2f8;--mine:#dedaff}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+body[data-theme="dark"]{--bg:#111522;--panel:#1b2131;--text:#edf0fa;--muted:#a3acc2;--accent:#9388ff;--line:#30384c;--bubble:#252d40;--mine:#403b72}
+body[data-theme="ocean"]{--bg:#e8f7fb;--panel:#fff;--text:#12333e;--muted:#547783;--accent:#168ca5;--line:#d2e9ef;--bubble:#e8f5f8;--mine:#c7eff5}
+body[data-theme="pink"]{--bg:#fff0f6;--panel:#fff;--text:#482438;--muted:#987185;--accent:#d64f91;--line:#f4dce8;--bubble:#fff0f6;--mine:#f8d2e5}
+button,input,textarea,select{font:inherit}button{cursor:pointer;border:0;border-radius:10px;padding:9px 12px;background:var(--accent);color:#fff;font-weight:600}button.secondary{background:var(--bubble);color:var(--text);border:1px solid var(--line)}button.danger{background:#c83d54}
+.app{display:grid;grid-template-columns:290px 1fr;max-width:1200px;height:100dvh;max-height:100dvh;margin:auto;background:var(--panel);box-shadow:0 8px 40px #17203314}
+.sidebar{border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0}.brand{padding:18px 18px 12px;display:flex;align-items:center;gap:10px;font-size:21px;font-weight:800}.logo{display:grid;place-items:center;width:36px;height:36px;background:var(--accent);color:white;border-radius:12px}
+.profile{padding:0 14px 14px;display:flex;gap:8px}.profile input,.search,.composer textarea,.modal input,.modal select{min-width:0;width:100%;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:10px;padding:10px;outline:none}.search{margin:0 12px 12px;width:calc(100% - 24px)}
+.section-title{padding:5px 16px 9px;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}.rooms{overflow:auto;flex:1}.room{display:flex;align-items:center;gap:10px;padding:12px 15px;cursor:pointer;border-left:3px solid transparent}.room:hover{background:var(--bg)}.room.active{background:var(--bubble);border-left-color:var(--accent)}.avatar{width:40px;height:40px;border-radius:14px;background:linear-gradient(135deg,var(--accent),#b4aaff);display:grid;place-items:center;color:white;font-weight:800;flex-shrink:0}.room-info{min-width:0;flex:1}.room-name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.room-preview{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.unread{font-size:11px;background:var(--accent);color:white;border-radius:99px;padding:2px 7px}
+.sidebar-bottom{padding:12px;border-top:1px solid var(--line);display:flex;gap:8px}.sidebar-bottom button{flex:1}
+.chat{display:flex;flex-direction:column;min-width:0;min-height:0}.chat-head{padding:15px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}.chat-head h1{font-size:17px;margin:0}.chat-sub{font-size:12px;color:var(--muted)}.head-actions{margin-left:auto;display:flex;gap:7px}.messages{padding:20px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:12px;background:linear-gradient(180deg,var(--panel),var(--bg) 160%)}
+.empty{margin:auto;text-align:center;color:var(--muted);max-width:300px}.message{max-width:min(78%,560px);align-self:flex-start;background:var(--bubble);border:1px solid var(--line);padding:10px 12px;border-radius:15px 15px 15px 4px;overflow-wrap:anywhere}.message.mine{align-self:flex-end;background:var(--mine);border-radius:15px 15px 4px 15px}.message-meta{display:flex;gap:8px;align-items:center;font-size:11px;color:var(--muted);margin-bottom:3px}.message-meta strong{color:var(--text)}.message-text{white-space:pre-wrap}.message img{max-width:100%;max-height:280px;border-radius:10px;display:block;margin-top:6px}.message-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:6px}.message-actions button{font-size:11px;padding:4px 7px}.quote{border-left:3px solid var(--accent);padding:4px 8px;margin-bottom:6px;color:var(--muted);font-size:12px}.composer{padding:12px 15px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:flex-end}.composer textarea{resize:none;max-height:130px;min-height:43px;background:var(--panel)}.tools{display:flex;gap:5px}.tools button{padding:10px}.status{padding:0 16px 8px;color:var(--muted);font-size:11px}
+.modal-backdrop{position:fixed;inset:0;background:#10152288;display:none;align-items:center;justify-content:center;padding:20px;z-index:10}.modal{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;width:min(420px,100%);display:grid;gap:12px;box-shadow:0 20px 70px #0003}.modal h2{margin:0;font-size:19px}.modal-row{display:flex;gap:8px}.modal-row>*{flex:1}.small{font-size:12px;color:var(--muted)}.mobile-back{display:none}
+@media(max-width:700px){.app{display:block;height:100dvh}.sidebar{height:100%;border:0}.chat{display:none;height:100dvh}.app.chat-open .sidebar{display:none}.app.chat-open .chat{display:flex}.mobile-back{display:inline-block}.brand{padding-top:12px}.head-actions .optional{display:none}.messages{padding:13px}.message{max-width:88%}}
 </style>
 </head>
-<body>
-<div class="app">
-<header><h1>💬 Gigi Chat</h1><div><span id="who"></span> <select id="theme" aria-label="Тема"><option value="light">Світла тема</option><option value="dark">Темна тема</option><option value="ocean">Океан</option><option value="pink">Рожева</option></select></div></header>
-<div class="toolbar"><input id="name" placeholder="Твій нікнейм" maxlength="32"><button id="join" class="primary">Увійти</button><input id="search" placeholder="Пошук повідомлень"><span id="unread">Непрочитані: 0</span></div>
-<div id="status">Підключення до сервера…</div>
-<div id="messages" aria-live="polite"></div>
-<div class="composer">
-<input id="text" type="text" placeholder="Напиши повідомлення…" maxlength="4000">
-<button id="send" class="primary">Надіслати</button>
-<button id="schedule">Відкласти</button>
-<button id="expire">Зникне за 1 год</button>
+<body data-theme="light">
+<div class="app" id="app">
+ <aside class="sidebar">
+  <div class="brand"><span class="logo">G</span> Gigi Chat</div>
+  <div class="profile"><input id="username" maxlength="24" placeholder="Твоє ім’я"><button id="saveName">OK</button></div>
+  <input class="search" id="search" placeholder="Пошук чатів…">
+  <div class="section-title">Мої чати</div>
+  <div class="rooms" id="rooms"></div>
+  <div class="sidebar-bottom"><button class="secondary" id="newRoom">＋ Новий чат</button><button class="secondary" id="settings">⚙</button></div>
+ </aside>
+ <main class="chat">
+  <header class="chat-head">
+   <button class="secondary mobile-back" id="back">‹</button>
+   <div class="avatar" id="chatAvatar">G</div>
+   <div><h1 id="chatTitle">Загальний чат</h1><div class="chat-sub" id="connection">Підключення…</div></div>
+   <div class="head-actions"><button class="secondary optional" id="invite">Учасники</button><button class="secondary" id="chatOptions">⋯</button></div>
+  </header>
+  <section class="messages" id="messages"><div class="empty">Завантаження чату…</div></section>
+  <div class="status" id="status">Повідомлення зберігаються на сервері цього проєкту.</div>
+  <form class="composer" id="sendForm">
+   <div class="tools"><button class="secondary" type="button" id="emoji" title="Емодзі">☺</button><button class="secondary" type="button" id="gif" title="GIF за посиланням">GIF</button><button class="secondary" type="button" id="poll" title="Опитування">▤</button></div>
+   <textarea id="messageInput" rows="1" placeholder="Напиши повідомлення…" autocomplete="off"></textarea>
+   <button type="submit">Надіслати</button>
+  </form>
+ </main>
 </div>
-<div class="stickers"><span class="hint">Стікери:</span><button class="sticker">😀</button><button class="sticker">❤️</button><button class="sticker">😂</button><button class="sticker">🔥</button><button class="sticker">👍</button><button class="sticker">🎉</button><input id="gif" placeholder="URL GIF (необов'язково)" style="flex:1;min-width:150px"><button id="sendGif">Надіслати GIF</button></div>
-<div class="hint">Тестова збірка. Для роботи потрібен запущений server.js. Повідомлення зберігаються сервером у JSON-файлі.</div>
-</div>
+<div class="modal-backdrop" id="modalBackdrop"><div class="modal" id="modal"></div></div>
 <script src="/socket.io/socket.io.js"></script>
 <script>
 (() => {
- const socket=io(); let username=localStorage.getItem('gigi_name')||''; let expireMs=0; let joined=false; let unreadCount=0; let focused=true;
- const $=id=>document.getElementById(id);
- $('name').value=username;
- const theme=localStorage.getItem('gigi_theme')||'light'; document.body.dataset.theme=theme==='light'?'light':theme; $('theme').value=theme;
- $('theme').onchange=()=>{localStorage.setItem('gigi_theme',$('theme').value);document.body.dataset.theme=$('theme').value};
- function join(){username=$('name').value.trim();if(!username){alert('Введи нікнейм');return}localStorage.setItem('gigi_name',username);joined=true;$('who').textContent='👤 '+username;socket.emit('join',{username});}
- $('join').onclick=join;
- socket.on('connect',()=>{$('status').textContent='Сервер підключено';if(username)join()});
- socket.on('disconnect',()=>{$('status').textContent='Немає з’єднання із сервером'});
- function addMessage(m){const term=$('search').value.toLowerCase();const text=(m.text||'');if(term&&!text.toLowerCase().includes(term))return;
-  const div=document.createElement('div');div.className='message'+(m.username===username?' mine':'');div.dataset.id=m.id;
-  const meta=document.createElement('div');meta.className='meta';meta.textContent=(m.username||'Користувач')+' · '+new Date(m.createdAt).toLocaleString()+(m.edited?' · змінено':'');div.appendChild(meta);
-  if(m.kind==='gif'){const img=document.createElement('img');img.src=m.text;img.alt='GIF';img.style.maxWidth='240px';img.style.display='block';img.loading='lazy';div.appendChild(img)}else{const body=document.createElement('div');body.textContent=text;div.appendChild(body)}
-  if(m.expiresAt){const e=document.createElement('div');e.className='hint';e.textContent='Тимчасове повідомлення';div.appendChild(e)}
-  if(m.username===username){const actions=document.createElement('div');actions.className='actions';const edit=document.createElement('button');edit.textContent='Редагувати';edit.onclick=()=>{const v=prompt('Новий текст',m.text);if(v&&v.trim())socket.emit('edit',{id:m.id,text:v.trim()})};actions.appendChild(edit);div.appendChild(actions)}
-  $('messages').appendChild(div);if(!focused&&m.username!==username){unreadCount++;$('unread').textContent='Непрочитані: '+unreadCount}if(focused)$('messages').scrollTop=$('messages').scrollHeight;
- }
- socket.on('history',list=>{ $('messages').innerHTML='';list.forEach(addMessage)});
- socket.on('message',addMessage);
- socket.on('edited',m=>{const old=document.querySelector('[data-id="'+m.id+'"]');if(old)old.remove();addMessage(m)});
- socket.on('error_msg',msg=>alert(msg));
- function send(text,kind='text',scheduledAt=null){if(!joined){alert('Спочатку натисни «Увійти»');return}if(!text.trim())return;socket.emit('send',{text:text.trim(),kind,expiresIn:expireMs,scheduledAt});$('text').value='';expireMs=0;$('expire').textContent='Зникне за 1 год';}
- $('send').onclick=()=>send($('text').value);
- $('text').addEventListener('keydown',e=>{if(e.key==='Enter')send($('text').value)});
- $('expire').onclick=()=>{expireMs=expireMs?0:3600000;$('expire').textContent=expireMs?'Тимчасово: 1 год':'Зникне за 1 год'};
- $('schedule').onclick=()=>{const val=prompt('Через скільки хвилин надіслати? (1–10080)','10');const mins=Number(val);if(!Number.isInteger(mins)||mins<1||mins>10080){alert('Введи число від 1 до 10080');return}send($('text').value,'text',Date.now()+mins*60000)};
- document.querySelectorAll('.sticker').forEach(b=>b.onclick=()=>send(b.textContent,'sticker'));
- $('sendGif').onclick=()=>{const url=$('gif').value.trim();try{const u=new URL(url);if(!['https:','http:'].includes(u.protocol))throw 0;send(url,'gif')}catch(e){alert('Введи коректне посилання на GIF')}};
- $('search').oninput=()=>{socket.emit('get_history')};
- window.addEventListener('focus',()=>{focused=true;unreadCount=0;$('unread').textContent='Непрочитані: 0'});
- window.addEventListener('blur',()=>focused=false);
+const $ = id => document.getElementById(id);
+const socket = typeof io === 'function' ? io() : null;
+let username = localStorage.getItem('gigi_username') || 'Гість';
+let activeRoom = 'general', rooms = [{id:'general',name:'Загальний чат',kind:'group',unread:0,theme:'light'}], messages = [], socketReady=false, editingId=null, replyTo=null;
+$('username').value=username;
+function escapeHTML(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function initials(s){return (s||'G').trim().slice(0,1).toUpperCase();}
+function active(){return rooms.find(r=>r.id===activeRoom)||rooms[0];}
+function setTheme(theme){document.body.dataset.theme=theme||'light';}
+function showModal(title, body, buttons=[]) {
+ const m=$('modal');m.innerHTML=`<h2>${escapeHTML(title)}</h2>${body}<div class="modal-row">${buttons.map((b,i)=>`<button class="${b.secondary?'secondary':''}" data-modal-btn="${i}">${escapeHTML(b.label)}</button>`).join('')}</div>`;
+ $('modalBackdrop').style.display='flex';
+ buttons.forEach((b,i)=>m.querySelector(`[data-modal-btn="${i}"]`).addEventListener('click',()=>{if(b.action)b.action();}));
+}
+function closeModal(){$('modalBackdrop').style.display='none';}
+$('modalBackdrop').addEventListener('click',e=>{if(e.target===$('modalBackdrop'))closeModal()});
+function renderRooms(){
+ const q=$('search').value.toLowerCase();
+ $('rooms').innerHTML=rooms.filter(r=>r.name.toLowerCase().includes(q)).map(r=>`<div class="room ${r.id===activeRoom?'active':''}" data-room="${escapeHTML(r.id)}"><div class="avatar">${escapeHTML(initials(r.name))}</div><div class="room-info"><div class="room-name">${escapeHTML(r.name)}</div><div class="room-preview">${r.kind==='group'?'Груповий чат':'Особистий чат'}</div></div>${r.unread?`<span class="unread">${r.unread}</span>`:''}</div>`).join('');
+ document.querySelectorAll('[data-room]').forEach(el=>el.addEventListener('click',()=>openRoom(el.dataset.room)));
+}
+function openRoom(id){
+ activeRoom=id;const r=active();r.unread=0;setTheme(r.theme||'light');$('chatTitle').textContent=r.name;$('chatAvatar').textContent=initials(r.name);renderRooms();renderMessages();
+ if(socket&&socketReady)socket.emit('join-room',id);
+ $('app').classList.add('chat-open');
+}
+function renderMessages(){
+ const box=$('messages');
+ if(!messages.length){box.innerHTML='<div class="empty"><div style="font-size:36px">💬</div><strong>Почни розмову</strong><div>Надішли перше повідомлення в цьому чаті.</div></div>';return;}
+ box.innerHTML=messages.map(m=>{
+  const mine=m.user===username;
+  let content=m.type==='gif'?`<div>${escapeHTML(m.text||'GIF')}</div><img src="${escapeHTML(m.url||'')}" alt="GIF" loading="lazy" onerror="this.style.display='none'">`:m.type==='poll'?`<strong>📊 ${escapeHTML(m.text)}</strong><div class="small">Опитування (демо)</div>`:`<div class="message-text">${escapeHTML(m.text)}</div>`;
+  return `<article class="message ${mine?'mine':''}" data-mid="${escapeHTML(m.id)}"><div class="message-meta"><strong>${escapeHTML(m.user)}</strong><span>${new Date(m.time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>${m.expiresAt?'<span>⏳</span>':''}</div>${m.replyText?`<div class="quote">${escapeHTML(m.replyUser||'')} · ${escapeHTML(m.replyText)}</div>`:''}${content}${mine?`<div class="message-actions"><button class="secondary" data-reply="${escapeHTML(m.id)}">Відповісти</button><button class="secondary" data-edit="${escapeHTML(m.id)}">Змінити</button><button class="secondary" data-forward="${escapeHTML(m.id)}">Переслати</button></div>`:`<div class="message-actions"><button class="secondary" data-reply="${escapeHTML(m.id)}">Відповісти</button><button class="secondary" data-forward="${escapeHTML(m.id)}">Переслати</button></div>`}</article>`;
+ }).join('');
+ box.querySelectorAll('[data-reply]').forEach(b=>b.onclick=()=>{replyTo=messages.find(m=>m.id===b.dataset.reply);$('messageInput').placeholder='Відповідь '+replyTo.user+'…';$('messageInput').focus()});
+ box.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{const m=messages.find(x=>x.id===b.dataset.edit);editingId=m.id;$('messageInput').value=m.text;$('messageInput').focus();$('status').textContent='Редагуєш повідомлення — надішли, щоб зберегти.'});
+ box.querySelectorAll('[data-forward]').forEach(b=>b.onclick=()=>{const m=messages.find(x=>x.id===b.dataset.forward);showModal('Переслати повідомлення',`<label>Куди?</label><select id="forwardRoom">${rooms.map(r=>`<option value="${escapeHTML(r.id)}">${escapeHTML(r.name)}</option>`).join('')}</select>`,[{label:'Скасувати',secondary:true,action:closeModal},{label:'Переслати',action:()=>{const id=$('forwardRoom').value;sendMessage(m.text,id,{type:m.type,url:m.url});closeModal();}}])});
+ box.scrollTop=box.scrollHeight;
+}
+function sendMessage(text,room=activeRoom,extra={}){
+ if(!text.trim()&&!extra.url)return;
+ const payload={room,user:username,text:text.trim(),...extra};
+ if(replyTo&&room===activeRoom){payload.replyText=replyTo.text;payload.replyUser=replyTo.user;replyTo=null;$('messageInput').placeholder='Напиши повідомлення…';}
+ if(socket&&socketReady)socket.emit('send-message',payload);
+ else {messages.push({...payload,id:String(Date.now()),time:Date.now()});renderMessages();}
+}
+$('sendForm').addEventListener('submit',e=>{e.preventDefault();const text=$('messageInput').value;if(!text.trim())return;if(editingId&&socket&&socketReady){socket.emit('edit-message',{room:activeRoom,id:editingId,text:text.trim(),user:username});editingId=null;}else sendMessage(text);$('messageInput').value='';$('status').textContent='';});
+$('saveName').onclick=()=>{username=$('username').value.trim().slice(0,24)||'Гість';$('username').value=username;localStorage.setItem('gigi_username',username);if(socket&&socketReady)socket.emit('set-name',username);};
+$('search').oninput=renderRooms;
+$('newRoom').onclick=()=>showModal('Створити чат',`<input id="roomName" placeholder="Назва чату" maxlength="40"><select id="roomKind"><option value="group">Груповий чат</option><option value="direct">Особистий чат</option></select>`,[{label:'Скасувати',secondary:true,action:closeModal},{label:'Створити',action:()=>{const name=$('roomName').value.trim();if(!name)return;const id='room-'+Date.now();const room={id,name,kind:$('roomKind').value,unread:0,theme:'light'};rooms.push(room);if(socket&&socketReady)socket.emit('create-room',room);closeModal();openRoom(id);}}]);
+$('settings').onclick=()=>showModal('Налаштування',`<label>Тема застосунку</label><select id="themeSelect"><option value="light">Світла</option><option value="dark">Темна</option><option value="ocean">Океан</option><option value="pink">Рожева</option></select><p class="small">Тема для окремого чату налаштовується через ⋯ у заголовку.</p>`,[{label:'Закрити',secondary:true,action:closeModal},{label:'Застосувати',action:()=>{const t=$('themeSelect').value;setTheme(t);localStorage.setItem('gigi_theme',t);closeModal();}}]);
+$('chatOptions').onclick=()=>showModal('Налаштування чату',`<label>Фон і тема</label><select id="roomTheme"><option value="light">Світла</option><option value="dark">Темна</option><option value="ocean">Океан</option><option value="pink">Рожева</option></select><label><input id="expire" type="checkbox"> Повідомлення зникають через 1 годину</label>`,[{label:'Закрити',secondary:true,action:closeModal},{label:'Зберегти',action:()=>{const r=active();r.theme=$('roomTheme').value;r.expire=$('expire').checked;setTheme(r.theme);if(socket&&socketReady)socket.emit('update-room',r);closeModal();}}]);
+$('invite').onclick=()=>showModal('Учасники',`<p>Зараз відображаються лише локальні учасники, яких сервер бачив у цьому чаті.</p><div id="members" class="small">Учасники оновлюються під час підключення.</div>`,[{label:'Гаразд',action:closeModal}]);
+$('emoji').onclick=()=>{const el=$('messageInput');el.value+=' 😊';el.focus()};
+$('gif').onclick=()=>showModal('Додати GIF',`<input id="gifUrl" placeholder="Встав URL GIF-зображення"><input id="gifCaption" placeholder="Підпис (необов’язково)">`,[{label:'Скасувати',secondary:true,action:closeModal},{label:'Надіслати',action:()=>{const url=$('gifUrl').value.trim();if(!/^https?:\\/\\//i.test(url))return;sendMessage($('gifCaption').value,'',{});if(socket&&socketReady)socket.emit('send-message',{room:activeRoom,user:username,text:$('gifCaption').value||'GIF',type:'gif',url});else{messages.push({id:String(Date.now()),room:activeRoom,user:username,text:$('gifCaption').value||'GIF',type:'gif',url,time:Date.now()});renderMessages();}closeModal();}}]);
+$('poll').onclick=()=>showModal('Створити опитування',`<input id="pollQuestion" placeholder="Запитання опитування"> <p class="small">Це базова версія: опитування публікується як повідомлення, голосування ще не реалізовано.</p>`,[{label:'Скасувати',secondary:true,action:closeModal},{label:'Опублікувати',action:()=>{const q=$('pollQuestion').value.trim();if(q){if(socket&&socketReady)socket.emit('send-message',{room:activeRoom,user:username,text:q,type:'poll'});else{messages.push({id:String(Date.now()),room:activeRoom,user:username,text:q,type:'poll',time:Date.now()});renderMessages();}}closeModal();}}]);
+$('back').onclick=()=>$('app').classList.remove('chat-open');
+if(socket){
+ socket.on('connect',()=>{socketReady=true;$('connection').textContent='Онлайн · сервер підключено';socket.emit('set-name',username);socket.emit('get-rooms');socket.emit('join-room',activeRoom);});
+ socket.on('disconnect',()=>{socketReady=false;$('connection').textContent='Немає з’єднання із сервером';});
+ socket.on('rooms',list=>{if(Array.isArray(list)&&list.length)rooms=list; if(!rooms.some(r=>r.id===activeRoom))activeRoom=rooms[0].id;renderRooms();openRoom(activeRoom);});
+ socket.on('room-history',data=>{if(data.room===activeRoom){messages=data.messages||[];renderMessages();}});
+ socket.on('new-message',m=>{if(m.room===activeRoom){messages.push(m);renderMessages();}else{const r=rooms.find(x=>x.id===m.room);if(r)r.unread=(r.unread||0)+1;renderRooms();}});
+ socket.on('room-created',r=>{if(!rooms.some(x=>x.id===r.id))rooms.push(r);renderRooms();});
+ socket.on('message-edited',m=>{const i=messages.findIndex(x=>x.id===m.id);if(i>=0){messages[i]=m;renderMessages();}});
+ socket.on('message-error',msg=>{$('status').textContent=msg;});
+}else{$('connection').textContent='Відкрито без сервера · повідомлення лише в цій вкладці';}
+setTheme(localStorage.getItem('gigi_theme')||'light');renderRooms();openRoom('general');
 })();
 </script>
 </body>
