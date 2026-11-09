@@ -91,8 +91,11 @@ if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL is not set. Add it in Render → Environment.');
   process.exit(1);
 }
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 5 });
+// The sslmode part is removed from the URL, because the SSL options are set below.
+const dbUrl = process.env.DATABASE_URL.replace(/([?&])sslmode=[^&]*&?/, '$1').replace(/[?&]$/, '');
+const pool = new Pool({ connectionString: dbUrl, ssl: { rejectUnauthorized: false }, max: 5 });
 pool.on('error', err => console.error('db pool error:', err.message));
+process.on('unhandledRejection', e => console.error('unhandled:', e && e.message));
 
 const db = {
   one: async (sql, p = []) => (await pool.query(sql, p)).rows[0],
