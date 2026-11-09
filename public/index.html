@@ -2026,7 +2026,12 @@ function openMarket() {
         el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
           el('button', { class: 'btn ghost', onclick: () => openMyGifts() }, t('myGiftsBtn')),
           el('button', { class: 'btn ghost', onclick: () => openCreateGift() }, t('createGiftBtn')),
-          el('button', { class: 'btn ghost', onclick: () => openAdminStars() }, t('adminStarsBtn'))),
+          el('button', { class: 'btn ghost', onclick: () => openAdminStars() }, t('adminStarsBtn')),
+          el('button', { class: 'btn danger', onclick: () => {
+            if (!confirm('Видалити ВСІ подарунки з маркету та інвентарів усіх користувачів? Цю дію не можна скасувати.')) return;
+            if (!confirm('Остаточно підтверджуєте видалення всіх подарунків?')) return;
+            adminCall('admin_gifts_delete_all', {}, r => { toast('Видалено подарунків: ' + r.deleted); openMarket(); });
+          } }, '🗑 Видалити всі подарунки')),
         ...(rows.length ? rows : [el('div', { class: 'empty' }, t('marketEmpty'))]),
       ]);
     });
