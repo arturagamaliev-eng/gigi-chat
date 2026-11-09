@@ -23,6 +23,22 @@ const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 const SELL_PERCENT = 0.8; // a gift sold back to the market returns 80% of its price
 const PREMIUM_PRICE = { 1: 1000, 12: 5000 }; // stars per month / per year
 const DAY_MS = 24 * 3600 * 1000;
+
+let appBg = null;          // background photo URL, or null for the default
+let writesStopped = false; // true while nobody can write messages
+
+async function loadSettings() {
+  for (const r of await db.all('SELECT k, v FROM app_settings')) {
+    if (r.k === 'bg') appBg = r.v || null;
+    if (r.k === 'stopped') writesStopped = r.v === '1';
+  }
+}
+
+async function saveSetting(k, v) {
+  await db.run('INSERT INTO app_settings (k, v) VALUES ($1, $2) ON CONFLICT (k) DO UPDATE SET v = excluded.v', [k, v]);
+}
+
+const configPayload = () => ({ bg: appBg, stopped: writesStopped });
 const handleOk = h => /^[a-z0-9_]{3,20}$/.test(h);
 const normHandle = s => String(s || '').trim().replace(/^@/, '').toLowerCase();
 const isPremium = async nick => Boolean(await db.one('SELECT 1 AS x FROM users WHERE nickname = $1 AND premium_until > $2', [nick, Date.now()]));
@@ -169,6 +185,17 @@ CREATE TABLE IF NOT EXISTS gift_items (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS stars INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_invite_day TEXT;
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS author TEXT;
+CREATE TABLE IF NOT EXISTS app_settings (
+  k TEXT PRIMARY KEY,
+  v TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS complaints (
+  id SERIAL PRIMARY KEY,
+  from_nick TEXT NOT NULL,
+  about_nick TEXT NOT NULL,
+  text TEXT NOT NULL,
+  created_at DOUBLE PRECISION NOT NULL
+);
 ALTER TABLE gmessages ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS story_views (
   story_id INTEGER NOT NULL,
@@ -409,6 +436,7 @@ async function avatarMap() {
 io.on('connection', async socket => {
   socket.emit('presence', onlineList());
   try { socket.emit('avatars', await avatarMap()); } catch (e) { console.error('avatars:', e.message); }
+  socket.emit('app_config', configPayload());
   try { socket.emit('stories', await recentStories('')); } catch (e) { console.error('stories:', e.message); }
 
   // Wraps each handler so a database error never crashes the server.
@@ -438,6 +466,7 @@ io.on('connection', async socket => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
     if (await isBlockedBetween(me, payload?.to)) return ack?.({ ok: false, error: 'blocked' });
+    if (writesStopped) return ack?.({ ok: false, error: 'stopped' });
     const kind = payload?.kind === 'image' ? 'image' : 'text';
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
     if (kind === 'image' && !isOurMedia(text, 'image')) return ack?.({ ok: false, error: 'invalid' });
@@ -722,6 +751,7 @@ io.on('connection', async socket => {
     const id = Number(payload?.id);
     const c = Number.isInteger(id) ? await db.one('SELECT id, kind, owner FROM chats WHERE id = $1', [id]) : null;
     if (!c || !(await isMember(id, me))) return ack?.({ ok: false, error: 'forbidden' });
+    if (writesStopped) return ack?.({ ok: false, error: 'stopped' });
     if (c.kind === 'channel' && c.owner !== me) return ack?.({ ok: false, error: 'read_only' });
     const kind = payload?.kind === 'image' ? 'image' : 'text';
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
@@ -855,6 +885,73 @@ io.on('connection', async socket => {
     if (error) return ack?.({ ok: false, error });
     broadcastPresence();
     ack?.({ ok: true, premium_until: until });
+  });
+
+  // Admin only: set the background photo for everyone (empty url = default background).
+  on('admin_set_bg', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const url = String(payload?.url || '');
+    if (url && !isOurMedia(url, 'image')) return ack?.({ ok: false, error: 'invalid' });
+    appBg = url || null;
+    await saveSetting('bg', url);
+    if (url) await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [Date.now() + AVATAR_MS, mediaIdOf(url)]);
+    io.emit('app_config', configPayload());
+    ack?.({ ok: true });
+  });
+
+  // Admin only: stop or allow writing for everyone.
+  on('admin_stop', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    writesStopped = payload?.on === true;
+    await saveSetting('stopped', writesStopped ? '1' : '0');
+    io.emit('app_config', configPayload());
+    ack?.({ ok: true });
+  });
+
+  // Admin only: one message from gigi chat to every user.
+  on('admin_notify', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const text = typeof payload?.text === 'string' ? payload.text.trim().slice(0, 500) : '';
+    if (!text) return ack?.({ ok: false, error: 'invalid' });
+    const users = await db.all('SELECT nickname FROM users');
+    for (const u of users) {
+      const now = Date.now();
+      const row = await db.one(
+        "INSERT INTO messages (from_nick, to_nick, text, kind, created_at) VALUES ('gigi_chat', $1, $2, 'text', $3) RETURNING id",
+        [u.nickname, text, now]);
+      io.to('u:' + u.nickname).emit('message', { id: row.id, from: 'gigi_chat', to: u.nickname, text, created_at: now, read_at: null, kind: 'text' });
+    }
+    ack?.({ ok: true, users: users.length });
+  });
+
+  // Anyone can complain about a user; the complaint goes to the admin's inbox.
+  on('complaint', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const about = (await findUser(String(payload?.nick || '')))?.nickname;
+    const text = typeof payload?.text === 'string' ? payload.text.trim().slice(0, 500) : '';
+    if (!about || !text || about === me) return ack?.({ ok: false, error: 'invalid' });
+    await db.run('INSERT INTO complaints (from_nick, about_nick, text, created_at) VALUES ($1, $2, $3, $4)',
+      [me, about, text, Date.now()]);
+    ack?.({ ok: true });
+  });
+
+  on('admin_complaints', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const rows = await db.all('SELECT id, from_nick, about_nick, text, created_at FROM complaints ORDER BY id DESC LIMIT 200');
+    ack?.({ ok: true, items: rows.map(r => ({ id: r.id, from: r.from_nick, about: r.about_nick, text: r.text, created: r.created_at })) });
+  });
+
+  on('admin_complaint_delete', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const id = Number(payload?.id);
+    if (Number.isInteger(id)) await db.run('DELETE FROM complaints WHERE id = $1', [id]);
+    ack?.({ ok: true });
   });
 
   // A user posts a story: it is shown to that user and to everyone they have a chat with.
@@ -1163,6 +1260,7 @@ io.on('connection', async socket => {
 async function main() {
   await pool.query(SCHEMA);
   await pool.query(EXTRA_SCHEMA);
+  await loadSettings();
   await cleanup().catch(e => console.error('cleanup:', e.message));
   setInterval(() => cleanup().catch(e => console.error('cleanup:', e.message)), 10 * 60 * 1000);
   server.listen(PORT, () => console.log(`gigi chat running on port ${PORT}`));
