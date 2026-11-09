@@ -537,6 +537,12 @@ let writesStopped = false;   // true while the admin has stopped all writing
 
 const $ = id => document.getElementById(id);
 const enc = encodeURIComponent;
+
+// Shows any unexpected error at the bottom of the screen, so it can be reported.
+window.addEventListener('error', e => { try { toast('⚠ ' + (e.message || 'error')); } catch {} });
+window.addEventListener('unhandledrejection', e => {
+  try { toast('⚠ ' + (e.reason?.message || e.reason || 'error')); } catch {}
+});
 const t = (k, vars = {}) => (I18N[lang][k] ?? I18N.en[k] ?? k).replace(/\{(\w+)\}/g, (_, v) => vars[v] ?? '');
 const hue = s => { let h = 0; for (const c of s) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % 360; };
 const avatarBg = nick => `hsl(${hue(nick)} 45% 42%)`;
