@@ -188,6 +188,7 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
         </div>
       </div>
       <input id="search" class="field" type="search" autocomplete="off" data-i18n-ph="search">
+      <div class="row"><select id="folderFilter" class="field" aria-label="Папка чатів"><option value="all">Усі чати</option><option value="personal">Особисті</option><option value="groups">Групи</option><option value="channels">Канали</option></select><button class="icon" id="folderManage" title="Папки">📁</button></div>
     </div>
     <input id="storyPhoto" type="file" accept="image/*" hidden>
     <input id="myStoryPhoto" type="file" accept="image/*" hidden>
@@ -232,6 +233,7 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
       </div>
       <div id="pinBar" class="pin-bar" hidden></div>
       <div class="messages" id="messages"></div>
+      <div id="replyBar" class="chan-note" hidden></div>
       <form class="composer" id="composer">
         <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn"></button>
         <input id="fileInput" type="file" accept="image/*" hidden>
@@ -534,6 +536,9 @@ let activeGroup = null;      // id of the open group or channel (active is null 
 let groupResults = [];       // groups and channels matching the search text
 let myPremium = false;       // true while your premium is active
 let writesStopped = false;   // true while the admin has stopped all writing
+let replyTarget = null, editTarget = null;
+let chatFolders = JSON.parse(localStorage.getItem('gigi_folders') || '{}');
+let mutedChats = new Set(JSON.parse(localStorage.getItem('gigi_muted') || '[]'));
 
 const $ = id => document.getElementById(id);
 const enc = encodeURIComponent;
@@ -642,6 +647,7 @@ function createSocket() {
   socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); if (active) refreshInfo(active); });
   socket.on('message', onMessage);
   socket.on('msg_deleted', onMsgDeleted);
+  socket.on('msg_edited', m => { for (const list of cache.values()) { const x=list.find(v=>v.id===m.id); if(x){x.text=m.text;x.edited_at=m.edited_at;} } if(active) renderMessages(); });
   socket.on('stories', list => { stories = list || []; renderStories(); });
   socket.on('story', s => {
     stories = [s, ...stories.filter(x => x.id !== s.id)];
@@ -877,8 +883,8 @@ function onMessage(m) {
   c.last = m;
   if (m.from !== me && partner !== active) {
     c.unread = (c.unread || 0) + 1;
-    toast(t('newMessage', { name: partner }));
-    if (document.hidden && 'Notification' in window && Notification.permission === 'granted')
+    if (!mutedChats.has(partner)) toast(t('newMessage', { name: partner }));
+    if (!mutedChats.has(partner) && document.hidden && 'Notification' in window && Notification.permission === 'granted')
       new Notification('gigi chat', { body: t('newMessage', { name: partner }) });
   }
   chats.set(partner, c);
@@ -936,9 +942,10 @@ function chatItem(nick) {
 function renderList() {
   const list = $('list');
   list.replaceChildren();
+  const folder = $('folderFilter')?.value || 'all';
   const items = search
     ? results
-    : [...chats.keys()].sort((a, b) => (chats.get(b).last?.created_at || 0) - (chats.get(a).last?.created_at || 0));
+    : [...chats.keys()].filter(nick => folder === 'all' || (chatFolders[nick] || 'personal') === folder).filter(nick => !mutedChats.has(nick) || folder !== 'muted').sort((a, b) => (chats.get(b).last?.created_at || 0) - (chats.get(a).last?.created_at || 0));
   if (!items.length && !groupResults.length && (search || ![...groups.values()].some(g => g.joined))) {
     list.append(el('div', { class: 'empty' }, t(search ? 'noResults' : 'noChats')));
     return;
@@ -983,8 +990,13 @@ function renderMessages() {
   const msgType = activeGroup ? 'gmsg' : 'msg';
   for (const m of (activeGroup ? gcache.get(activeGroup) : cache.get(active)) || []) {
     const own = m.from === me;
+    const quote = m.reply_to ? (activeGroup ? (gcache.get(activeGroup)||[]) : (cache.get(active)||[])).find(x=>x.id===m.reply_to) : null;
+    const contents = [];
+    if (quote) contents.push(el('div', { class: 'preview', style: 'border-left:2px solid var(--accent);padding-left:8px;margin-bottom:5px' }, '↪ ' + quote.from + ': ' + String(quote.text || '').slice(0,100)));
+    contents.push(mediaNode(m) ?? m.text);
+    if (m.edited_at) contents.push(el('span', { class: 'preview' }, ' · змінено'));
     box.append(el('div', { class: 'msg' + (own ? ' own' : ''), onclick: () => openMsgMenu(m, msgType) },
-      mediaNode(m) ?? m.text,
+      ...contents,
       reactRow(m.reactions, msgType, m.id),
       el('span', { class: 'time' }, messageMeta(m))));
   }
@@ -1012,13 +1024,14 @@ $('composer').addEventListener('submit', e => {
   if (!text || (!active && !activeGroup)) return;
   if (!socket?.connected) return toast(t('errNetwork'));
   const done = res => {
-    if (res?.ok) return;
+    if (res?.ok) { replyTarget = null; editTarget = null; $('replyBar').hidden = true; return; }
     const key = res?.error === 'read_only' || res?.error === 'forbidden' ? 'channelReadOnly'
       : res?.error === 'no_user' ? 'errNoUser' : 'messageFailed';
     toast(t(key));
   };
-  if (activeGroup) socket.emit('group_send', { id: activeGroup, text, kind: 'text' }, done);
-  else socket.emit('message', { to: active, text }, done);
+  if (editTarget && !activeGroup) socket.emit('msg_edit', { id: editTarget.id, text }, done);
+  else if (activeGroup) socket.emit('group_send', { id: activeGroup, text, kind: 'text' }, done);
+  else socket.emit('message', { to: active, text, reply_to: replyTarget?.id || null }, done);
   input.value = ''; input.style.height = 'auto';
   input.focus();
 });
@@ -1030,6 +1043,9 @@ $('input').addEventListener('input', e => {
   e.target.style.height = 'auto';
   e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
 });
+
+$('folderFilter').addEventListener('change', renderList);
+$('folderManage').addEventListener('click', () => { const f=prompt('Фільтр: all / personal / groups / channels / muted','all'); if(['all','personal','groups','channels'].includes(f)){$('folderFilter').value=f;renderList();} else if(f==='muted'){const muted=[...mutedChats];toast('Вимкнені чати: '+(muted.join(', ')||'немає'));} });
 
 let searchTimer;
 $('search').addEventListener('input', e => {
@@ -1340,9 +1356,11 @@ function emojiBar(type, id, onPicked) {
 
 function openMsgMenu(m, type = 'msg') {
   const items = [emojiBar(type, m.id, closeModal)];
-  if (m.from === me || (myPremium && type === 'msg')) {
-    items.push(el('button', { class: 'btn danger', style: 'width:100%', onclick: () => { closeModal(); deleteMessage(m); } }, t('deleteMsgBtn')));
-  }
+  items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); replyTarget=m; editTarget=null; $('replyBar').hidden=false; $('replyBar').textContent='Відповідь на '+m.from+': '+String(m.text||'').slice(0,100)+'  ✕'; $('replyBar').onclick=()=>{replyTarget=null;$('replyBar').hidden=true;}; $('input').focus(); } }, '↩ Відповісти з цитатою'));
+  if (type === 'msg' && m.from === me && m.kind === 'text') items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); editTarget=m; replyTarget=null; $('input').value=m.text; $('replyBar').hidden=false; $('replyBar').textContent='Редагування повідомлення · Enter — зберегти'; $('input').focus(); } }, '✎ Редагувати'));
+  if (type === 'msg') items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); const to=prompt('Переслати користувачу (нікнейм):'); if(!to?.trim()) return; socket.emit('message',{to:to.trim(),text:'Переслано від '+m.from+':\n'+m.text,kind:'text'},r=>toast(r?.ok?'Переслано':'Не вдалося переслати')); } }, '➦ Переслати'));
+  if (m.from === me || (myPremium && type === 'msg')) items.push(el('button', { class: 'btn danger', style: 'width:100%', onclick: () => { closeModal(); deleteMessage(m); } }, t('deleteMsgBtn')));
+  if (type === 'msg') items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); const f=prompt('Папка: personal / groups / channels',chatFolders[active]||'personal'); if(['personal','groups','channels'].includes(f)){chatFolders[active]=f;localStorage.setItem('gigi_folders',JSON.stringify(chatFolders));renderList();} const mute=confirm('Вимкнути сповіщення для цього чату?'); if(mute)mutedChats.add(active);else mutedChats.delete(active);localStorage.setItem('gigi_muted',JSON.stringify([...mutedChats])); } }, '📁 Папка / 🔕 Сповіщення'));
   openModal(items);
 }
 
@@ -1663,6 +1681,16 @@ function openMyGifts() {
 }
 
 // Admin settings: opened by the 🔑 button after the admin code.
+function openAdminAudit() {
+  adminCall('admin_audit_list', {}, r => {
+    const rows = (r.items || []).map(a => el('div', { class: 'acc-row' },
+      el('div', { class: 'meta' },
+        el('div', { class: 'name' }, a.action + ' · ' + (a.target || '')),
+        el('div', { class: 'sub' }, a.actor + ' · ' + new Date(Number(a.created_at)).toLocaleString() + ' ' + (a.details || '')))));
+    openModal([el('div', { class: 'acc-head' }, 'Журнал дій адміністратора'), ...rows]);
+  });
+}
+
 function openAdminSettings() {
   adminCall('admin_complaints', {}, res => {
     const count = res.items.length;
@@ -1684,6 +1712,7 @@ function openAdminSettings() {
           adminCall('admin_notify', { text }, () => toast(t('notifySent')));
         } }, t('notifyBtn')),
         el('button', { class: 'btn ghost', onclick: () => openComplaints() }, t('complaintsBtn', { n: count })),
+        el('button', { class: 'btn ghost', onclick: () => openAdminAudit() }, '📋 Журнал дій адміна'),
       ),
     ]);
   });
