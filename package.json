@@ -1,14 +1,13 @@
 {
   "name": "gigi-chat",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Gigi Chat starter",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
   "dependencies": {
-    "express": "^4.21.2",
-    "socket.io": "^4.8.1"
+    "express": "^4.19.2",
+    "pg": "^8.13.0",
+    "socket.io": "^4.7.5"
   }
 }
