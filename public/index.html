@@ -197,12 +197,15 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
    bottom:calc(24px + 70px + 10px + env(safe-area-inset-bottom));
    box-sizing:border-box;
    height:220px;
-   padding:36px 18px 8px!important;
+   display:flex;
+   flex-direction:column;
+   justify-content:flex-end;
+   padding:8px 18px 58px!important;
    background:var(--panel);
    border-top:1px solid var(--line)!important;
    border-bottom:1px solid var(--line)!important;
  }
- .account-tools-main{min-height:42px}
+ .account-tools-main{min-height:42px;flex:0 0 42px;margin-top:auto}
  .account-tools-secondary{justify-content:center;gap:24px;min-height:0;padding-top:0}
  .account-tools-secondary .icon{width:44px;height:44px;font-size:21px}
  .sidebar{padding-bottom:190px}
