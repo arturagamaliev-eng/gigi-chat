@@ -1975,7 +1975,11 @@ function openAdminOverview() {
       ...stats.map(([label, value]) => el('div', { class: 'acc-row' },
         el('div', { class: 'meta' }, el('div', { class: 'name' }, label), el('div', { class: 'sub' }, String(value ?? 0))))),
       el('div', { class: 'acc-head' }, '🆕 Останні реєстрації'),
-      ...(recent.length ? recent : [el('div', { class: 'empty' }, 'Поки немає користувачів')]),
+      ...(recent.length ? recent : [el('div', { class: 'empty' }, 'Поки немає нових реєстрацій після останнього очищення')]),
+      el('button', { class: 'btn danger', style: 'width:100%;margin-top:12px', onclick: () => {
+        if (!confirm('Очистити показники статистики та список останніх реєстрацій? Користувачі, повідомлення, групи й канали НЕ будуть видалені. Реєстрації за сьогодні та 7 днів залишаться звичайними поточними лічильниками.')) return;
+        adminCall('admin_reset_stats', {}, () => { toast('Статистику очищено. Дані сайту збережені.'); openAdminOverview(); });
+      } }, '🧹 Очистити статистику'),
       el('button', { class: 'btn ghost', style: 'width:100%', onclick: openAdminOverview }, '🔄 Оновити статистику')
     ]);
   });
