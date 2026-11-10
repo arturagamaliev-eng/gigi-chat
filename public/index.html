@@ -170,6 +170,9 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
  .mobile-nav-item:active{transform:scale(.97)}
  .mobile-nav-avatar{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#344b5d;background-size:cover;background-position:center;font-size:20px;overflow:hidden}
  .sidebar{padding-bottom:90px}.chat{padding-bottom:90px}
+ /* On phones, the profile/action strip duplicates the fixed bottom navigation
+    and wastes the space needed for the chat list. Keep the bottom navigation. */
+ .sidebar > .account-tools{display:none!important}
  /* Hide the bottom bar completely while a private or group conversation is open. */
  .app.chat-open .mobile-bottom-nav{display:none!important}
  .app.chat-open .chat{padding-bottom:0}
