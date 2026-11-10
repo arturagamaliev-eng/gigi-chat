@@ -23,7 +23,7 @@ let adminSecretCode = process.env.ADMIN_CODE || '';
 const adminOk = code => Boolean(adminSecretCode) && String(code || '') === adminSecretCode;
 const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 const SELL_PERCENT = 0.8; // a gift sold back to the market returns 80% of its price
-const PREMIUM_PRICE = { 1: 1000, 12: 5000 }; // stars per month / per year
+let premiumPrices = { 1: 1000, 12: 5000 }; // administrator-configurable star prices
 const DAY_MS = 24 * 3600 * 1000;
 
 let appBg = null;          // background photo URL, or null for the default
@@ -36,6 +36,7 @@ async function loadSettings() {
     if (r.k === 'stopped') writesStopped = r.v === '1';
     if (r.k === 'admin_code' && r.v) adminSecretCode = r.v;
     if (r.k === 'visual_rules') { try { visualRules = JSON.parse(r.v || '{}') || {}; } catch { visualRules = {}; } }
+    if (r.k === 'premium_prices') { try { const p = JSON.parse(r.v || '{}'); if (Number.isSafeInteger(p[1]) && p[1] > 0 && Number.isSafeInteger(p[12]) && p[12] > 0) premiumPrices = { 1: p[1], 12: p[12] }; } catch {} }
   }
 }
 
@@ -521,6 +522,22 @@ io.on('connection', async socket => {
     ack?.({ ok: true });
   });
 
+  on('admin_set_premium_prices', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const month = Number(payload?.month);
+    const year = Number(payload?.year);
+    if (!Number.isSafeInteger(month) || month < 1 || month > 10000000 ||
+        !Number.isSafeInteger(year) || year < 1 || year > 10000000) {
+      return ack?.({ ok: false, error: 'invalid_prices' });
+    }
+    premiumPrices = { 1: month, 12: year };
+    await saveSetting('premium_prices', JSON.stringify(premiumPrices));
+    await auditAdmin(me, 'change_premium_prices', 'premium', `1 month=${month}; 12 months=${year}`);
+    ack?.({ ok: true, prices: premiumPrices });
+  });
+
   on('admin_visual_save', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
@@ -710,11 +727,54 @@ io.on('connection', async socket => {
     ack?.({ ok: true, users: users.n, messages: messages.n, groups: groups.n, channels: channels.n, complaints: complaints.n, online: online.size });
   });
 
+  // Admin dashboard: aggregate health and recent registrations, without exposing private messages.
+  on('admin_overview', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const now = Date.now();
+    const [users, messages, groups, channels, complaints, premium, today, week, recent] = await Promise.all([
+      db.one('SELECT COUNT(*)::int AS n FROM users'),
+      db.one('SELECT COUNT(*)::int AS n FROM messages'),
+      db.one("SELECT COUNT(*)::int AS n FROM chats WHERE kind = 'group'"),
+      db.one("SELECT COUNT(*)::int AS n FROM chats WHERE kind = 'channel'"),
+      db.one('SELECT COUNT(*)::int AS n FROM complaints'),
+      db.one('SELECT COUNT(*)::int AS n FROM users WHERE premium_until > $1', [now]),
+      db.one('SELECT COUNT(*)::int AS n FROM users WHERE created_at >= $1', [now - 86400000]),
+      db.one('SELECT COUNT(*)::int AS n FROM users WHERE created_at >= $1', [now - 7 * 86400000]),
+      db.all('SELECT user_id, nickname, created_at FROM users ORDER BY created_at DESC LIMIT 8')
+    ]);
+    ack?.({ ok: true, users: users.n, messages: messages.n, groups: groups.n, channels: channels.n,
+      complaints: complaints.n, premium: premium.n, online: online.size, registeredToday: today.n,
+      registeredWeek: week.n, recent: recent.map(u => ({ id: u.user_id, nick: u.nickname, created: u.created_at })) });
+  });
+
   on('admin_groups', async (payload, ack) => {
     if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     const rows = await db.all('SELECT c.id, c.kind, c.title, c.owner, c.avatar, c.created_at, COUNT(m.nick)::int AS members FROM chats c LEFT JOIN chat_members m ON m.chat_id = c.id GROUP BY c.id ORDER BY c.created_at DESC LIMIT 300');
     ack?.({ ok: true, items: rows });
+  });
+
+  // Admin security tool: revoke every login session for a user and disconnect active sockets.
+  on('admin_force_logout', async (payload, ack) => {
+    const actor = socketNick.get(socket.id);
+    if (!actor) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const targetId = Number(payload?.userId);
+    if (!Number.isSafeInteger(targetId) || targetId < 1) return ack?.({ ok: false, error: 'invalid_user_id' });
+    const target = await db.one('SELECT nickname, user_id FROM users WHERE user_id = $1', [targetId]);
+    if (!target) return ack?.({ ok: false, error: 'no_user' });
+    const removed = await db.run('DELETE FROM sessions WHERE nickname = $1', [target.nickname]);
+    const sockets = [...(online.get(target.nickname) || [])];
+    for (const sid of sockets) {
+      const client = io.sockets.sockets.get(sid);
+      if (client) { socketNick.delete(sid); client.disconnect(true); }
+    }
+    online.delete(target.nickname);
+    await db.run('UPDATE users SET last_seen = $1 WHERE nickname = $2', [Date.now(), target.nickname]);
+    await auditAdmin(actor, 'force_logout_user', target.nickname, `ID ${target.user_id}; sessions revoked=${removed?.rowCount ?? 0}`);
+    await broadcastPresence();
+    ack?.({ ok: true, nick: target.nickname, id: target.user_id, sessionsRevoked: removed?.rowCount ?? 0 });
   });
 
   on('admin_list', async (payload, ack) => {
@@ -1165,7 +1225,7 @@ io.on('connection', async socket => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
     const u = await db.one('SELECT stars, handle, premium_until FROM users WHERE nickname = $1', [me]);
-    ack?.({ ok: true, stars: u.stars, handle: u.handle, premium_until: u.premium_until || 0 });
+    ack?.({ ok: true, stars: u.stars, handle: u.handle, premium_until: u.premium_until || 0, premium_prices: premiumPrices });
   });
 
   on('set_handle', async (payload, ack) => {
@@ -1184,7 +1244,7 @@ io.on('connection', async socket => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
     const months = Number(payload?.months);
-    const cost = PREMIUM_PRICE[months];
+    const cost = premiumPrices[months];
     if (!cost) return ack?.({ ok: false, error: 'invalid' });
     let error = null;
     let until = 0;
@@ -1245,6 +1305,24 @@ io.on('connection', async socket => {
     ack?.({ ok: true, users: users.length });
   });
 
+  // Admin only: send a direct system message from Gigi Chat to one user by numeric ID.
+  on('admin_message_user', async (payload, ack) => {
+    const actor = socketNick.get(socket.id);
+    if (!actor) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const userId = Number(payload?.userId);
+    const text = typeof payload?.text === 'string' ? payload.text.trim().slice(0, 1000) : '';
+    if (!Number.isSafeInteger(userId) || userId < 1 || !text) return ack?.({ ok: false, error: 'invalid' });
+    const target = await db.one('SELECT nickname FROM users WHERE user_id = $1', [userId]);
+    if (!target) return ack?.({ ok: false, error: 'no_user' });
+    const now = Date.now();
+    const row = await db.one("INSERT INTO messages (from_nick, to_nick, text, kind, created_at) VALUES ('gigi_chat', $1, $2, 'text', $3) RETURNING id", [target.nickname, text, now]);
+    const message = { id: row.id, from: 'gigi_chat', to: target.nickname, text, created_at: now, read_at: null, kind: 'text' };
+    io.to('u:' + target.nickname).emit('message', message);
+    await auditAdmin(actor, 'admin_message_user', String(userId), text.slice(0, 160));
+    ack?.({ ok: true, userId, nickname: target.nickname });
+  });
+
   // Anyone can complain about a user; the complaint goes to the admin's inbox.
   on('complaint', async (payload, ack) => {
     const me = socketNick.get(socket.id);
@@ -1299,6 +1377,7 @@ io.on('connection', async socket => {
   on('user_story_post', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!(await isPremium(me))) return ack?.({ ok: false, error: 'premium_required' });
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
     const media = typeof payload?.media === 'string' && payload.media ? payload.media : null;
     if (media && !isOurMedia(media, 'image')) return ack?.({ ok: false, error: 'invalid' });
