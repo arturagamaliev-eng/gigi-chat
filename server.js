@@ -361,10 +361,10 @@ app.use(express.json({ limit: '25mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/users', route(async (req, res) => {
-  const term = String(req.query.q || '').replace(/[^\p{L}\p{N}_]/gu, '');
-  if (!term) return res.json([]);
-  const rows = await db.all('SELECT nickname FROM users WHERE key LIKE $1 ORDER BY nickname LIMIT 20', [`%${keyOf(term)}%`]);
-  res.json(rows.map(r => r.nickname));
+  const term = String(req.query.q || '').trim();
+  if (!/^\d{1,20}$/.test(term)) return res.json([]);
+  const user = await db.one('SELECT nickname FROM users WHERE user_id = $1', [term]);
+  res.json(user ? [user.nickname] : []);
 }));
 
 app.get('/api/chats', route(async (req, res) => {
@@ -1224,8 +1224,28 @@ io.on('connection', async socket => {
   on('me_info', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
-    const u = await db.one('SELECT stars, handle, premium_until FROM users WHERE nickname = $1', [me]);
-    ack?.({ ok: true, stars: u.stars, handle: u.handle, premium_until: u.premium_until || 0, premium_prices: premiumPrices });
+    const u = await db.one('SELECT user_id, stars, handle, premium_until FROM users WHERE nickname = $1', [me]);
+    ack?.({ ok: true, id: u.user_id, stars: u.stars, handle: u.handle, premium_until: u.premium_until || 0, premium_prices: premiumPrices });
+  });
+
+  // Admin-only: change the numeric ID of the currently authenticated admin account.
+  on('admin_change_own_id', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const raw = String(payload?.userId ?? '').trim();
+    if (!/^\d{1,15}$/.test(raw)) return ack?.({ ok: false, error: 'invalid_user_id' });
+    const nextId = Number(raw);
+    if (!Number.isSafeInteger(nextId) || nextId < 1) return ack?.({ ok: false, error: 'invalid_user_id' });
+    const current = await db.one('SELECT user_id FROM users WHERE nickname = $1', [me]);
+    if (!current) return ack?.({ ok: false, error: 'no_user' });
+    if (Number(current.user_id) === nextId) return ack?.({ ok: true, userId: nextId });
+    const taken = await db.one('SELECT 1 AS found FROM users WHERE user_id = $1', [nextId]);
+    if (taken) return ack?.({ ok: false, error: 'id_taken' });
+    await db.run('UPDATE users SET user_id = $1 WHERE nickname = $2', [nextId, me]);
+    await db.one(`SELECT setval(pg_get_serial_sequence('users', 'user_id'), GREATEST((SELECT COALESCE(MAX(user_id), 1) FROM users), $1), true) AS value`, [nextId]);
+    await auditAdmin(me, 'admin_change_own_id', String(nextId), `ID змінено з ${current.user_id} на ${nextId}`);
+    ack?.({ ok: true, userId: nextId });
   });
 
   on('set_handle', async (payload, ack) => {
