@@ -170,9 +170,6 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
  .mobile-nav-item:active{transform:scale(.97)}
  .mobile-nav-avatar{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#344b5d;background-size:cover;background-position:center;font-size:20px;overflow:hidden}
  .sidebar{padding-bottom:90px}.chat{padding-bottom:90px}
- /* On phones, the profile/action strip duplicates the fixed bottom navigation
-    and wastes the space needed for the chat list. Keep the bottom navigation. */
- .sidebar > .account-tools{display:none!important}
  /* Hide the bottom bar completely while a private or group conversation is open. */
  .app.chat-open .mobile-bottom-nav{display:none!important}
  .app.chat-open .chat{padding-bottom:0}
@@ -339,7 +336,7 @@ const I18N = {
     passLabel: 'Password', errShortPass: 'Password: at least 4 characters',
     errTaken: 'This nickname is taken or the password is wrong', errSession: 'Session expired. Please log in again.',
     accountDeleted: 'Your account was deleted.',
-    enter: 'Enter', logout: 'Log out', search: 'Search by nickname',
+    enter: 'Enter', logout: 'Log out', search: 'Search friends by ID',
     renameBtn: 'Rename', deleteBtn: 'Delete', renamePrompt: 'New nickname (3–20 characters)',
     renamed: 'Nickname changed', errNickTaken: 'This nickname is taken',
     confirmDelete: 'Delete your account and all your messages? This cannot be undone.',
@@ -418,7 +415,7 @@ const I18N = {
     passLabel: 'Пароль', errShortPass: 'Пароль: щонайменше 4 символи',
     errTaken: 'Цей нікнейм уже зайнятий або пароль невірний', errSession: 'Сеанс завершився. Увійдіть знову.',
     accountDeleted: 'Акаунт видалено.',
-    enter: 'Увійти', logout: 'Вийти', search: 'Пошук за нікнеймом',
+    enter: 'Увійти', logout: 'Вийти', search: 'Пошук друзів за ID',
     renameBtn: 'Нікнейм', deleteBtn: 'Видалити', renamePrompt: 'Новий нікнейм (3–20 символів)',
     renamed: 'Нікнейм змінено', errNickTaken: 'Цей нікнейм уже зайнятий',
     confirmDelete: 'Видалити акаунт і всі ваші повідомлення? Це не можна скасувати.',
@@ -495,7 +492,7 @@ const I18N = {
     passLabel: 'Пароль', errShortPass: 'Пароль: минимум 4 символа',
     errTaken: 'Этот никнейм уже занят или пароль неверный', errSession: 'Сеанс истёк. Войдите снова.',
     accountDeleted: 'Аккаунт удалён.',
-    enter: 'Войти', logout: 'Выйти', search: 'Поиск по никнейму',
+    enter: 'Войти', logout: 'Выйти', search: 'Поиск друзей по ID',
     renameBtn: 'Никнейм', deleteBtn: 'Удалить', renamePrompt: 'Новый никнейм (3–20 символов)',
     renamed: 'Никнейм изменён', errNickTaken: 'Этот никнейм уже занят',
     confirmDelete: 'Удалить аккаунт и все ваши сообщения? Это нельзя отменить.',
@@ -1150,20 +1147,18 @@ $('folderManage').addEventListener('click', () => { const f=prompt('Фільтр
 let searchTimer;
 $('search').addEventListener('input', e => {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(async () => {
+  searchTimer = setTimeout(() => {
     search = e.target.value.trim();
-    if (!search) { results = []; return renderList(); }
-    try {
-      const names = await (await fetch(`/api/users?q=${enc(search)}`)).json();
-      results = names.filter(n => n !== me);
-    } catch { results = []; }
-    const filterGroups = () => {
-      const q = search.toLowerCase();
-      groupResults = [...groups.values()].filter(g => g.title.toLowerCase().includes(q));
+    results = [];
+    groupResults = [];
+    if (!search) return renderList();
+    // Friend discovery is intentionally numeric-ID-only; nicknames are not searchable.
+    if (!/^\d{1,20}$/.test(search) || !socket?.connected) return renderList();
+    socket.emit('user_lookup_id', { id: search }, res => {
+      if (search !== e.target.value.trim()) return;
+      results = res?.ok && res.user?.nick && res.user.nick !== me ? [res.user.nick] : [];
       renderList();
-    };
-    if (socket?.connected) refreshGroups(filterGroups);
-    else filterGroups();
+    });
   }, 250);
 });
 
@@ -1374,11 +1369,11 @@ function openProfile(nick) {
 
 function openAccounts(users) {
   const list = el('div', {});
-  const searchBox = el('input', { class: 'field', placeholder: 'Пошук за ID або ніком', value: '' });
+  const searchBox = el('input', { class: 'field', placeholder: 'Пошук акаунта за ID', value: '' });
   const draw = () => {
     list.replaceChildren();
-    const q = searchBox.value.trim().toLowerCase();
-    const filtered = users.filter(u => !q || String(u.id).includes(q) || u.nick.toLowerCase().includes(q));
+    const q = searchBox.value.trim();
+    const filtered = users.filter(u => !q || String(u.id).includes(q));
     for (const u of filtered) {
     const sub = u.online ? t('online') : (u.lastSeen ? t('lastSeen', { time: fmtDateTime(u.lastSeen) }) : t('offline'));
     list.append(el('div', { class: 'acc-row' },
@@ -2036,6 +2031,7 @@ function openAdminSettings() {
           adminCall('admin_notify', { text }, () => toast(t('notifySent')));
         } }, t('notifyBtn')),
         el('button', { class: 'btn ghost', onclick: () => openComplaints() }, t('complaintsBtn', { n: count })),
+        el('button', { class: 'btn ghost', onclick: changeAdminOwnId }, '🆔 Змінити власний ID'),
         el('button', { class: 'btn ghost', onclick: changeAdminSecretCode }, '🔐 Змінити секретний код адміна'),
         el('button', { class: 'btn ghost', onclick: () => startVisualEditor() }, '🎨 Візуальний редактор сайту'),
         el('button', { class: 'btn ghost', onclick: () => openAdminOverview() }, '🧭 Огляд і стан сайту'),
@@ -2158,6 +2154,21 @@ function openVisualElementEditor(node) {
     } }, '💾 Зберегти для всіх'),
     el('button', { class: 'btn ghost', onclick: () => { closeModal(); stopVisualEditor(); } }, 'Вийти з редактора')
   ]);
+}
+
+function changeAdminOwnId() {
+  socket.emit('me_info', {}, info => {
+    if (!info?.ok) return toast('Не вдалося отримати поточний ID');
+    const raw = prompt('Твій поточний ID: ' + info.id + '\nВведи новий числовий ID:', String(info.id));
+    if (raw === null) return;
+    const id = raw.trim();
+    if (!/^\d{1,15}$/.test(id) || !Number.isSafeInteger(Number(id)) || Number(id) < 1) return toast('Введи коректний числовий ID');
+    if (!confirm('Змінити ID твого акаунта на ' + id + '?')) return;
+    adminCall('admin_change_own_id', { userId: id }, r => {
+      toast('Твій ID змінено на ' + r.userId);
+      openAdminSettings();
+    });
+  });
 }
 
 function changeAdminSecretCode() {
