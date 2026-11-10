@@ -382,7 +382,7 @@ const I18N = {
     handleInvalid: 'Username: 3–20 English letters, digits or _', handleTaken: 'This username is taken',
     handlePrompt: 'Choose a username (English letters, 3–20 characters)', handleSaved: 'Username saved',
     settingsTitle: 'Settings', themeLabel: 'Theme', themeDark: 'Dark', themeLight: 'Light',
-    premiumTitle: 'Premium', premiumActive: 'Premium is active', premiumNone: 'Premium is not active',
+    premiumTitle: 'Premium', premiumActive: 'Premium is active', premiumNone: 'Premium is not active', premiumRequired: 'Premium is required to publish stories.',
     premium1Btn: 'Premium 1 month: 1000 ⭐', premium12Btn: 'Premium 1 year: 5000 ⭐', premiumBought: 'Premium activated',
     myStoryBtn: 'Post a story', myStoryPhotoBtn: 'Post a photo story',
     adminSettingsTitle: 'Admin settings', accountsBtn: 'All users', gigiStoryBtn: 'gigi chat story',
@@ -461,7 +461,7 @@ const I18N = {
     handleInvalid: 'Юзернейм: 3–20 англійських літер, цифр або _', handleTaken: 'Цей юзернейм уже зайнятий',
     handlePrompt: 'Оберіть юзернейм (англійські літери, 3–20 символів)', handleSaved: 'Юзернейм збережено',
     settingsTitle: 'Налаштування', themeLabel: 'Тема', themeDark: 'Темна', themeLight: 'Світла',
-    premiumTitle: 'Преміум', premiumActive: 'Преміум активний', premiumNone: 'Преміум не активний',
+    premiumTitle: 'Преміум', premiumActive: 'Преміум активний', premiumNone: 'Преміум не активний', premiumRequired: 'Для публікації історій потрібен Premium.',
     premium1Btn: 'Преміум на місяць: 1000 ⭐', premium12Btn: 'Преміум на рік: 5000 ⭐', premiumBought: 'Преміум активовано',
     myStoryBtn: 'Опублікувати історію', myStoryPhotoBtn: 'Опублікувати фото-історію',
     adminSettingsTitle: 'Налаштування адміна', accountsBtn: 'Усі користувачі', gigiStoryBtn: 'Історія gigi chat',
@@ -538,7 +538,7 @@ const I18N = {
     handleInvalid: 'Юзернейм: 3–20 латинских букв, цифр или _', handleTaken: 'Этот юзернейм уже занят',
     handlePrompt: 'Выберите юзернейм (латиница, 3–20 символов)', handleSaved: 'Юзернейм сохранён',
     settingsTitle: 'Настройки', themeLabel: 'Тема', themeDark: 'Тёмная', themeLight: 'Светлая',
-    premiumTitle: 'Премиум', premiumActive: 'Премиум активен', premiumNone: 'Премиум не активен',
+    premiumTitle: 'Премиум', premiumActive: 'Премиум активен', premiumNone: 'Премиум не активен', premiumRequired: 'Для публикации историй нужен Premium.',
     premium1Btn: 'Премиум на месяц: 1000 ⭐', premium12Btn: 'Премиум на год: 5000 ⭐', premiumBought: 'Премиум активирован',
     myStoryBtn: 'Опубликовать историю', myStoryPhotoBtn: 'Опубликовать фото-историю',
     adminSettingsTitle: 'Настройки админа', accountsBtn: 'Все пользователи', gigiStoryBtn: 'История gigi chat',
@@ -595,6 +595,7 @@ let activeGroup = null;      // id of the open group or channel (active is null 
 let pendingGroupAvatar = null;
 let groupResults = [];       // groups and channels matching the search text
 let myPremium = false;       // true while your premium is active
+let premiumPrices = { 1: 1000, 12: 5000 };
 let writesStopped = false;   // true while the admin has stopped all writing
 let replyTarget = null, editTarget = null;
 let chatFolders = JSON.parse(localStorage.getItem('gigi_folders') || '{}');
@@ -1736,7 +1737,7 @@ $('giftChatBtn').addEventListener('click', () => { if (active) openSendGiftToCha
 
 function loadMe() {
   if (!socket?.connected) return;
-  socket.emit('me_info', {}, r => { if (r?.ok) myPremium = r.premium_until > Date.now(); });
+  socket.emit('me_info', {}, r => { if (r?.ok) { myPremium = r.premium_until > Date.now(); if (r.premium_prices) premiumPrices = r.premium_prices; } });
 }
 
 function askHandle() {
@@ -1783,8 +1784,8 @@ function openSettings() {
       el('div', { class: 'acc-head' }, t('premiumTitle')),
       el('div', { class: 'sub' }, myPremium ? t('premiumActive') : t('premiumNone')),
       el('div', { class: 'pf-actions', style: 'margin:8px 0 16px' },
-        el('button', { class: 'btn', onclick: () => buyPremium(1) }, t('premium1Btn')),
-        el('button', { class: 'btn', onclick: () => buyPremium(12) }, t('premium12Btn'))),
+        el('button', { class: 'btn', onclick: () => buyPremium(1) }, t('premium1Btn').replace(/\d+/, String(premiumPrices[1]))),
+        el('button', { class: 'btn', onclick: () => buyPremium(12) }, t('premium12Btn').replace(/\d+/, String(premiumPrices[12])))),
       el('div', { class: 'acc-head' }, t('blockedTitle')),
       ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noBlocked'))]),
     ]);
@@ -1932,10 +1933,51 @@ function openAdminAudit() {
   });
 }
 
+function openAdminSecurityTools() {
+  const idInput = el('input', { class: 'field', type: 'number', min: '1', step: '1', placeholder: 'ID користувача' });
+  openModal([
+    el('div', { class: 'acc-head' }, '🛡️ Безпека акаунтів'),
+    el('div', { class: 'sub' }, 'Якщо акаунт підозрілий або власник втратив доступ до пристрою, можна завершити всі його сеанси. Користувач зможе увійти знову лише після введення пароля.'),
+    idInput,
+    el('button', { class: 'btn danger', style: 'width:100%;margin-top:12px', onclick: () => {
+      const id = idInput.value.trim();
+      if (!/^\d+$/.test(id) || Number(id) < 1) return toast('Введи правильний ID користувача');
+      if (!confirm('Завершити всі активні сеанси користувача ID ' + id + '?')) return;
+      adminCall('admin_force_logout', { userId: Number(id) }, r => {
+        toast('Сеанси користувача ' + r.nick + ' завершено');
+        openAdminSecurityTools();
+      });
+    } }, '🔒 Завершити всі сеанси користувача')
+  ]);
+}
+
 function openAdminStats() {
   adminCall('admin_stats', {}, r => {
     openModal([el('div', { class: 'acc-head' }, '📊 Статистика Gigi Chat'),
       ...[['Користувачі',r.users],['Повідомлення',r.messages],['Групи',r.groups],['Канали',r.channels],['Скарги',r.complaints],['Онлайн зараз',r.online]].map(([label,value]) => el('div',{class:'acc-row'},el('div',{class:'meta'},el('div',{class:'name'},label),el('div',{class:'sub'},String(value ?? 0))))) ]);
+  });
+}
+
+function openAdminOverview() {
+  adminCall('admin_overview', {}, r => {
+    const stats = [
+      ['👥 Усього користувачів', r.users], ['🟢 Онлайн зараз', r.online],
+      ['💎 Активний Premium', r.premium], ['💬 Повідомлень', r.messages],
+      ['👥 Груп', r.groups], ['📢 Каналів', r.channels],
+      ['🆕 Реєстрацій за сьогодні', r.registeredToday], ['📅 Реєстрацій за 7 днів', r.registeredWeek],
+      ['🚩 Скарг', r.complaints]
+    ];
+    const recent = (r.recent || []).map(u => el('div', { class: 'acc-row' },
+      el('div', { class: 'meta' }, el('div', { class: 'name' }, u.nick + ' · ID ' + u.id),
+        el('div', { class: 'sub' }, 'Реєстрація: ' + fmtDateTime(u.created)))));
+    openModal([
+      el('div', { class: 'acc-head' }, '📊 Панель огляду Gigi Chat'),
+      ...stats.map(([label, value]) => el('div', { class: 'acc-row' },
+        el('div', { class: 'meta' }, el('div', { class: 'name' }, label), el('div', { class: 'sub' }, String(value ?? 0))))),
+      el('div', { class: 'acc-head' }, '🆕 Останні реєстрації'),
+      ...(recent.length ? recent : [el('div', { class: 'empty' }, 'Поки немає користувачів')]),
+      el('button', { class: 'btn ghost', style: 'width:100%', onclick: openAdminOverview }, '🔄 Оновити статистику')
+    ]);
   });
 }
 
@@ -1972,6 +2014,14 @@ function openAdminSettings() {
           closeModal();
         }) }, writesStopped ? t('stopOffBtn') : t('stopOnBtn')),
         el('button', { class: 'btn ghost', onclick: () => {
+          const id = Number((prompt('Введи ID користувача, якому надіслати повідомлення від Gigi Chat:') || '').trim());
+          if (!Number.isSafeInteger(id) || id < 1) return toast('Введи коректний ID користувача');
+          const text = (prompt('Текст повідомлення від Gigi Chat:') || '').trim();
+          if (!text) return;
+          if (!confirm('Надіслати це повідомлення користувачу з ID ' + id + ' від імені Gigi Chat?')) return;
+          adminCall('admin_message_user', { userId: id, text }, r => toast('Повідомлення надіслано користувачу ' + r.nickname + ' (ID: ' + r.userId + ')'));
+        } }, '✉️ Написати користувачу від Gigi Chat'),
+        el('button', { class: 'btn ghost', onclick: () => {
           const text = (prompt(t('notifyPrompt')) || '').trim();
           if (!text) return;
           adminCall('admin_notify', { text }, () => toast(t('notifySent')));
@@ -1979,10 +2029,13 @@ function openAdminSettings() {
         el('button', { class: 'btn ghost', onclick: () => openComplaints() }, t('complaintsBtn', { n: count })),
         el('button', { class: 'btn ghost', onclick: changeAdminSecretCode }, '🔐 Змінити секретний код адміна'),
         el('button', { class: 'btn ghost', onclick: () => startVisualEditor() }, '🎨 Візуальний редактор сайту'),
+        el('button', { class: 'btn ghost', onclick: () => openAdminOverview() }, '🧭 Огляд і стан сайту'),
+        el('button', { class: 'btn ghost', onclick: () => openAdminSecurityTools() }, '🛡️ Безпека акаунтів · завершити сеанси'),
         el('button', { class: 'btn ghost', onclick: () => openAdminAudit() }, '📋 Журнал дій адміна'),
         el('button', { class: 'btn ghost', onclick: () => openAdminStats() }, '📊 Статистика'),
         el('button', { class: 'btn ghost', onclick: () => openAdminGroups() }, '👥 Керування групами/каналами'),
         el('button', { class: 'btn ghost', onclick: () => openAdminRevokePerks() }, '⭐ Керування зірками та Premium користувачів'),
+        el('button', { class: 'btn ghost', onclick: () => openAdminPremiumPrices() }, '💎 Змінити ціни Premium'),
         el('button', { class: 'btn danger', onclick: () => {
           if (!confirm('Очистити всі повідомлення в усіх приватних чатах, групах і каналах? Облікові записи та самі чати залишаться.')) return;
           if (!confirm('Підтверджуєте глобальне очищення історії? Цю дію не можна скасувати.')) return;
@@ -2172,15 +2225,17 @@ $('complaintBtn').addEventListener('click', () => {
 });
 
 function postMyStory() {
+  if (!myPremium) return toast(t('premiumRequired'));
   const text = (prompt(t('storyPrompt')) || '').trim();
   if (!text) return;
   closeModal();
   socket.emit('user_story_post', { text }, res => {
-    toast(res?.ok ? t('storyPosted') : t('messageFailed'));
+    toast(res?.ok ? t('storyPosted') : t(res?.error === 'premium_required' ? 'premiumRequired' : 'messageFailed'));
   });
 }
 
 $('myStoryPhoto').addEventListener('change', async e => {
+  if (!myPremium) { e.target.value = ''; return toast(t('premiumRequired')); }
   const f = e.target.files?.[0];
   e.target.value = '';
   if (!f) return;
@@ -2188,7 +2243,7 @@ $('myStoryPhoto').addEventListener('change', async e => {
   try {
     const media = await uploadBlob(await compressImage(f));
     socket.emit('user_story_post', { text, media }, res => {
-      toast(res?.ok ? t('storyPosted') : t('messageFailed'));
+      toast(res?.ok ? t('storyPosted') : t(res?.error === 'premium_required' ? 'premiumRequired' : 'messageFailed'));
     });
   } catch {
     toast(t('uploadFailed'));
@@ -2363,6 +2418,22 @@ function openCreateGift() {
       }, () => { toast(t('giftCreated')); openMarket(); });
     } }, t('giftCreateBtn'))),
   ]);
+}
+
+function openAdminPremiumPrices() {
+  const month = prompt('Ціна Premium на 1 місяць у зірках:', String(premiumPrices[1]));
+  if (month === null) return;
+  const year = prompt('Ціна Premium на 12 місяців у зірках:', String(premiumPrices[12]));
+  if (year === null) return;
+  const m = Number(month), y = Number(year);
+  if (!Number.isSafeInteger(m) || m < 1 || m > 10000000 || !Number.isSafeInteger(y) || y < 1 || y > 10000000) {
+    return toast('Вкажи цілі ціни від 1 до 10 000 000 зірок');
+  }
+  adminCall('admin_set_premium_prices', { month: m, year: y }, r => {
+    premiumPrices = r.prices || { 1: m, 12: y };
+    toast('Ціни Premium збережено');
+    openAdminSettings();
+  });
 }
 
 function openAdminRevokePerks() {
