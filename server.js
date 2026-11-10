@@ -727,21 +727,34 @@ io.on('connection', async socket => {
     ack?.({ ok: true, users: users.n, messages: messages.n, groups: groups.n, channels: channels.n, complaints: complaints.n, online: online.size });
   });
 
+  // Admin only: reset dashboard counters without deleting accounts, chats, or messages.
+  on('admin_reset_stats', async (payload, ack) => {
+    const actor = socketNick.get(socket.id);
+    if (!actor) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const resetAt = Date.now();
+    await saveSetting('stats_reset_at', String(resetAt));
+    await auditAdmin(actor, 'reset_dashboard_stats', 'statistics', 'Dashboard counters and recent registrations list reset; application data preserved');
+    ack?.({ ok: true, resetAt });
+  });
+
   // Admin dashboard: aggregate health and recent registrations, without exposing private messages.
   on('admin_overview', async (payload, ack) => {
     if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     const now = Date.now();
+    const resetRow = await db.one("SELECT v FROM app_settings WHERE k = 'stats_reset_at'");
+    const resetAt = Number(resetRow?.v || 0);
     const [users, messages, groups, channels, complaints, premium, today, week, recent] = await Promise.all([
       db.one('SELECT COUNT(*)::int AS n FROM users'),
-      db.one('SELECT COUNT(*)::int AS n FROM messages'),
-      db.one("SELECT COUNT(*)::int AS n FROM chats WHERE kind = 'group'"),
-      db.one("SELECT COUNT(*)::int AS n FROM chats WHERE kind = 'channel'"),
-      db.one('SELECT COUNT(*)::int AS n FROM complaints'),
+      db.one('SELECT COUNT(*)::int AS n FROM messages WHERE created_at >= $1', [resetAt]),
+      db.one("SELECT COUNT(*)::int AS n FROM chats WHERE kind = 'group' AND created_at >= $1", [resetAt]),
+      db.one("SELECT COUNT(*)::int AS n FROM chats WHERE kind = 'channel' AND created_at >= $1", [resetAt]),
+      db.one('SELECT COUNT(*)::int AS n FROM complaints WHERE created_at >= $1', [resetAt]),
       db.one('SELECT COUNT(*)::int AS n FROM users WHERE premium_until > $1', [now]),
       db.one('SELECT COUNT(*)::int AS n FROM users WHERE created_at >= $1', [now - 86400000]),
       db.one('SELECT COUNT(*)::int AS n FROM users WHERE created_at >= $1', [now - 7 * 86400000]),
-      db.all('SELECT user_id, nickname, created_at FROM users ORDER BY created_at DESC LIMIT 8')
+      db.all('SELECT user_id, nickname, created_at FROM users WHERE created_at >= $1 ORDER BY created_at DESC LIMIT 8', [resetAt])
     ]);
     ack?.({ ok: true, users: users.n, messages: messages.n, groups: groups.n, channels: channels.n,
       complaints: complaints.n, premium: premium.n, online: online.size, registeredToday: today.n,
