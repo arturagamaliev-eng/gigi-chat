@@ -80,9 +80,6 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 #storyDelBtn{margin-top:16px;width:100%;text-align:center}
 .gone{color:var(--muted);font-style:italic}
 :root[data-theme="light"]{--bg:#eef2f7;--panel:#ffffff;--panel2:#e6ebf2;--line:#d5dce6;--out:#d6e7fb;--in:#ffffff;--accent:#2b7bc4;--text:#1b2631;--muted:#66768a;--online:#2fa86a;--danger:#d9534f}
-:root[data-theme="purple"]{--bg:#171225;--panel:#211a33;--panel2:#302545;--line:#44345e;--out:#49316d;--in:#261d38;--accent:#b78cff;--text:#f6efff;--muted:#b9a9ce;--online:#52d69a;--danger:#ff7777}
-:root[data-theme="ocean"]{--bg:#071b2b;--panel:#0d293d;--panel2:#15384e;--line:#24516a;--out:#174766;--in:#0e3047;--accent:#42c6e8;--text:#e8f8ff;--muted:#9cc2d2;--online:#52d69a;--danger:#ff7777}
-:root[data-theme="rose"]{--bg:#28151e;--panel:#38202c;--panel2:#4a2a39;--line:#664052;--out:#71374f;--in:#402532;--accent:#ff8eb7;--text:#fff0f5;--muted:#d6a8b9;--online:#52d69a;--danger:#ff7777}
 .modal-box{max-height:85vh;overflow-y:auto;max-width:460px;font-size:15px;line-height:1.4}
 .pf-head{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:18px}
 .pf-avatar{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;font-size:36px;font-weight:700;color:#fff;position:relative;overflow:hidden}
@@ -104,6 +101,16 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .acc-head{font-size:18px;font-weight:650;margin-bottom:6px}
 .acc-foot{margin-top:18px}
 .clickable{cursor:pointer}
+.folders{display:flex;gap:6px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line)}
+.folder{background:var(--bg);border:0;border-radius:999px;padding:5px 12px;color:var(--muted);cursor:pointer;font-size:13px}
+.folder.on{background:var(--out);color:var(--text)}
+.reply-bar{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--panel2);border-top:1px solid var(--line);font-size:13px}
+.reply-bar[hidden],.pin-bar[hidden]{display:none!important}
+.reply-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pin-bar{padding:8px 14px;background:var(--panel2);border-bottom:1px solid var(--line);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.quote{border-left:3px solid var(--accent);padding:4px 8px;margin-bottom:6px;background:rgba(0,0,0,.12);border-radius:6px;font-size:13px}
+.fwd{font-size:12px;color:var(--muted);margin-bottom:4px}
+.edited{font-size:11px;color:var(--muted)}
 .gift-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
 .gcard{background:var(--bg);border-radius:12px;padding:6px;cursor:pointer;text-align:center;min-width:0}
 .gcard img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;display:block}
@@ -154,46 +161,6 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
   .back{display:inline-flex}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
-.poll-card{min-width:220px;max-width:340px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);display:grid;gap:8px}.poll-option{display:flex;justify-content:space-between;gap:12px;text-align:left;padding:9px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text);cursor:pointer}.poll-option.selected{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,var(--panel))}.acc-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
-
-.visual-edit-mode *{cursor:crosshair!important}
-.visual-edit-mode .visual-edit-selected{outline:3px solid #ffb020!important;outline-offset:2px!important}
-.visual-edit-mode #modal,.visual-edit-mode #toast{cursor:auto!important}
-#modalBody input[type=text],
-/* Compact, tidy floating bottom navigation */
-.mobile-bottom-nav{display:none}
-@media (max-width:760px){
- .mobile-bottom-nav{position:fixed;z-index:40;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);width:min(86vw,490px);height:70px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center;padding:4px 6px;background:rgba(29,48,63,.97);border:1px solid rgba(116,145,165,.16);border-radius:40px;box-shadow:0 7px 20px rgba(0,0,0,.24);backdrop-filter:blur(15px);-webkit-backdrop-filter:blur(15px)}
- .mobile-nav-item{height:60px;min-width:0;border:0;border-radius:32px;background:transparent;color:#f3f7fb;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:clamp(10px,2.8vw,13px);font-weight:650;cursor:pointer;padding:3px 1px}
- .mobile-nav-item .mobile-nav-icon{font-size:clamp(23px,5.5vw,30px);line-height:1}
- .mobile-nav-item.active{background:#20394c;color:#55baf4;box-shadow:inset 0 0 0 1px rgba(110,174,211,.08)}
- .mobile-nav-item:active{transform:scale(.97)}
- .mobile-nav-avatar{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:#344b5d;background-size:cover;background-position:center;font-size:20px;overflow:hidden}
- .sidebar{padding-bottom:90px}.chat{padding-bottom:90px}
- /* Hide the bottom bar completely while a private or group conversation is open. */
- .app.chat-open .mobile-bottom-nav{display:none!important}
- .app.chat-open .chat{padding-bottom:0}
-}
-@media (max-width:380px){
- .mobile-bottom-nav{height:66px;padding:3px 5px;width:88vw;bottom:calc(22px + env(safe-area-inset-bottom))}
- .mobile-nav-item{height:56px;font-size:10px}
- .mobile-nav-item .mobile-nav-icon{font-size:22px}
- .mobile-nav-avatar{width:29px;height:29px}
-}
-
-.pf-id{font-size:13px;line-height:1.35;color:var(--muted,#9bb6c7);margin-top:3px;letter-spacing:.2px}
-
-/* Secondary account actions moved into the reserved strip above bottom navigation. */
-.account-tools{padding:10px 18px 8px!important}
-.account-tools-main{min-height:42px;align-items:center}
-.account-tools-secondary{display:flex;align-items:center;justify-content:center;gap:18px;min-height:48px;padding:3px 12px 0}
-.account-tools-secondary .icon{width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;border-radius:14px}
-@media(max-width:760px){
- .account-tools{padding:10px 18px 8px!important}
- .account-tools-secondary{justify-content:center;gap:24px;min-height:54px;padding-top:5px}
- .account-tools-secondary .icon{width:44px;height:44px;font-size:21px}
-}
-
 </style>
 </head>
 <body>
@@ -222,7 +189,6 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
       <div class="row">
         <button class="icon" id="myProfileBtn" aria-label="profile" title="Профіль">👤</button>
         <div class="brand">gigi chat</div>
-        <button class="icon" id="searchIdBtn" title="Пошук користувача за ID" aria-label="Пошук за ID">🆔</button>
         <button class="icon" id="searchMsgBtn" data-i18n-title="searchMsgTitle">🔎</button>
         <button class="icon" id="inviteBtn" data-i18n-title="inviteTitle" aria-label="invite">🔗</button>
         <div class="lang">
@@ -232,29 +198,27 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
         </div>
       </div>
       <input id="search" class="field" type="search" autocomplete="off" data-i18n-ph="search">
-      <div class="row"><select id="folderFilter" class="field" aria-label="Папка чатів"><option value="all">Усі чати</option><option value="personal">Особисті</option><option value="groups">Групи</option><option value="channels">Канали</option></select><button class="icon" id="folderManage" title="Папки">📁</button></div>
     </div>
     <input id="storyPhoto" type="file" accept="image/*" hidden>
     <input id="myStoryPhoto" type="file" accept="image/*" hidden>
     <input id="bgInput" type="file" accept="image/*" hidden>
+    <div class="folders" id="folders"></div>
     <div class="stories" id="stories" hidden></div>
     <div class="list" id="list"></div>
-    <div class="side-top account-tools" style="border-top:1px solid var(--line);border-bottom:0">
-      <div class="row account-tools-main">
+    <div class="side-top" style="border-top:1px solid var(--line);border-bottom:0">
+      <div class="row">
         <span class="status" id="meName" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
         <button class="icon" id="photoBtn" data-i18n="photoBtn" hidden></button>
         <input id="avatarInput" type="file" accept="image/*" hidden>
-        <input id="groupAvatarInput" type="file" accept="image/*" hidden>
-        <button class="icon" id="adminBtn" data-i18n-title="adminBtn" style="margin-left:auto">*</button>
+        <button class="icon" id="marketBtn" data-i18n-title="marketBtn">🛍</button>
+        <button class="icon" id="groupsBtn" data-i18n-title="groupsBtn">👥</button>
+        <button class="icon" id="adminBtn" data-i18n-title="adminBtn">🔑</button>
         <button class="icon" id="storyBtn" data-i18n-title="storyBtn" hidden>📖</button>
         <button class="icon" id="storyPhotoBtn" data-i18n-title="storyPhotoBtn" hidden>🖼</button>
         <button class="icon" id="renameBtn" data-i18n="renameBtn" hidden></button>
         <button class="icon" id="deleteBtn" data-i18n="deleteBtn" style="color:var(--danger)" hidden></button>
-      </div>
-      <div class="account-tools-secondary" aria-label="Додаткові дії">
-        <button class="icon" id="groupsBtn" data-i18n-title="groupsBtn" title="Групи" hidden>👥</button>
-        <button class="icon" id="settingsBtn" aria-label="settings" title="Налаштування" hidden>⚙</button>
-        <button class="icon" id="logout" aria-label="logout" title="Вийти" hidden>⎋</button>
+        <button class="icon" id="settingsBtn" aria-label="settings" title="Налаштування">⚙</button>
+        <button class="icon" id="logout" aria-label="logout">⎋</button>
       </div>
       <div class="hint" id="net"></div>
     </div>
@@ -273,31 +237,24 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
         <button class="icon" id="moreBtn" aria-label="menu">⋮</button>
       </header>
       <div id="chatMenu" class="menu" hidden>
+        <button id="muteChatBtn" class="menu-item" data-i18n="muteBtn"></button>
         <button id="complaintBtn" class="menu-item" data-i18n="complaintBtn"></button>
         <button id="blockChatBtn" class="menu-item" data-i18n="blockBtn"></button>
-        <button id="removeContactSelfBtn" class="menu-item">🗑️ Видалити контакт для себе</button>
-        <button id="removeContactBothBtn" class="menu-item">⚠️ Видалити контакт і всю історію для обох</button>
         <button id="adminDelBtn" class="menu-item" data-i18n="adminDelete"></button>
       </div>
       <div id="pinBar" class="pin-bar" hidden></div>
+      <div id="pinBar" class="pin-bar" hidden></div>
       <div class="messages" id="messages"></div>
-      <div id="replyBar" class="chan-note" hidden></div>
+      <div id="replyBar" class="reply-bar" hidden></div>
       <form class="composer" id="composer">
         <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn"></button>
-        <button type="button" class="icon" id="pollBtn" title="Створити опитування" hidden>📊</button>
-        <input id="fileInput" type="file" accept="image/*,video/mp4,video/webm,video/quicktime,.pdf,.zip,.doc,.docx,.xls,.xlsx,.csv,.txt" hidden>
+        <input id="fileInput" type="file" accept="image/*" hidden>
         <textarea id="input" rows="1" data-i18n-ph="typeMessage"></textarea>
         <button class="btn" data-i18n="send"></button>
       </form>
       <div id="chanNote" class="chan-note" hidden></div>
     </div>
   </main>
-  <nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Основна навігація">
-    <button type="button" class="mobile-nav-item active" data-nav="chats" aria-label="Чати"><span class="mobile-nav-icon">💬</span><span>Чати</span></button>
-    <button type="button" class="mobile-nav-item" data-nav="contacts" aria-label="Контакти"><span class="mobile-nav-icon">♙</span><span>Контакти</span></button>
-    <button type="button" class="mobile-nav-item" data-nav="settings" aria-label="Налаштування"><span class="mobile-nav-icon">⚙</span><span>Налаштування</span></button>
-    <button type="button" class="mobile-nav-item" data-nav="profile" aria-label="Профіль"><span class="mobile-nav-avatar" id="bottomNavAvatar">👤</span><span>Профіль</span></button>
-  </nav>
 </section>
 
 <div id="storyView" class="story-view" hidden>
@@ -585,20 +542,15 @@ let stories = [];        // newest first
 const seenStories = new Set(JSON.parse(localStorage.getItem('gigi_seen') || '[]'));
 const userInfo = new Map();  // nick -> { online, lastSeen, avatar, bio }
 let adminCode = null;        // kept only while this page is open
-let visualRules = {};
-let visualEditMode = false;
-let visualObserver = null;
-let visualSelected = null;
 let groups = new Map();      // id -> group or channel summary
 let gcache = new Map();      // id -> messages of that group
 let activeGroup = null;      // id of the open group or channel (active is null then)
-let pendingGroupAvatar = null;
 let groupResults = [];       // groups and channels matching the search text
 let myPremium = false;       // true while your premium is active
 let writesStopped = false;   // true while the admin has stopped all writing
-let replyTarget = null, editTarget = null;
-let chatFolders = JSON.parse(localStorage.getItem('gigi_folders') || '{}');
-let mutedChats = new Set(JSON.parse(localStorage.getItem('gigi_muted') || '[]'));
+let replyTo = null;          // message you are replying to
+let listFilter = 'all';      // 'all' | 'private' | 'groups'
+const muted = new Set(JSON.parse(localStorage.getItem('gigi_mute') || '[]'));
 
 const $ = id => document.getElementById(id);
 const enc = encodeURIComponent;
@@ -670,7 +622,6 @@ function closeChat() {
   $('app').classList.remove('chat-open');
   $('chatView').hidden = true;
   $('placeholder').hidden = false;
-  document.querySelectorAll('.mobile-nav-item').forEach(b => b.classList.toggle('active', b.dataset.nav === 'chats'));
   renderList();
 }
 
@@ -706,17 +657,8 @@ function createSocket() {
   });
   socket.on('disconnect', () => setNet(false));
   socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); if (active) refreshInfo(active); });
-  socket.on('conversation_removed_both', ({ a, b }) => {
-    const other = a === me ? b : (b === me ? a : null);
-    if (!other) return;
-    chats.delete(other); cache.delete(other);
-    if (active === other) closeChat();
-    renderList();
-    toast('Контакт і переписку видалено для обох');
-  });
   socket.on('message', onMessage);
   socket.on('msg_deleted', onMsgDeleted);
-  socket.on('msg_edited', m => { for (const list of cache.values()) { const x=list.find(v=>v.id===m.id); if(x){x.text=m.text;x.edited_at=m.edited_at;} } if(active) renderMessages(); });
   socket.on('stories', list => { stories = list || []; renderStories(); });
   socket.on('story', s => {
     stories = [s, ...stories.filter(x => x.id !== s.id)];
@@ -729,7 +671,6 @@ function createSocket() {
     if (Number($('storyDelBtn').dataset.id) === id) $('viewer').hidden = true;
   });
   socket.on('avatars', obj => { avatars = new Map(Object.entries(obj || {})); renderList(); renderHeader(); });
-  socket.on('profile_status', ({ nick, statusText }) => { const i=userInfo.get(nick); if(i) i.statusText=statusText||''; });
   socket.on('avatar', ({ nick, url }) => {
     if (url) avatars.set(nick, url); else avatars.delete(nick);
     renderList(); renderHeader();
@@ -760,41 +701,23 @@ function createSocket() {
       if (msg.from !== me && activeGroup !== chat) {
         g.unread = (g.unread || 0) + 1;
         toast(t('newGroupMsg', { title: g.title }));
+        if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+          new Notification(g.title, {
+            body: msg.kind === 'text' ? `${displayName(msg.from)}: ${msg.text.slice(0, 120)}` : t('newGroupMsg', { title: g.title }),
+            tag: 'gigi-group-' + chat,
+          });
+        }
       }
       if (activeGroup === chat) g.unread = 0;
     }
     if (activeGroup === chat) renderMessages();
     renderList();
   });
-  socket.on('gpinned', ({ chat, id }) => { const list=gcache.get(chat)||[]; list.forEach(m=>m.pinned=(m.id===id)); if(activeGroup===chat) renderPinBar(); });
-  socket.on('poll_updated', ({ chat, id, pollResults, myVote }) => {
-    const list = gcache.get(chat) || [];
-    const m = list.find(x => x.id === id);
-    if (m) { m.pollResults = pollResults || {}; if (myVote !== undefined) m.myVote = myVote; }
-    if (activeGroup === chat) renderMessages();
-  });
-  socket.on('group_removed', ({ id }) => {
-    const g = groups.get(id); if (g) g.joined = false;
-    gcache.delete(id);
-    if (activeGroup === id) { closeChat(); toast('Тебе видалили з групи'); }
-    refreshGroups();
-  });
   socket.on('gmsg_deleted', ({ chat, id }) => {
     const list = gcache.get(chat);
     if (list) gcache.set(chat, list.filter(m => m.id !== id));
     if (activeGroup === chat) renderMessages();
     refreshGroups();
-  });
-  socket.on('group_avatar', ({ id, url }) => {
-    const g = groups.get(id); if (g) g.avatar = url || null;
-    renderList(); if (activeGroup === id) renderGroupHeader();
-  });
-  socket.on('histories_cleared', () => {
-    cache.clear(); gcache.clear();
-    for (const g of groups.values()) { g.last = null; g.unread = 0; }
-    if (active) renderMessages();
-    if (activeGroup) renderMessages();
-    renderList();
   });
   socket.on('group_deleted', ({ id }) => {
     groups.delete(id);
@@ -804,9 +727,6 @@ function createSocket() {
   });
   socket.on('app_config', c => {
     writesStopped = Boolean(c?.stopped);
-    visualRules = c?.visualRules && typeof c.visualRules === 'object' ? c.visualRules : {};
-    applyVisualRules();
-    ensureVisualObserver();
     if (c?.bg) {
       document.body.style.backgroundImage = `url("${c.bg}")`;
       document.body.classList.add('has-bg');
@@ -816,6 +736,15 @@ function createSocket() {
     }
     renderComposer();
   });
+  socket.on('msg_edited', ({ id, text }) => {
+    for (const list of cache.values()) for (const m of list) if (m.id === id) { m.text = text; m.edited = true; }
+    if (active) renderMessages();
+  });
+  socket.on('gmsg_edited', ({ chat, id, text }) => {
+    for (const m of gcache.get(chat) || []) if (m.id === id) { m.text = text; m.edited = true; }
+    if (activeGroup === chat) renderMessages();
+  });
+  socket.on('groups_changed', () => refreshGroups());
   socket.on('all_deleted', () => {
     sessionStorage.setItem('gigi_flash', 'allDeleted');
     forget();
@@ -881,8 +810,6 @@ function mediaNode(m) {
   const stop = e => e.stopPropagation();
   if (m.kind === 'image') return el('img', { src: m.text, alt: '', class: 'media', onclick: e => { stop(e); window.open(m.text, '_blank'); } });
   if (m.kind === 'video') return el('video', { src: m.text, controls: '', playsinline: '', class: 'media', onclick: stop });
-  if (m.kind === 'audio') return el('audio', { src: m.text, controls: '', preload: 'metadata', onclick: stop, style: 'max-width:100%;display:block;margin:6px 0' });
-  if (m.kind === 'file') return el('a', { href: m.text, target: '_blank', rel: 'noopener', onclick: stop, class: 'file-attachment' }, '📎 Відкрити / завантажити файл');
   return null;
 }
 
@@ -892,8 +819,6 @@ function previewText(m) {
   }
   if (m.kind === 'image') return '📷 ' + t('photoLabel');
   if (m.kind === 'video') return '🎬 ' + t('videoLabel');
-  if (m.kind === 'audio') return '🎙️ ' + t('voiceLabel');
-  if (m.kind === 'file') return '📎 Файл';
   return m.text;
 }
 
@@ -907,17 +832,18 @@ function readAsDataURL(blob) {
 }
 
 async function sendMedia(blob) {
+  if (!active && !activeGroup) return;
   if (!socket?.connected) return toast(t('errNetwork'));
   if (blob.size > 15 * 1024 * 1024) return toast(t('fileTooBig'));
-  const mime = (blob.type || 'application/octet-stream').split(';')[0].toLowerCase();
-  const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : 'file';
+  const clean = new Blob([blob], { type: (blob.type || '').split(';')[0] });
   let data;
-  try { data = await readAsDataURL(blob); }
+  try { data = await readAsDataURL(clean); }
   catch { return toast(t('uploadFailed')); }
   let res;
   try {
     res = await (await fetch('/api/upload', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: localStorage.getItem('gigi_token'), data })
     })).json();
   } catch { return toast(t('uploadFailed')); }
@@ -926,9 +852,33 @@ async function sendMedia(blob) {
     return toast(t(keys[res?.error] || 'uploadFailed'));
   }
   const done = res2 => { if (!res2?.ok) toast(t('messageFailed')); };
-  if (activeGroup) socket.emit('group_send', { id: activeGroup, text: res.url, kind: res.kind || kind }, done);
-  else if (active) socket.emit('message', { to: active, text: res.url, kind: res.kind || kind }, done);
-  else toast(t('selectChat'));
+  if (activeGroup) socket.emit('group_send', { id: activeGroup, text: res.url, kind: 'image' }, done);
+  else socket.emit('message', { to: active, text: res.url, kind: res.kind }, done);
+}
+
+let recorder = null;
+let recChunks = [];
+
+async function toggleRecord() {
+  if (recorder) { recorder.stop(); return; }
+  if (!active) return;
+  if (!window.MediaRecorder) return toast(t('uploadFailed'));
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { return toast(t('micDenied')); }
+  recChunks = [];
+  recorder = new MediaRecorder(stream);
+  recorder.ondataavailable = e => { if (e.data.size) recChunks.push(e.data); };
+  recorder.onstop = () => {
+    const type = recorder.mimeType || 'audio/webm';
+    stream.getTracks().forEach(tr => tr.stop());
+    recorder = null;
+    $('recBtn').textContent = t('recBtn');
+    const blob = new Blob(recChunks, { type });
+    if (blob.size) sendMedia(blob);
+  };
+  recorder.start();
+  $('recBtn').textContent = t('recStop');
 }
 
 function deleteMessage(m) {
@@ -959,8 +909,14 @@ function onMessage(m) {
   c.last = m;
   if (m.from !== me && partner !== active) {
     c.unread = (c.unread || 0) + 1;
-    if (!mutedChats.has(partner)) toast(t('newMessage', { name: partner }));
-    if (!mutedChats.has(partner) && document.hidden && 'Notification' in window && Notification.permission === 'granted')
+    if (!muted.has(partner)) toast(t('newMessage', { name: partner }));
+    if (!muted.has(partner) && document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+      new Notification(displayName(partner), {
+        body: m.kind === 'text' ? m.text.slice(0, 120) : t('newMessage', { name: partner }),
+        tag: 'gigi-' + partner,
+      });
+    }
+    if (document.hidden && 'Notification' in window && Notification.permission === 'granted')
       new Notification('gigi chat', { body: t('newMessage', { name: partner }) });
   }
   chats.set(partner, c);
@@ -1018,26 +974,24 @@ function chatItem(nick) {
 function renderList() {
   const list = $('list');
   list.replaceChildren();
-  const folder = $('folderFilter')?.value || 'all';
   const items = search
     ? results
-    : [...chats.keys()].filter(nick => folder === 'all' || (chatFolders[nick] || 'personal') === folder).filter(nick => !mutedChats.has(nick) || folder !== 'muted').sort((a, b) => (chats.get(b).last?.created_at || 0) - (chats.get(a).last?.created_at || 0));
+    : [...chats.keys()].sort((a, b) => (chats.get(b).last?.created_at || 0) - (chats.get(a).last?.created_at || 0));
   if (!items.length && !groupResults.length && (search || ![...groups.values()].some(g => g.joined))) {
     list.append(el('div', { class: 'empty' }, t(search ? 'noResults' : 'noChats')));
     return;
   }
-  for (const nick of items) list.append(chatItem(nick));
+  if (listFilter !== 'groups') for (const nick of items) list.append(chatItem(nick));
   if (search) {
     for (const g of groupResults) list.append(groupItem(g));
   } else {
     const joined = [...groups.values()].filter(g => g.joined)
       .sort((a, b) => (b.last?.created_at || 0) - (a.last?.created_at || 0));
-    for (const g of joined) list.append(groupItem(g));
+    if (listFilter !== 'private') for (const g of joined) list.append(groupItem(g));
   }
 }
 
 function renderHeader() {
-  $('removeContactSelfBtn').hidden = false; $('removeContactBothBtn').hidden = false;
   if (activeGroup) return renderGroupHeader();
   if (!active) return;
   const on = online.has(active);
@@ -1056,24 +1010,8 @@ function messageMeta(m) {
   return `${fmtTime(m.created_at)} · ✓`;
 }
 
-function pollNode(m) {
-  let data; try { data = JSON.parse(m.text); } catch { return el('div', {}, 'Опитування недоступне'); }
-  const results = m.pollResults || {};
-  const total = Object.values(results).reduce((a, n) => a + Number(n || 0), 0);
-  const card = el('div', { class: 'poll-card', onclick: e => e.stopPropagation() },
-    el('strong', {}, '📊 ' + data.question),
-    ...data.options.map((option, i) => {
-      const count = Number(results[i] || 0), percent = total ? Math.round(count * 100 / total) : 0;
-      const b = el('button', { class: 'poll-option' + (m.myVote === i ? ' selected' : ''), onclick: e => { e.stopPropagation(); socket.emit('poll_vote', { id: m.id, option: i }, res => { if (!res?.ok) return toast('Не вдалося проголосувати'); m.pollResults = res.pollResults; m.myVote = res.myVote; renderMessages(); }); } },
-        el('span', {}, option), el('span', {}, `${count} · ${percent}%`));
-      b.title = 'Натисни, щоб проголосувати або змінити голос';
-      return b;
-    }),
-    el('div', { class: 'preview' }, `${total} голос(ів)`));
-  return card;
-}
-
 function renderMessages() {
+  renderPinBar();
   const box = $('messages');
   // Jump to the newest message only when opening a chat or when already at the bottom.
   const chatKey = activeGroup ? 'g' + activeGroup : String(active);
@@ -1084,13 +1022,14 @@ function renderMessages() {
   const msgType = activeGroup ? 'gmsg' : 'msg';
   for (const m of (activeGroup ? gcache.get(activeGroup) : cache.get(active)) || []) {
     const own = m.from === me;
-    const quote = m.reply_to ? (activeGroup ? (gcache.get(activeGroup)||[]) : (cache.get(active)||[])).find(x=>x.id===m.reply_to) : null;
-    const contents = [];
-    if (quote) contents.push(el('div', { class: 'preview', style: 'border-left:2px solid var(--accent);padding-left:8px;margin-bottom:5px' }, '↪ ' + quote.from + ': ' + String(quote.text || '').slice(0,100)));
-    contents.push(m.kind === 'poll' ? pollNode(m) : (mediaNode(m) ?? m.text));
-    if (m.edited_at) contents.push(el('span', { class: 'preview' }, ' · змінено'));
+    const quoteEls = [
+      ...(m.fwd ? [el('div', { class: 'fwd' }, '↪ ' + displayName(m.fwd))] : []),
+      ...(m.reply ? [el('div', { class: 'quote' }, el('b', {}, displayName(m.reply.from)), el('div', {}, m.reply.text))] : []),
+    ];
     box.append(el('div', { class: 'msg' + (own ? ' own' : ''), onclick: () => openMsgMenu(m, msgType) },
-      ...contents,
+      ...quoteEls,
+      mediaNode(m) ?? m.text,
+      m.edited ? el('span', { class: 'edited' }, ' ' + t('edited')) : el('span', { hidden: '' }),
       reactRow(m.reactions, msgType, m.id),
       el('span', { class: 'time' }, messageMeta(m))));
   }
@@ -1104,6 +1043,7 @@ $('loginForm').addEventListener('submit', e => {
   if (!NICK_RE.test(nick)) return setHint('errInvalidNick', true);
   if (password.length < 4) return setHint('errShortPass', true);
   setHint('nickHint');
+  if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
   const payload = { nick, password };
   $('pass').value = '';
   if (socket?.connected) socket.emit('login', payload, onLogin);
@@ -1118,14 +1058,15 @@ $('composer').addEventListener('submit', e => {
   if (!text || (!active && !activeGroup)) return;
   if (!socket?.connected) return toast(t('errNetwork'));
   const done = res => {
-    if (res?.ok) { replyTarget = null; editTarget = null; $('replyBar').hidden = true; return; }
+    if (res?.ok) return;
     const key = res?.error === 'read_only' || res?.error === 'forbidden' ? 'channelReadOnly'
       : res?.error === 'no_user' ? 'errNoUser' : 'messageFailed';
     toast(t(key));
   };
-  if (editTarget && !activeGroup) socket.emit('msg_edit', { id: editTarget.id, text }, done);
-  else if (activeGroup) socket.emit('group_send', { id: activeGroup, text, kind: 'text' }, done);
-  else socket.emit('message', { to: active, text, reply_to: replyTarget?.id || null }, done);
+  const reply_to = replyTo?.id || null;
+  clearReply();
+  if (activeGroup) socket.emit('group_send', { id: activeGroup, text, kind: 'text', reply_to }, done);
+  else socket.emit('message', { to: active, text, reply_to }, done);
   input.value = ''; input.style.height = 'auto';
   input.focus();
 });
@@ -1137,9 +1078,6 @@ $('input').addEventListener('input', e => {
   e.target.style.height = 'auto';
   e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
 });
-
-$('folderFilter').addEventListener('change', renderList);
-$('folderManage').addEventListener('click', () => { const f=prompt('Фільтр: all / personal / groups / channels / muted','all'); if(['all','personal','groups','channels'].includes(f)){$('folderFilter').value=f;renderList();} else if(f==='muted'){const muted=[...mutedChats];toast('Вимкнені чати: '+(muted.join(', ')||'немає'));} });
 
 let searchTimer;
 $('search').addEventListener('input', e => {
@@ -1161,23 +1099,11 @@ $('search').addEventListener('input', e => {
   }, 250);
 });
 
-$('pollBtn').addEventListener('click', () => {
-  if (!activeGroup) return;
-  const question = prompt('Питання опитування:'); if (!question || !question.trim()) return;
-  const raw = prompt('Варіанти відповіді — кожен з нового рядка (мінімум 2, максимум 8):', 'Так\nНі');
-  if (raw === null) return;
-  const options = raw.split(/\r?\n/).map(x => x.trim()).filter(Boolean).slice(0, 8);
-  socket.emit('group_poll_create', { id: activeGroup, question: question.trim(), options }, res => {
-    if (!res?.ok) return toast(res?.error === 'invalid_poll' ? 'Потрібно мінімум два різні варіанти' : 'Не вдалося створити опитування');
-    const list = gcache.get(activeGroup) || []; list.push(res.msg); gcache.set(activeGroup, list); renderMessages();
-  });
-});
-
 $('attachBtn').addEventListener('click', () => $('fileInput').click());
 $('fileInput').addEventListener('change', e => {
   const f = e.target.files?.[0];
   e.target.value = '';
-  if (f) (f.type.startsWith('image/') ? compressImage(f) : Promise.resolve(f)).then(sendMedia).catch(() => toast(t('uploadFailed')));
+  if (f) compressImage(f).then(sendMedia).catch(() => toast(t('uploadFailed')));
 });
 
 function renderStories() {
@@ -1339,14 +1265,21 @@ function openProfile(nick) {
     const avatarUrl = info.avatar || avatars.get(nick) || null;
     const status = el('div', { class: 'pf-status' + (info.online ? ' on' : '') }, statusText(nick));
     const bio = el('div', { class: 'pf-bio' + (info.bio ? '' : ' empty') }, info.bio || t('noBio'));
-    const statusLine = el('div', { class: 'pf-status' }, info.statusText || '');
     const actions = el('div', { class: 'pf-actions' });
     if (mine) {
-      const marketButton = el('button', { class: 'btn', onclick: () => { closeModal(); openMarket(); } }, '🛍 Маркет · ⭐ …');
-      socket.emit('gifts_mine', {}, balance => {
-        if (balance?.ok) marketButton.textContent = '🛍 Маркет · ⭐ ' + balance.stars;
-      });
-      actions.append(marketButton);
+      actions.append(
+        el('button', { class: 'btn', onclick: () => $('photoBtn').click() }, t('changePhoto')),
+        ...(avatarUrl ? [el('button', { class: 'btn ghost', onclick: () => socket.emit('set_avatar', { url: null }, () => toast(t('photoRemoved'))) }, t('removePhoto'))] : []),
+        el('button', { class: 'btn ghost', onclick: () => {
+          const text = prompt(t('bioPrompt'), info.bio || '');
+          if (text === null) return;
+          socket.emit('set_bio', { bio: text }, () => { toast(t('bioSaved')); openProfile(me); });
+        } }, t('editBio')),
+        el('button', { class: 'btn', onclick: () => postMyStory() }, t('myStoryBtn')),
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('myStoryPhoto').click(); } }, t('myStoryPhotoBtn')),
+        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('renameBtn').click(); } }, t('renameBtn')),
+        el('button', { class: 'btn danger', onclick: () => { closeModal(); $('deleteBtn').click(); } }, t('deleteBtn')),
+      );
     } else {
       actions.append(el('button', { class: 'btn', onclick: () => { closeModal(); openChat(nick); } }, t('writeMsg')),
         el('button', { class: 'btn danger', onclick: () => blockUser(nick) }, t('blockBtn')));
@@ -1355,9 +1288,7 @@ function openProfile(nick) {
       el('div', { class: 'pf-head' },
         avatarNode(nick, avatarUrl, 96),
         el('div', { class: 'pf-name' }, nick),
-        el('div', { class: 'pf-id' }, 'ID: ' + (info.id ?? '—')),
         status),
-      statusLine,
       el('div', { class: 'pf-title acc-head' }, t('aboutLabel')),
       bio,
       shelfNode(info.shelf),
@@ -1368,27 +1299,19 @@ function openProfile(nick) {
 
 function openAccounts(users) {
   const list = el('div', {});
-  const searchBox = el('input', { class: 'field', placeholder: 'Пошук за ID або ніком', value: '' });
-  const draw = () => {
-    list.replaceChildren();
-    const q = searchBox.value.trim().toLowerCase();
-    const filtered = users.filter(u => !q || String(u.id).includes(q) || u.nick.toLowerCase().includes(q));
-    for (const u of filtered) {
+  for (const u of users) {
     const sub = u.online ? t('online') : (u.lastSeen ? t('lastSeen', { time: fmtDateTime(u.lastSeen) }) : t('offline'));
     list.append(el('div', { class: 'acc-row' },
       avatarNode(u.nick, null, 40),
       el('div', { class: 'meta' },
-        el('div', { class: 'name' }, u.nick + ' · ID ' + u.id),
+        el('div', { class: 'name' }, u.nick),
         el('div', { class: 'sub' + (u.online ? ' on' : '') }, sub + ' · ' + t('created') + ' ' + fmtDateTime(u.created))),
       el('button', { class: 'btn danger', onclick: () => adminDeleteOne(u.nick) }, t('deleteBtn'))));
   }
-    if (!filtered.length) list.append(el('div', { class: 'empty' }, t('noAccounts')));
-  };
-  searchBox.addEventListener('input', draw);
-  draw();
+  if (!users.length) list.append(el('div', { class: 'empty' }, t('noAccounts')));
   openModal([
     el('div', { class: 'acc-head' }, t('accountsTitle') + ' (' + users.length + ')'),
-    searchBox, list,
+    list,
     el('div', { class: 'acc-foot' },
       el('button', { class: 'btn danger', style: 'width:100%', onclick: adminDeleteAll }, t('deleteAllBtn'))),
   ]);
@@ -1465,12 +1388,14 @@ function emojiBar(type, id, onPicked) {
 
 function openMsgMenu(m, type = 'msg') {
   const items = [emojiBar(type, m.id, closeModal)];
-  items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); replyTarget=m; editTarget=null; $('replyBar').hidden=false; $('replyBar').textContent='Відповідь на '+m.from+': '+String(m.text||'').slice(0,100)+'  ✕'; $('replyBar').onclick=()=>{replyTarget=null;$('replyBar').hidden=true;}; $('input').focus(); } }, '↩ Відповісти з цитатою'));
-  if (type === 'gmsg' && activeGroup && groups.get(activeGroup)?.owner === me) items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); socket.emit('gmsg_pin', { id: m.id, on: !m.pinned }, r => { if (!r?.ok) return toast('Не вдалося закріпити'); const list=gcache.get(activeGroup)||[]; list.forEach(x=>x.pinned=x.id===m.id ? !m.pinned : false); renderMessages(); renderPinBar(); }); } }, m.pinned ? '📌 Відкріпити' : '📌 Закріпити'));
-  if (type === 'msg' && m.from === me && m.kind === 'text') items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); editTarget=m; replyTarget=null; $('input').value=m.text; $('replyBar').hidden=false; $('replyBar').textContent='Редагування повідомлення · Enter — зберегти'; $('input').focus(); } }, '✎ Редагувати'));
-  if (type === 'msg') items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); const to=prompt('Переслати користувачу (нікнейм):'); if(!to?.trim()) return; socket.emit('message',{to:to.trim(),text:'Переслано від '+m.from+':\n'+m.text,kind:'text'},r=>toast(r?.ok?'Переслано':'Не вдалося переслати')); } }, '➦ Переслати'));
-  if (m.from === me || (myPremium && type === 'msg')) items.push(el('button', { class: 'btn danger', style: 'width:100%', onclick: () => { closeModal(); deleteMessage(m); } }, t('deleteMsgBtn')));
-  if (type === 'msg') items.push(el('button', { class: 'btn ghost', style: 'width:100%', onclick: () => { closeModal(); const f=prompt('Папка: personal / groups / channels',chatFolders[active]||'personal'); if(['personal','groups','channels'].includes(f)){chatFolders[active]=f;localStorage.setItem('gigi_folders',JSON.stringify(chatFolders));renderList();} const mute=confirm('Вимкнути сповіщення для цього чату?'); if(mute)mutedChats.add(active);else mutedChats.delete(active);localStorage.setItem('gigi_muted',JSON.stringify([...mutedChats])); } }, '📁 Папка / 🔕 Сповіщення'));
+  items.push(el('div', { class: 'pf-actions' },
+    el('button', { class: 'btn ghost', onclick: () => { closeModal(); setReply(m); } }, t('replyBtn')),
+    el('button', { class: 'btn ghost', onclick: () => { closeModal(); openForward(m); } }, t('forwardBtn')),
+    ...(m.from === me && m.kind === 'text' ? [el('button', { class: 'btn ghost', onclick: () => { closeModal(); editMessage(m, type); } }, t('editBtn'))] : []),
+    ...(type === 'gmsg' && groups.get(activeGroup)?.owner === me ? [el('button', { class: 'btn ghost', onclick: () => { closeModal(); pinMessage(m.id); } }, t('pinBtn'))] : [])));
+  if (m.from === me || (myPremium && type === 'msg')) {
+    items.push(el('button', { class: 'btn danger', style: 'width:100%', onclick: () => { closeModal(); deleteMessage(m); } }, t('deleteMsgBtn')));
+  }
   openModal(items);
 }
 
@@ -1491,15 +1416,9 @@ function refreshGroups(done) {
   });
 }
 
-function groupAvatarNode(g, size = 44) {
-  const av = el('div', { class: 'avatar', style: `width:${size}px;height:${size}px` }, g.kind === 'channel' ? '📢' : '👥');
-  av.style.background = avatarBg(g.title);
-  if (g.avatar) av.replaceChildren(el('img', { src: g.avatar, alt: '' }));
-  return av;
-}
-
 function groupItem(g) {
-  const av = groupAvatarNode(g);
+  const av = el('div', { class: 'avatar' }, g.kind === 'channel' ? '📢' : '👥');
+  av.style.background = avatarBg(g.title);
   const preview = g.last ? (g.last.from === me ? t('you') + ': ' : '') + previewText(g.last) : '';
   const btn = el('button', { class: 'item' + (g.id === activeGroup ? ' active' : ''), onclick: () => openGroup(g.id) },
     av,
@@ -1509,14 +1428,12 @@ function groupItem(g) {
 }
 
 function renderGroupHeader() {
-  $('removeContactSelfBtn').hidden = true; $('removeContactBothBtn').hidden = true;
   const g = groups.get(activeGroup);
   if (!g) return;
   $('hName').textContent = g.title;
   const av = $('hAvatar');
   av.textContent = g.kind === 'channel' ? '📢' : '👥';
   av.style.background = avatarBg(g.title);
-  if (g.avatar) av.replaceChildren(el('img', { src: g.avatar, alt: '' }));
   const st = $('hStatus');
   st.textContent = g.kind === 'channel' ? t('channelInfo', { n: g.members }) : t('groupInfo', { n: g.members });
   st.classList.remove('on');
@@ -1534,20 +1451,11 @@ function renderComposer() {
   const notMember = Boolean(g) && !g.joined;
   const readOnly = Boolean(g) && g.kind === 'channel' && g.owner !== me;
   $('composer').hidden = notMember || readOnly;
-  $('pollBtn').hidden = !g || notMember || readOnly || g.kind === 'channel' && g.owner !== me;
   note.hidden = !(notMember || readOnly);
   if (!note.hidden) {
     note.replaceChildren(el('div', {}, notMember ? t('joinToWrite') : t('channelReadOnly')));
     if (notMember) note.append(el('button', { class: 'btn', onclick: () => joinGroup(g.id) }, t('joinBtn')));
   }
-}
-
-function renderPinBar() {
-  const bar = $('pinBar');
-  if (!activeGroup) { bar.hidden = true; return; }
-  const pinned = (gcache.get(activeGroup) || []).find(m => m.pinned);
-  bar.hidden = !pinned;
-  if (pinned) bar.textContent = '📌 Закріплено: ' + (pinned.kind === 'poll' ? (() => { try { return JSON.parse(pinned.text).question; } catch { return 'Опитування'; } })() : String(pinned.text || '').slice(0, 120));
 }
 
 function openGroup(id) {
@@ -1565,7 +1473,7 @@ function openGroup(id) {
     const existing = gcache.get(id) || [];
     const ids = new Set(res.messages.map(m => m.id));
     gcache.set(id, [...res.messages, ...existing.filter(m => !ids.has(m.id))]);
-    if (activeGroup === id) { renderMessages(); renderPinBar(); }
+    if (activeGroup === id) renderMessages();
   });
   $('input').focus();
 }
@@ -1612,11 +1520,8 @@ function openGroupInfo(id) {
   if (!g.joined) btns.push(el('button', { class: 'btn', onclick: () => { closeModal(); joinGroup(id); } }, t('joinBtn')));
   else if (!isOwner) btns.push(el('button', { class: 'btn ghost', onclick: () => { closeModal(); leaveGroup(id); } }, t('leaveBtn')));
   btns.push(el('button', { class: 'btn danger', onclick: () => deleteGroup(id) }, t('groupDeleteBtn')));
-  if (isOwner) btns.push(el('button', { class: 'btn ghost', onclick: () => openGroupModeration(id) }, '👑 Учасники та модератори'));
   const head = el('div', { class: 'pf-avatar' }, g.kind === 'channel' ? '📢' : '👥');
   head.style.background = avatarBg(g.title);
-  if (g.avatar) head.append(el('img', { src: g.avatar, alt: '', style: 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%' }));
-  if (isOwner) btns.push(el('button', { class: 'btn ghost', onclick: () => { closeModal(); pendingGroupAvatar = id; $('groupAvatarInput').click(); } }, '🖼 Змінити фото'));
   openModal([
     el('div', { class: 'pf-head' }, head, el('div', { class: 'pf-name' }, g.title)),
     el('div', { class: 'pf-status' }, (g.kind === 'channel' ? t('kindChannel') : t('kindGroup')) + ' · ' +
@@ -1625,24 +1530,8 @@ function openGroupInfo(id) {
   ]);
 }
 
-function openGroupModeration(id) {
-  socket.emit('group_moderators', { id }, res => {
-    if (!res?.ok) return toast('Не вдалося завантажити учасників');
-    const body = el('div', {}, el('div', { class: 'acc-head' }, 'Учасники та модератори'));
-    for (const m of res.members || []) {
-      if (m.nick === me) { body.append(el('div', { class: 'item' }, el('div', { class: 'meta' }, el('div', { class: 'name' }, m.nick), el('div', { class: 'preview' }, m.role)))); continue; }
-      const role = el('select', { class: 'field' });
-      for (const [v, label] of [['member','Учасник'],['moderator','Модератор']]) role.append(el('option', { value: v, selected: m.role === v }, label));
-      const save = el('button', { class: 'btn ghost', onclick: () => socket.emit('group_moderate', { id, nick: m.nick, action: role.value }, r => { if (!r?.ok) toast('Не вдалося змінити роль'); else toast('Роль оновлено'); }) }, 'Зберегти роль');
-      const remove = el('button', { class: 'btn danger', onclick: () => { if (!confirm('Видалити ' + m.nick + ' з групи?')) return; socket.emit('group_moderate', { id, nick: m.nick, action: 'remove' }, r => { if (!r?.ok) return toast('Не вдалося видалити учасника'); openGroupModeration(id); refreshGroups(); }); } }, 'Видалити');
-      body.append(el('div', { class: 'acc-row' }, el('div', { class: 'meta' }, el('div', { class: 'name' }, m.nick), role), el('div', { class: 'pf-actions' }, save, remove)));
-    }
-    openModal([body]);
-  });
-}
-
-function openCreateGroup(initialKind = 'group') {
-  let kind = initialKind === 'channel' ? 'channel' : 'group';
+function openCreateGroup() {
+  let kind = 'group';
   const title = el('input', { class: 'field', maxlength: '40', placeholder: t('groupTitle') });
   const kindBox = el('div', { class: 'pf-actions' });
   const drawKind = () => kindBox.replaceChildren(
@@ -1674,7 +1563,7 @@ function openGroupsModal() {
     groups = new Map(res.chats.map(c => [c.id, { ...c, unread: unread.get(c.id) || 0 }]));
     renderList();
     const rows = res.chats.map(c => {
-      const av = groupAvatarNode(c, 40);
+      const av = el('div', { class: 'avatar', style: `width:40px;height:40px;background:${avatarBg(c.title)}` }, c.kind === 'channel' ? '📢' : '👥');
       const sub = (c.kind === 'channel' ? t('kindChannel') : t('kindGroup')) + ' · ' +
         (c.kind === 'channel' ? t('channelInfo', { n: c.members }) : t('groupInfo', { n: c.members }));
       const btn = c.joined
@@ -1706,7 +1595,7 @@ function openSendGiftToChat(nick) {
     openModal([
       el('div', { class: 'acc-head' }, t('giftChatTitle') + ' → ' + displayName(nick)),
       ...res.items.map(it => el('div', { class: 'acc-row' },
-        el('img', { src: it.image, alt: '', style: 'width:40px;height:40px;border-radius:12px;object-fit:cover' }),
+        el('img', { src: it.image, alt: '', style: 'width:48px;height:48px;border-radius:12px;object-fit:cover' }),
         el('div', { class: 'meta' }, el('div', { class: 'name' }, it.title), el('div', { class: 'sub' }, '⭐ ' + it.price)),
         el('button', { class: 'btn', onclick: () => socket.emit('gift_send', { id: it.id, to: nick }, r => {
           if (!r?.ok) return toast(t(r?.error === 'no_user' ? 'errNoUser' : r?.error === 'self' ? 'giftNoSelf' : 'messageFailed'));
@@ -1766,20 +1655,9 @@ function openSettings() {
     openModal([
       el('div', { class: 'acc-head' }, t('settingsTitle')),
       el('div', { class: 'sub' }, t('themeLabel')),
-      el('div', { class: 'pf-actions', style: 'margin:8px 0 16px;flex-wrap:wrap' },
-        ...[['dark','🌑 Темна'],['light','☀️ Світла'],['purple','💜 Фіолетова'],['ocean','🌊 Океан'],['rose','🌸 Рожева']].map(([key,label]) => el('button', { class: 'btn' + (theme === key ? '' : ' ghost'), onclick: () => setTheme(key) }, label))),
-      el('div', { class: 'acc-head' }, '🔒 Безпека акаунта'),
-      el('button', { class: 'btn ghost', style: 'width:100%;margin:8px 0 16px', onclick: changeAccountPassword }, '🔑 Змінити пароль акаунта'),
-      el('div', { class: 'acc-head' }, '👤 Налаштування профілю'),
-      el('div', { class: 'pf-actions', style: 'margin:8px 0 16px;flex-wrap:wrap' },
-        el('button', { class: 'btn', onclick: () => $('photoBtn').click() }, '🖼 Змінити фото аватарки'),
-        el('button', { class: 'btn ghost', onclick: () => socket.emit('set_avatar', { url: null }, r => { if (r?.ok) toast(t('photoRemoved')); else toast(t('messageFailed')); }) }, '🗑 Видалити фото аватарки'),
-        el('button', { class: 'btn ghost', onclick: () => { const current = userInfo.get(me)?.statusText || ''; const status = prompt('Статус профілю (до 80 символів):', current); if (status === null) return; socket.emit('set_profile_status', { status }, r => { if (r?.ok) { toast('Статус оновлено'); openSettings(); } else toast(t('messageFailed')); }); } }, '✨ Змінити статус'),
-        el('button', { class: 'btn ghost', onclick: () => { const current = userInfo.get(me)?.bio || ''; const bio = prompt(t('bioPrompt'), current); if (bio === null) return; socket.emit('set_bio', { bio }, r => { if (r?.ok) { toast(t('bioSaved')); openSettings(); } else toast(t('messageFailed')); }); } }, '📝 Змінити опис'),
-        el('button', { class: 'btn', onclick: () => { closeModal(); postMyStory(); } }, '📖 Опублікувати історію'),
-        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('myStoryPhoto').click(); } }, '🖼 Опублікувати фото-історію'),
-        el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('renameBtn').click(); } }, '✏️ Нікнейм'),
-        el('button', { class: 'btn danger', onclick: () => { closeModal(); $('deleteBtn').click(); } }, '🗑 Видалити акаунт')),
+      el('div', { class: 'pf-actions', style: 'margin:8px 0 16px' },
+        el('button', { class: 'btn' + (theme === 'dark' ? '' : ' ghost'), onclick: () => setTheme('dark') }, t('themeDark')),
+        el('button', { class: 'btn' + (theme === 'light' ? '' : ' ghost'), onclick: () => setTheme('light') }, t('themeLight'))),
       el('div', { class: 'acc-head' }, t('premiumTitle')),
       el('div', { class: 'sub' }, myPremium ? t('premiumActive') : t('premiumNone')),
       el('div', { class: 'pf-actions', style: 'margin:8px 0 16px' },
@@ -1788,22 +1666,6 @@ function openSettings() {
       el('div', { class: 'acc-head' }, t('blockedTitle')),
       ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noBlocked'))]),
     ]);
-  });
-}
-
-function changeAccountPassword() {
-  const currentPassword = prompt('Введіть поточний пароль акаунта:');
-  if (currentPassword === null) return;
-  const newPassword = prompt('Введіть новий пароль (4–100 символів):');
-  if (newPassword === null) return;
-  const confirmPassword = prompt('Повторіть новий пароль:');
-  if (confirmPassword === null) return;
-  if (newPassword.length < 4 || newPassword.length > 100) return toast('Пароль має містити 4–100 символів');
-  if (newPassword !== confirmPassword) return toast('Нові паролі не збігаються');
-  socket.emit('change_password', { currentPassword, newPassword, token: localStorage.getItem('gigi_token') }, res => {
-    if (!res?.ok) return toast(res?.error === 'wrong_password' ? 'Поточний пароль неправильний' : 'Не вдалося змінити пароль');
-    toast('Пароль акаунта змінено');
-    openSettings();
   });
 }
 
@@ -1829,76 +1691,8 @@ function buyPremium(months) {
   });
 }
 
-function searchUserById() {
-  const raw = prompt('Введіть ID користувача:');
-  if (raw === null) return;
-  const id = raw.trim();
-  if (!/^\d{1,20}$/.test(id)) return toast('ID має містити лише цифри');
-  socket.emit('user_lookup_id', { id }, res => {
-    if (!res?.ok) return toast(res?.error === 'not_found' ? 'Користувача з таким ID не знайдено' : 'Не вдалося виконати пошук');
-    closeModal();
-    openProfile(res.user.nick);
-  });
-}
-$('searchIdBtn').addEventListener('click', searchUserById);
-
-$('searchMsgBtn').addEventListener('click', () => {
-  const q = prompt('Пошук повідомлень у чатах:');
-  if (!q || !q.trim()) return;
-  socket.emit('search_messages', { q: q.trim() }, res => {
-    if (!res?.ok) return toast('Пошук не вдався');
-    const rows = (res.results || []).map(r => el('button', { class: 'item', style: 'width:100%;text-align:left', onclick: () => { closeModal(); if (r.scope === 'pm') openChat(r.partner); else openGroup(r.chat); } }, el('div', { class: 'meta' }, el('div', { class: 'name' }, (r.scope === 'pm' ? r.partner : r.title) + ' · ' + r.from), el('div', { class: 'preview' }, r.text))));
-    openModal([el('div', { class: 'acc-head' }, 'Результати пошуку'), ...(rows.length ? rows : [el('div', { class: 'empty' }, 'Нічого не знайдено')])]);
-  });
-});
 $('settingsBtn').addEventListener('click', openSettings);
-$('mobileBottomNav')?.addEventListener('click', e => {
- const button=e.target.closest('[data-nav]'); if(!button)return; const tab=button.dataset.nav;
- document.querySelectorAll('.mobile-nav-item').forEach(b=>b.classList.toggle('active',b===button));
- if(tab==='chats'){
-  closeModal();
-  closeChat();
-  $('app').classList.remove('chat-open');
-  $('placeholder').hidden=false;
-  $('chatView').hidden=true;
-  return;
- }
- if(tab==='contacts'){
-  closeModal();
-  const names=[...chats.keys()];
-  const rows=names.map(nick=>el('button',{class:'item',onclick:()=>{closeModal();openChat(nick);}},avatarNode(nick,avatars.get(nick)||null,42),el('div',{class:'meta'},el('div',{class:'name'},nick),el('div',{class:'preview'},'Відкрити контакт'))));
-  openModal([
-   el('div',{class:'acc-head'},'Контакти'),
-   el('div',{class:'pf-actions',style:'margin:8px 0 14px;flex-wrap:wrap'},
-    el('button',{class:'btn',onclick:()=>{closeModal();openCreateGroup('group');}},'👥 Створити групу'),
-    el('button',{class:'btn ghost',onclick:()=>{closeModal();openCreateGroup('channel');}},'📢 Створити канал')),
-   ...(rows.length?rows:[el('div',{class:'empty'},'Контактів поки немає')])
-  ]); return;
- }
- if(tab==='settings'){closeModal();openSettings();return;}
- if(tab==='profile'){closeModal();const av=$('bottomNavAvatar');if(av&&me&&avatars.get(me)){av.style.backgroundImage=`url("${avatars.get(me)}")`;av.textContent='';}if(me)openProfile(me);}
-});
-
 $('blockChatBtn').addEventListener('click', () => { $('chatMenu').hidden = true; if (active) blockUser(active); });
-$('removeContactSelfBtn').addEventListener('click', () => {
-  $('chatMenu').hidden = true; if (!active || activeGroup) return;
-  const nick = active;
-  if (!confirm(`Видалити контакт ${nick} тільки для себе? У співрозмовника історія залишиться.`)) return;
-  socket.emit('conversation_remove', { nick, mode: 'self' }, res => {
-    if (!res?.ok) return toast('Не вдалося видалити контакт');
-    chats.delete(nick); cache.delete(nick); if (active === nick) closeChat(); renderList(); toast('Контакт видалено тільки для тебе');
-  });
-});
-$('removeContactBothBtn').addEventListener('click', () => {
-  $('chatMenu').hidden = true; if (!active || activeGroup) return;
-  const nick = active;
-  if (!confirm(`УВАГА! Видалити контакт ${nick} і всю історію повідомлень для ОБОХ сторін? Це незворотно.`)) return;
-  if (!confirm('Підтверди остаточне видалення всієї переписки для обох учасників.')) return;
-  socket.emit('conversation_remove', { nick, mode: 'both' }, res => {
-    if (!res?.ok) return toast('Не вдалося видалити переписку');
-    chats.delete(nick); cache.delete(nick); if (active === nick) closeChat(); renderList(); toast('Контакт і переписку видалено для обох');
-  });
-});
 
 // One gift as a square card in the grid.
 function giftCard(it, mine) {
@@ -1922,40 +1716,6 @@ function openMyGifts() {
 }
 
 // Admin settings: opened by the 🔑 button after the admin code.
-function openAdminAudit() {
-  adminCall('admin_audit_list', {}, r => {
-    const rows = (r.items || []).map(a => el('div', { class: 'acc-row' },
-      el('div', { class: 'meta' },
-        el('div', { class: 'name' }, a.action + ' · ' + (a.target || '')),
-        el('div', { class: 'sub' }, a.actor + ' · ' + new Date(Number(a.created_at)).toLocaleString() + ' ' + (a.details || '')))));
-    openModal([el('div', { class: 'acc-head' }, 'Журнал дій адміністратора'), ...rows]);
-  });
-}
-
-function openAdminStats() {
-  adminCall('admin_stats', {}, r => {
-    openModal([el('div', { class: 'acc-head' }, '📊 Статистика Gigi Chat'),
-      ...[['Користувачі',r.users],['Повідомлення',r.messages],['Групи',r.groups],['Канали',r.channels],['Скарги',r.complaints],['Онлайн зараз',r.online]].map(([label,value]) => el('div',{class:'acc-row'},el('div',{class:'meta'},el('div',{class:'name'},label),el('div',{class:'sub'},String(value ?? 0))))) ]);
-  });
-}
-
-function openAdminGroups() {
-  adminCall('admin_groups', {}, r => {
-    const rows = (r.items || []).map(g => el('div', { class: 'acc-row' },
-      el('div', { class: 'meta' }, el('div', { class: 'name' }, (g.kind === 'channel' ? '📣 ' : '👥 ') + g.title), el('div', { class: 'sub' }, 'ID ' + g.id + ' · власник: ' + g.owner + ' · учасників: ' + g.members)),
-      el('div', { class: 'pf-actions' },
-        el('button', { class: 'btn ghost', onclick: () => {
-          const userId = (prompt('ID користувача, якого додати до «' + g.title + '»:') || '').trim();
-          if (!userId) return;
-          if (!/^\d+$/.test(userId)) return toast('Введи числовий ID користувача');
-          adminCall('admin_add_member', { chatId: g.id, userId: Number(userId) }, r => { toast(r.already ? 'Користувач уже є в чаті' : 'Користувача додано'); openAdminGroups(); });
-        } }, '➕ Додати користувача'),
-        el('button', { class: 'btn ghost', onclick: () => { pendingGroupAvatar = g.id; $('groupAvatarInput').click(); } }, '🖼 Фото'),
-        el('button', { class: 'btn danger', onclick: () => { if (!confirm('Видалити «' + g.title + '»?')) return; socket.emit('group_delete', { id: g.id, code: adminCode }, res => { if (!res?.ok) return toast(t('messageFailed')); openAdminGroups(); }); } }, 'Видалити'))));
-    openModal([el('div', { class: 'acc-head' }, '👥 Групи та канали'), ...(rows.length ? rows : [el('div',{class:'empty'},'Груп і каналів немає')])]);
-  });
-}
-
 function openAdminSettings() {
   adminCall('admin_complaints', {}, res => {
     const count = res.items.length;
@@ -1977,156 +1737,7 @@ function openAdminSettings() {
           adminCall('admin_notify', { text }, () => toast(t('notifySent')));
         } }, t('notifyBtn')),
         el('button', { class: 'btn ghost', onclick: () => openComplaints() }, t('complaintsBtn', { n: count })),
-        el('button', { class: 'btn ghost', onclick: changeAdminSecretCode }, '🔐 Змінити секретний код адміна'),
-        el('button', { class: 'btn ghost', onclick: () => startVisualEditor() }, '🎨 Візуальний редактор сайту'),
-        el('button', { class: 'btn ghost', onclick: () => openAdminAudit() }, '📋 Журнал дій адміна'),
-        el('button', { class: 'btn ghost', onclick: () => openAdminStats() }, '📊 Статистика'),
-        el('button', { class: 'btn ghost', onclick: () => openAdminGroups() }, '👥 Керування групами/каналами'),
-        el('button', { class: 'btn ghost', onclick: () => openAdminRevokePerks() }, '⭐ Керування зірками та Premium користувачів'),
-        el('button', { class: 'btn danger', onclick: () => {
-          if (!confirm('Очистити всі повідомлення в усіх приватних чатах, групах і каналах? Облікові записи та самі чати залишаться.')) return;
-          if (!confirm('Підтверджуєте глобальне очищення історії? Цю дію не можна скасувати.')) return;
-          adminCall('admin_clear_histories', {}, r => { toast('Історію очищено: ' + (r.private + r.group) + ' повідомлень'); });
-        } }, '🗑 Очистити історію всіх чатів'),
       ),
-    ]);
-  });
-}
-
-function visualSelector(node) {
-  const parts = [];
-  let cur = node;
-  while (cur && cur !== document.body) {
-    if (cur.id) { parts.unshift('#' + CSS.escape(cur.id)); break; }
-    const tag = cur.tagName.toLowerCase();
-    let index = 1;
-    for (let sib = cur.previousElementSibling; sib; sib = sib.previousElementSibling) if (sib.tagName === cur.tagName) index++;
-    parts.unshift(tag + ':nth-of-type(' + index + ')');
-    cur = cur.parentElement;
-  }
-  return 'body > ' + parts.join(' > ');
-}
-
-function applyVisualRules() {
-  for (const [selector, rule] of Object.entries(visualRules || {})) {
-    let nodes = [];
-    try { nodes = document.querySelectorAll(selector); } catch { continue; }
-    nodes.forEach(node => {
-      if (rule.text !== undefined && node.children.length === 0 && node.textContent !== rule.text) node.textContent = rule.text;
-      if (rule.color) node.style.color = rule.color;
-      if (rule.backgroundColor) node.style.backgroundColor = rule.backgroundColor;
-      if (rule.fontSize) node.style.fontSize = rule.fontSize;
-      if (rule.borderRadius) node.style.borderRadius = rule.borderRadius;
-      if (rule.translateX !== undefined || rule.translateY !== undefined) node.style.translate = (rule.translateX || '0px') + ' ' + (rule.translateY || '0px');
-      if (rule.hidden !== undefined) node.style.display = rule.hidden ? 'none' : '';
-    });
-  }
-}
-
-function stopVisualEditor() {
-  visualEditMode = false;
-  document.body.classList.remove('visual-edit-mode');
-  document.removeEventListener('click', visualEditorClick, true);
-  document.querySelectorAll('.visual-edit-selected').forEach(n => n.classList.remove('visual-edit-selected'));
-  visualSelected = null;
-}
-
-function ensureVisualObserver() {
-  if (visualObserver) return;
-  visualObserver = new MutationObserver(() => { if (!visualEditMode) applyVisualRules(); });
-  visualObserver.observe(document.body, { childList: true, subtree: true });
-}
-
-function startVisualEditor() {
-  const code = adminCode || prompt(t('adminCodePrompt'));
-  if (!code) return;
-  adminCode = code;
-  visualEditMode = true;
-  document.body.classList.add('visual-edit-mode');
-  document.addEventListener('click', visualEditorClick, true);
-  ensureVisualObserver();
-  closeModal();
-  toast('Режим редагування: натисни на елемент сторінки');
-}
-
-function visualEditorClick(event) {
-  if (!visualEditMode) return;
-  const target = event.target.closest('body *');
-  if (!target || target.closest('#modal') || target.closest('#toast') || target.closest('.visual-editor-panel') || ['INPUT','TEXTAREA','SELECT','BUTTON','SVG','PATH'].includes(target.tagName)) return;
-  event.preventDefault(); event.stopPropagation();
-  document.querySelectorAll('.visual-edit-selected').forEach(n => n.classList.remove('visual-edit-selected'));
-  visualSelected = target;
-  target.classList.add('visual-edit-selected');
-  openVisualElementEditor(target);
-}
-
-function openVisualElementEditor(node) {
-  const selector = visualSelector(node);
-  const old = visualRules[selector] || {};
-  const leaf = node.children.length === 0;
-  const textInput = el('textarea', { class: 'input', rows: 2, placeholder: leaf ? 'Текст елемента' : 'Текст можна змінювати лише в простих текстових елементах' });
-  textInput.value = leaf ? (old.text ?? node.textContent.trim().slice(0, 200)) : '';
-  textInput.disabled = !leaf;
-  const color = el('input', { type: 'text', value: old.color || getComputedStyle(node).color, placeholder: '#ffffff або rgb(...)' });
-  const bg = el('input', { type: 'text', value: old.backgroundColor || getComputedStyle(node).backgroundColor, placeholder: '#211a33 або transparent' });
-  const size = el('input', { type: 'number', min: '8', max: '72', value: parseInt(old.fontSize || getComputedStyle(node).fontSize, 10) || 16 });
-  const radius = el('input', { type: 'number', min: '0', max: '50', value: parseInt(old.borderRadius || getComputedStyle(node).borderRadius, 10) || 0 });
-  const moveX = el('input', { type: 'number', min: '-500', max: '500', value: parseInt(old.translateX || '0', 10) || 0 });
-  const moveY = el('input', { type: 'number', min: '-500', max: '500', value: parseInt(old.translateY || '0', 10) || 0 });
-  const hidden = el('input', { type: 'checkbox' }); hidden.checked = Boolean(old.hidden);
-  openModal([
-    el('div', { class: 'acc-head' }, '🎨 Редагування елемента'),
-    el('div', { class: 'sub' }, node.tagName.toLowerCase() + ' · ' + selector.slice(-90)),
-    el('label', {}, 'Текст (для простих текстових елементів)'), textInput,
-    el('label', {}, 'Колір тексту'), color,
-    el('label', {}, 'Колір фону'), bg,
-    el('label', {}, 'Розмір шрифту (px)'), size,
-    el('label', {}, 'Заокруглення кутів (px)'), radius,
-    el('label', {}, 'Зсув по горизонталі X (px)'), moveX,
-    el('label', {}, 'Зсув по вертикалі Y (px)'), moveY,
-    el('label', {}, hidden, ' Приховати елемент'),
-    el('button', { class: 'btn', onclick: () => {
-      const rule = { color: color.value, backgroundColor: bg.value, fontSize: Math.max(8, Math.min(72, Number(size.value) || 16)), borderRadius: Math.max(0, Math.min(50, Number(radius.value) || 0)), hidden: hidden.checked };
-      rule.translateX = Math.max(-500, Math.min(500, Number(moveX.value) || 0));
-      rule.translateY = Math.max(-500, Math.min(500, Number(moveY.value) || 0));
-      if (leaf) rule.text = textInput.value.slice(0, 200);
-      visualRules[selector] = rule;
-      applyVisualRules();
-      adminCall('admin_visual_save', { rules: visualRules }, r => { visualRules = { ...visualRules }; toast('Зміни збережено для всіх користувачів'); stopVisualEditor(); });
-    } }, '💾 Зберегти для всіх'),
-    el('button', { class: 'btn ghost', onclick: () => { closeModal(); stopVisualEditor(); } }, 'Вийти з редактора')
-  ]);
-}
-
-function changeAdminSecretCode() {
-  const currentCode = prompt('Введіть поточний секретний код адміністратора:');
-  if (currentCode === null) return;
-  const newCode = prompt('Введіть новий секретний код (6–100 символів):');
-  if (newCode === null) return;
-  const confirmCode = prompt('Повторіть новий секретний код:');
-  if (confirmCode === null) return;
-  if (newCode.trim().length < 6 || newCode.trim().length > 100) return toast('Код має містити 6–100 символів');
-  if (newCode !== confirmCode) return toast('Коди не збігаються');
-  socket.emit('admin_change_code', { currentCode, newCode }, res => {
-    if (!res?.ok) return toast(res?.error === 'bad_code' ? 'Поточний код неправильний' : 'Не вдалося змінити код');
-    adminCode = newCode.trim();
-    toast('Секретний код адміністратора змінено');
-    openAdminSettings();
-  });
-}
-
-function openComplaintConversation(complaintId) {
-  adminCall('admin_complaint_conversation', { complaintId }, res => {
-    const rows = (res.messages || []).map(m => el('div', { class: 'acc-row' },
-      el('div', { class: 'meta' },
-        el('div', { class: 'name' }, m.from + ' → ' + m.to),
-        el('div', { class: 'sub' }, fmtDateTime(m.created) + (m.kind && m.kind !== 'text' ? ' · ' + m.kind : '')),
-        el('div', { style: 'white-space:pre-wrap;overflow-wrap:anywhere;margin-top:6px' }, m.text || '[повідомлення без тексту]'))));
-    openModal([
-      el('div', { class: 'acc-head' }, '🔎 Перевірка скарги · ' + res.complaint.from + ' ↔ ' + res.complaint.about),
-      el('div', { class: 'sub', style: 'margin-bottom:10px' }, 'Показано приватну переписку заявника з користувачем, на якого поскаржилися. Перегляд записано в журналі дій адміністратора.'),
-      ...(rows.length ? rows : [el('div', { class: 'empty' }, 'У цій приватній переписці повідомлень не знайдено')]),
-      el('button', { class: 'btn ghost', onclick: () => openComplaints() }, '← До скарг'),
     ]);
   });
 }
@@ -2137,12 +1748,9 @@ function openComplaints() {
       el('div', { class: 'meta' },
         el('div', { class: 'name' }, c.from + ' → ' + c.about),
         el('div', { class: 'sub' }, fmtDateTime(c.created) + ' · ' + c.text)),
-      el('div', { class: 'pf-actions' },
-        el('button', { class: 'btn ghost', onclick: () => openComplaintConversation(c.id) }, '💬 Переглянути пов’язану переписку'),
-        el('button', { class: 'btn danger', onclick: () => adminCall('admin_complaint_delete', { id: c.id }, () => openComplaints()) }, t('deleteBtn')))));
+      el('button', { class: 'btn danger', onclick: () => adminCall('admin_complaint_delete', { id: c.id }, () => openComplaints()) }, t('deleteBtn'))));
     openModal([
       el('div', { class: 'acc-head' }, t('complaintsTitle')),
-      el('div', { class: 'sub', style: 'margin-bottom:10px' }, 'Перегляд доступний лише в межах конкретної скарги; кожне відкриття фіксується в журналі адміністратора.'),
       ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noComplaints'))]),
     ]);
   });
@@ -2169,6 +1777,123 @@ $('complaintBtn').addEventListener('click', () => {
   socket.emit('complaint', { nick: active, text }, res => {
     toast(res?.ok ? t('complaintSent') : t('messageFailed'));
   });
+});
+
+function setReply(m) {
+  replyTo = m;
+  renderReplyBar();
+  $('input').focus();
+}
+
+function clearReply() {
+  replyTo = null;
+  renderReplyBar();
+}
+
+function renderReplyBar() {
+  const bar = $('replyBar');
+  if (!replyTo) { bar.hidden = true; bar.replaceChildren(); return; }
+  bar.hidden = false;
+  bar.replaceChildren(
+    el('div', { class: 'reply-text' }, '↩ ' + displayName(replyTo.from) + ': ' +
+      (replyTo.kind === 'text' ? replyTo.text : previewText(replyTo))),
+    el('button', { class: 'icon', onclick: () => clearReply(), 'aria-label': 'cancel' }, '✕'));
+}
+
+// The pinned message of the open group. The owner taps the bar to unpin it.
+function renderPinBar() {
+  const g = activeGroup ? groups.get(activeGroup) : null;
+  const bar = $('pinBar');
+  if (!g?.pinned) { bar.hidden = true; return; }
+  const m = (gcache.get(activeGroup) || []).find(x => x.id === g.pinned);
+  bar.hidden = false;
+  bar.textContent = '📌 ' + (m ? (m.kind === 'text' ? m.text : previewText(m)) : '…');
+  bar.onclick = g.owner === me ? () => pinMessage(null) : null;
+}
+
+function pinMessage(id) {
+  socket.emit('group_pin', { id: activeGroup, msg: id }, res => {
+    if (!res?.ok) return toast(t('messageFailed'));
+    toast(id ? t('pinned') : t('unpinned'));
+    refreshGroups();
+  });
+}
+
+function editMessage(m, type) {
+  const text = (prompt(t('editPrompt'), m.text) || '').trim();
+  if (!text || text === m.text) return;
+  socket.emit(type === 'gmsg' ? 'gmsg_edit' : 'msg_edit', { id: m.id, text }, res => {
+    if (!res?.ok) toast(t('messageFailed'));
+  });
+}
+
+// Forwards a text or photo message to one of your chats or groups.
+function openForward(m) {
+  if (m.kind === 'gift') return toast(t('forwardNoGift'));
+  const fwd = displayName(m.from);
+  const btn = (label, send) => el('button', { class: 'btn ghost', style: 'width:100%;margin-bottom:6px', onclick: () => {
+    send(res => {
+      if (res?.ok) { closeModal(); toast(t('forwarded')); }
+      else toast(t('messageFailed'));
+    });
+  } }, label);
+  const privates = [...chats.keys()].map(nick => btn(displayName(nick),
+    done => socket.emit('message', { to: nick, text: m.text, kind: m.kind, fwd }, done)));
+  const groupBtns = [...groups.values()].filter(g => g.joined).map(g => btn(g.title,
+    done => socket.emit('group_send', { id: g.id, text: m.text, kind: m.kind, fwd }, done)));
+  openModal([el('div', { class: 'acc-head' }, t('forwardTitle')), ...privates, ...groupBtns]);
+}
+
+// Search your messages: private chats and groups you are in.
+function openMsgSearch() {
+  const input = el('input', { class: 'field', placeholder: t('msgSearchPrompt'), maxlength: '50' });
+  const list = el('div', {});
+  const run = () => {
+    const q = input.value.trim();
+    if (q.length < 2) return toast(t('msgSearchPrompt'));
+    socket.emit('search_msgs', { q }, res => {
+      if (!res?.ok) return toast(t('messageFailed'));
+      const rows = res.results.map(r => el('div', { class: 'acc-row', onclick: () => {
+        closeModal();
+        if (r.type === 'p') openChat(r.peer); else openGroup(r.chat);
+      } },
+        el('div', { class: 'meta' },
+          el('div', { class: 'name' }, r.type === 'p' ? displayName(r.peer) : r.title),
+          el('div', { class: 'sub' }, r.text.slice(0, 120)))));
+      list.replaceChildren(...(rows.length ? rows : [el('div', { class: 'empty' }, t('nothingFound'))]));
+    });
+  };
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
+  openModal([
+    el('div', { class: 'acc-head' }, t('msgSearchBtn')),
+    input,
+    el('div', { class: 'pf-actions', style: 'margin:10px 0' }, el('button', { class: 'btn', onclick: run }, t('msgSearchBtn'))),
+    list,
+  ]);
+  input.focus();
+}
+
+// Tabs above the chat list: all, private chats, groups; the 🔍 button searches messages.
+function renderFolders() {
+  const box = $('folders');
+  const tab = (key, label) => el('button', { class: 'folder' + (listFilter === key ? ' on' : ''), onclick: () => {
+    listFilter = key;
+    renderFolders();
+    renderList();
+  } }, label);
+  box.replaceChildren(
+    tab('all', t('folderAll')),
+    tab('private', t('folderPrivate')),
+    tab('groups', t('folderGroups')),
+    el('button', { class: 'icon', style: 'margin-left:auto', onclick: () => openMsgSearch(), 'aria-label': 'search' }, '🔍'));
+}
+
+$('muteChatBtn').addEventListener('click', () => {
+  $('chatMenu').hidden = true;
+  if (!active) return;
+  if (muted.has(active)) muted.delete(active); else muted.add(active);
+  localStorage.setItem('gigi_mute', JSON.stringify([...muted]));
+  toast(muted.has(active) ? t('muted') : t('unmuted'));
 });
 
 function postMyStory() {
@@ -2229,15 +1954,9 @@ function openMarket() {
       openModal([
         el('div', { class: 'acc-head' }, t('marketTitle') + ' · ⭐ ' + mine.stars),
         el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
-          el('button', { class: 'btn ghost', onclick: () => openMarket() }, '🎁 Подарунки'),
           el('button', { class: 'btn ghost', onclick: () => openMyGifts() }, t('myGiftsBtn')),
           el('button', { class: 'btn ghost', onclick: () => openCreateGift() }, t('createGiftBtn')),
-          el('button', { class: 'btn ghost', onclick: () => openAdminStars() }, t('adminStarsBtn')),
-          el('button', { class: 'btn danger', onclick: () => {
-            if (!confirm('Видалити ВСІ подарунки з маркету та інвентарів усіх користувачів? Цю дію не можна скасувати.')) return;
-            if (!confirm('Остаточно підтверджуєте видалення всіх подарунків?')) return;
-            adminCall('admin_gifts_delete_all', {}, r => { toast('Видалено подарунків: ' + r.deleted); openMarket(); });
-          } }, '🗑 Видалити всі подарунки')),
+          el('button', { class: 'btn ghost', onclick: () => openAdminStars() }, t('adminStarsBtn'))),
         ...(rows.length ? rows : [el('div', { class: 'empty' }, t('marketEmpty'))]),
       ]);
     });
@@ -2290,10 +2009,9 @@ function openGiftDetail(it, mine) {
 }
 
 function sendGift(it) {
-  const toId = (prompt('ID отримувача подарунка:') || '').trim();
-  if (!toId) return;
-  if (!/^\d+$/.test(toId)) return toast('Введи числовий ID користувача');
-  socket.emit('gift_send', { id: it.id, toId: Number(toId) }, res => {
+  const to = (prompt(t('giftNick')) || '').trim();
+  if (!to) return;
+  socket.emit('gift_send', { id: it.id, to }, res => {
     if (!res?.ok) return toast(t(res?.error === 'no_user' ? 'errNoUser' : res?.error === 'self' ? 'giftNoSelf' : 'messageFailed'));
     closeModal();
     toast(t('giftSent'));
@@ -2318,10 +2036,9 @@ function toggleShelf(it) {
 }
 
 function adminGiveGift(it) {
-  const userId = (prompt('ID користувача, якому видати подарунок:') || '').trim();
-  if (!userId) return;
-  if (!/^\d+$/.test(userId)) return toast('Введи числовий ID користувача');
-  adminCall('admin_gift_give', { id: it.id, userId: Number(userId) }, () => { closeModal(); toast(t('giftSent')); });
+  const nick = (prompt(t('giftNick')) || '').trim();
+  if (!nick) return;
+  adminCall('admin_gift_give', { id: it.id, nick }, () => { closeModal(); toast(t('giftSent')); });
 }
 
 function adminDeleteGift(it) {
@@ -2365,38 +2082,15 @@ function openCreateGift() {
   ]);
 }
 
-function openAdminRevokePerks() {
-  const nick = el('input', { class: 'field', type: 'number', min: '1', step: '1', placeholder: 'ID користувача' });
-  openModal([
-    el('div', { class: 'acc-head' }, '⭐ Керування зірками та Premium'),
-    el('div', { class: 'sub' }, 'Вкажи ID користувача та обери, що потрібно забрати.'),
-    nick,
-    el('div', { class: 'pf-actions', style: 'margin-top:12px' },
-      el('button', { class: 'btn danger', onclick: () => {
-        const target = nick.value.trim();
-        if (!/^\d+$/.test(target)) return toast('Введи числовий ID користувача');
-        if (!confirm('Обнулити всі зірки користувача з ID ' + target + '?')) return;
-        adminCall('admin_revoke_perk', { userId: Number(target), mode: 'stars' }, () => { toast('Баланс зірок користувача обнулено'); openAdminRevokePerks(); });
-      } }, '⭐ Видалити всі зірки'),
-      el('button', { class: 'btn danger', onclick: () => {
-        const target = nick.value.trim();
-        if (!/^\d+$/.test(target)) return toast('Введи числовий ID користувача');
-        if (!confirm('Вимкнути Premium для користувача з ID ' + target + '?')) return;
-        adminCall('admin_revoke_perk', { userId: Number(target), mode: 'premium' }, () => { toast('Premium користувача вимкнено'); openAdminRevokePerks(); });
-      } }, '💎 Забрати Premium'),
-    ),
-  ]);
-}
-
 function openAdminStars() {
-  const nick = el('input', { class: 'field', type: 'number', min: '1', step: '1', placeholder: 'ID користувача' });
+  const nick = el('input', { class: 'field', placeholder: t('giftNick'), maxlength: '20', value: me || '' });
   const amount = el('input', { class: 'field', type: 'number', min: '1', placeholder: t('starsAmount') });
   openModal([
     el('div', { class: 'acc-head' }, t('adminStarsBtn')),
     nick,
     el('div', { style: 'height:8px' }), amount,
     el('div', { class: 'pf-actions acc-foot' }, el('button', { class: 'btn', onclick: () => {
-      adminCall('admin_stars', { userId: Number(nick.value), amount: Number(amount.value) }, () => {
+      adminCall('admin_stars', { nick: nick.value.trim(), amount: Number(amount.value) }, () => {
         toast(t('starsGiven'));
         openMarket();
       });
@@ -2404,7 +2098,7 @@ function openAdminStars() {
   ]);
 }
 
-$('marketBtn')?.addEventListener('click', openMarket);
+$('marketBtn').addEventListener('click', openMarket);
 
 const INVITE_URL = 'https://sites.google.com/view/gigichatdownloader/gigi';
 
@@ -2429,24 +2123,6 @@ function applyAvatar(node, nick) {
 }
 
 $('photoBtn').addEventListener('click', () => $('avatarInput').click());
-$('groupAvatarInput').addEventListener('change', async e => {
-  const f = e.target.files?.[0];
-  e.target.value = '';
-  const id = pendingGroupAvatar; pendingGroupAvatar = null;
-  if (!f || !id) return;
-  if (!f.type.startsWith('image/') || f.size > 15 * 1024 * 1024) return toast(t('badFile'));
-  try {
-    const url = await uploadBlob(await compressImage(f));
-    socket.emit('group_set_avatar', { id, url, code: adminCode || undefined }, res => {
-      if (!res?.ok) return toast(res?.error === 'forbidden' ? t('badCode') : t('messageFailed'));
-      const g = groups.get(id); if (g) g.avatar = url;
-      refreshGroups(() => { if (activeGroup === id) renderGroupHeader(); });
-      toast('Фото групи/каналу збережено');
-      if (!$('modal').hidden) openGroupInfo(id);
-    });
-  } catch { toast(t('uploadFailed')); }
-});
-
 $('avatarInput').addEventListener('change', async e => {
   const f = e.target.files?.[0];
   e.target.value = '';
@@ -2518,6 +2194,7 @@ document.addEventListener('click', e => {
 });
 
 document.documentElement.dataset.theme = localStorage.getItem('gigi_theme') || 'dark';
+renderFolders();
 applyI18n();
 setHint('nickHint');
 if (localStorage.getItem('gigi_token') && me) {
