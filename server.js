@@ -1574,7 +1574,7 @@ io.on('connection', async socket => {
 
   on('market_list', async (payload, ack) => {
     if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
-    const items = await db.all('SELECT id, title, description, price, image FROM gift_items WHERE owner IS NULL ORDER BY price DESC, id DESC LIMIT 200');
+    const items = await db.all('SELECT id, title, description, price, image FROM gift_items WHERE owner IS NULL ORDER BY price ASC, id ASC LIMIT 200');
     ack?.({ ok: true, items });
   });
 
