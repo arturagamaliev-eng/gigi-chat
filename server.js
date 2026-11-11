@@ -10,8 +10,7 @@ const MAX_TEXT = 2000;
 const NICK_RE = /^[\p{L}\p{N}_]{3,20}$/u;
 const PASS_MIN = 4;
 const PASS_MAX = 100;
-const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per file
-const MAX_MEDIA_CHARS = 20000000; // legacy JSON upload route
+const MAX_MEDIA_CHARS = 20000000;              // base64 size, supports files up to about 15 MB
 const CHAT_MEDIA_MS = 7 * 24 * 3600 * 1000;   // chat photos are kept 7 days
 const STORY_MS = 24 * 3600 * 1000;            // stories are kept 24 hours
 const AVATAR_MS = 365 * 24 * 3600 * 1000;     // profile photo stays until removed
@@ -152,6 +151,13 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS idx_msg_from ON messages(from_nick, id);
 CREATE INDEX IF NOT EXISTS idx_msg_to ON messages(to_nick, id);
+CREATE TABLE IF NOT EXISTS friendship_streaks (
+  user_a TEXT NOT NULL,
+  user_b TEXT NOT NULL,
+  streak INTEGER NOT NULL DEFAULT 0,
+  last_mutual_day TEXT NOT NULL,
+  PRIMARY KEY (user_a, user_b)
+);
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to INTEGER;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at DOUBLE PRECISION;
 CREATE TABLE IF NOT EXISTS admin_audit (id SERIAL PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, target TEXT, details TEXT, created_at DOUBLE PRECISION NOT NULL);
@@ -249,17 +255,9 @@ CREATE TABLE IF NOT EXISTS reactions (
 );
 CREATE TABLE IF NOT EXISTS media (
   id TEXT PRIMARY KEY,
-  data TEXT,
-  data_bin BYTEA,
+  data TEXT NOT NULL,
   mime TEXT NOT NULL,
   expires_at DOUBLE PRECISION NOT NULL
-);
-ALTER TABLE media ADD COLUMN IF NOT EXISTS data_bin BYTEA;
-CREATE TABLE IF NOT EXISTS media_upload_chunks (
-  upload_id TEXT NOT NULL,
-  chunk_index INTEGER NOT NULL,
-  data TEXT NOT NULL,
-  PRIMARY KEY(upload_id, chunk_index)
 );
 CREATE TABLE IF NOT EXISTS poll_votes (message_id INTEGER NOT NULL, nick TEXT NOT NULL, option_index INTEGER NOT NULL, PRIMARY KEY(message_id, nick));
 CREATE TABLE IF NOT EXISTS group_roles (chat_id INTEGER NOT NULL, nick TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'member', PRIMARY KEY(chat_id, nick));
@@ -269,6 +267,51 @@ const findUser = nick => db.one('SELECT nickname, key, pass_salt, pass_hash FROM
 const findUserById = async value => { const id = Number(value); if (!Number.isSafeInteger(id) || id < 1) return null; return db.one('SELECT nickname, user_id FROM users WHERE user_id = $1', [id]); };
 const isFrozen = async nick => Boolean(await db.one('SELECT 1 AS x FROM users WHERE nickname = $1 AND frozen = TRUE', [nick]));
 const toMsg = r => ({ id: r.id, from: r.from_nick, to: r.to_nick, text: r.text, created_at: r.created_at, read_at: r.read_at ?? null, kind: r.kind || 'text', reply_to: r.reply_to ?? null, edited_at: r.edited_at ?? null });
+
+function utcDay(ts = Date.now()) {
+  return new Date(ts).toISOString().slice(0, 10);
+}
+function dayNumber(day) {
+  return Math.floor(Date.parse(day + 'T00:00:00Z') / DAY_MS);
+}
+function pairOf(a, b) {
+  return [a, b].sort((x, y) => x.localeCompare(y));
+}
+async function getFriendshipStreak(a, b) {
+  const [userA, userB] = pairOf(a, b);
+  const row = await db.one(
+    'SELECT streak, last_mutual_day FROM friendship_streaks WHERE user_a = $1 AND user_b = $2',
+    [userA, userB]);
+  if (!row) return null;
+  // Two complete days without mutual conversation end the streak.
+  if (dayNumber(utcDay()) - dayNumber(row.last_mutual_day) >= 3) return null;
+  return { count: Number(row.streak), last_day: row.last_mutual_day };
+}
+async function updateFriendshipStreak(from, to, now) {
+  const today = utcDay(now);
+  const start = Date.parse(today + 'T00:00:00Z');
+  const end = start + DAY_MS;
+  const mutual = await db.one(
+    `SELECT 1 AS yes FROM messages
+     WHERE from_nick = $1 AND to_nick = $2 AND created_at >= $3 AND created_at < $4
+     LIMIT 1`,
+    [to, from, start, end]);
+  if (!mutual) return null;
+  const [userA, userB] = pairOf(from, to);
+  const old = await db.one(
+    'SELECT streak, last_mutual_day FROM friendship_streaks WHERE user_a = $1 AND user_b = $2',
+    [userA, userB]);
+  if (old?.last_mutual_day === today) return { count: Number(old.streak), last_day: today };
+  const nextCount = old && dayNumber(today) - dayNumber(old.last_mutual_day) < 3
+    ? Number(old.streak) + 1 : 1;
+  await db.run(
+    `INSERT INTO friendship_streaks (user_a, user_b, streak, last_mutual_day)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (user_a, user_b) DO UPDATE
+     SET streak = EXCLUDED.streak, last_mutual_day = EXCLUDED.last_mutual_day`,
+    [userA, userB, nextCount, today]);
+  return { count: nextCount, last_day: today };
+}
 const auditAdmin = (actor, action, target, details='') => db.run('INSERT INTO admin_audit (actor, action, target, details, created_at) VALUES ($1,$2,$3,$4,$5)', [actor, action, target || null, details, Date.now()]);
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
@@ -392,7 +435,7 @@ app.get('/api/chats', route(async (req, res) => {
   const out = [];
   for (const r of rows) {
     const last = await db.one('SELECT * FROM messages WHERE id = $1', [r.last_id]);
-    out.push({ nick: r.partner, last: toMsg(last) });
+    out.push({ nick: r.partner, last: toMsg(last), streak: await getFriendshipStreak(me, r.partner) });
   }
   res.json(out);
 }));
@@ -408,27 +451,6 @@ app.get('/api/history', route(async (req, res) => {
     ORDER BY id DESC LIMIT 200`, [a, b]);
   const reacts = await reactionsFor('msg', rows.map(r => r.id));
   res.json(rows.reverse().map(r => ({ ...toMsg(r), reactions: reacts.get(r.id) || {} })));
-}));
-
-// Single-request binary upload for every chat attachment (no chunking).
-app.post('/api/upload-binary', express.raw({ type: '*/*', limit: '525mb' }), route(async (req, res) => {
-  const token = String(req.get('x-gigi-token') || '');
-  const session = await db.one('SELECT nickname FROM sessions WHERE token = $1', [token]);
-  if (!session) return res.status(401).json({ error: 'bad_session' });
-  if (!Buffer.isBuffer(req.body) || req.body.length < 1) return res.status(400).json({ error: 'empty_file' });
-  if (req.body.length > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'too_big' });
-  const mime = String(req.get('x-file-mime') || 'application/octet-stream').split(';')[0].trim().toLowerCase().slice(0, 150);
-  if (!/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(mime)) return res.status(400).json({ error: 'bad_type' });
-  const id = crypto.randomBytes(16).toString('hex');
-  // The existing media table stores base64 text; keep its format so old media URLs remain compatible.
-  // Store new uploads as raw BYTEA: no base64 expansion or costly conversion.
-  // Older installations have media.data declared NOT NULL. Keep it as an empty
-  // legacy value while storing the actual bytes in BYTEA, so the insert works
-  // both before and after the schema migration.
-  await db.run('INSERT INTO media (id, data, data_bin, mime, expires_at) VALUES ($1, $2, $3, $4, $5)',
-    [id, '', req.body, mime, Date.now() + CHAT_MEDIA_MS]);
-  const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
-  res.json({ ok: true, url: '/media/' + id, kind, mime });
 }));
 
 app.post('/api/upload', route(async (req, res) => {
@@ -449,12 +471,11 @@ app.post('/api/upload', route(async (req, res) => {
 
 app.get('/media/:id', route(async (req, res) => {
   if (!/^[a-f0-9]{32}$/.test(req.params.id)) return res.status(404).end();
-  const row = await db.one('SELECT data, data_bin, mime, expires_at FROM media WHERE id = $1', [req.params.id]);
+  const row = await db.one('SELECT data, mime, expires_at FROM media WHERE id = $1', [req.params.id]);
   if (!row || row.expires_at < Date.now()) return res.status(404).end();
   res.set('Content-Type', row.mime);
   res.set('Cache-Control', 'private, max-age=86400');
-  // Keep serving older base64 records while new uploads use BYTEA.
-  res.send(row.data_bin ? Buffer.from(row.data_bin) : Buffer.from(row.data || '', 'base64'));
+  res.send(Buffer.from(row.data, 'base64'));
 }));
 
 // ---- Realtime ----
@@ -679,6 +700,8 @@ io.on('connection', async socket => {
     if (MEDIA_KINDS.has(kind)) await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + CHAT_MEDIA_MS, mediaIdOf(text)]);
     const msg = { id: row.id, from: me, to, text, created_at: now, read_at: null, kind, reply_to: Number.isInteger(Number(payload?.reply_to)) ? Number(payload.reply_to) : null, edited_at: null };
     io.to('u:' + to).to('u:' + me).emit('message', msg);
+    const streak = await updateFriendshipStreak(me, to, now);
+    if (streak) io.to('u:' + to).to('u:' + me).emit('friendship_streak', { a: me, b: to, ...streak });
     ack?.({ ok: true, msg });
   });
 
