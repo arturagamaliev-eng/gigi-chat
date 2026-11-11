@@ -249,10 +249,12 @@ CREATE TABLE IF NOT EXISTS reactions (
 );
 CREATE TABLE IF NOT EXISTS media (
   id TEXT PRIMARY KEY,
-  data TEXT NOT NULL,
+  data TEXT,
+  data_bin BYTEA,
   mime TEXT NOT NULL,
   expires_at DOUBLE PRECISION NOT NULL
 );
+ALTER TABLE media ADD COLUMN IF NOT EXISTS data_bin BYTEA;
 CREATE TABLE IF NOT EXISTS media_upload_chunks (
   upload_id TEXT NOT NULL,
   chunk_index INTEGER NOT NULL,
@@ -419,8 +421,9 @@ app.post('/api/upload-binary', express.raw({ type: '*/*', limit: '525mb' }), rou
   if (!/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(mime)) return res.status(400).json({ error: 'bad_type' });
   const id = crypto.randomBytes(16).toString('hex');
   // The existing media table stores base64 text; keep its format so old media URLs remain compatible.
-  await db.run('INSERT INTO media (id, data, mime, expires_at) VALUES ($1, $2, $3, $4)',
-    [id, req.body.toString('base64'), mime, Date.now() + CHAT_MEDIA_MS]);
+  // Store new uploads as raw BYTEA: no base64 expansion or costly conversion.
+  await db.run('INSERT INTO media (id, data_bin, mime, expires_at) VALUES ($1, $2, $3, $4)',
+    [id, req.body, mime, Date.now() + CHAT_MEDIA_MS]);
   const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
   res.json({ ok: true, url: '/media/' + id, kind, mime });
 }));
@@ -443,11 +446,12 @@ app.post('/api/upload', route(async (req, res) => {
 
 app.get('/media/:id', route(async (req, res) => {
   if (!/^[a-f0-9]{32}$/.test(req.params.id)) return res.status(404).end();
-  const row = await db.one('SELECT data, mime, expires_at FROM media WHERE id = $1', [req.params.id]);
+  const row = await db.one('SELECT data, data_bin, mime, expires_at FROM media WHERE id = $1', [req.params.id]);
   if (!row || row.expires_at < Date.now()) return res.status(404).end();
   res.set('Content-Type', row.mime);
   res.set('Cache-Control', 'private, max-age=86400');
-  res.send(Buffer.from(row.data, 'base64'));
+  // Keep serving older base64 records while new uploads use BYTEA.
+  res.send(row.data_bin ? Buffer.from(row.data_bin) : Buffer.from(row.data || '', 'base64'));
 }));
 
 // ---- Realtime ----
