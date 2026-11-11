@@ -42,6 +42,11 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .item:hover{background:var(--panel2)}
 .item.active{background:var(--out)}
 .avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:600;flex:none;position:relative;color:#fff}
+.avatar.premium-frame,.pf-avatar.premium-frame{outline:3px solid transparent;outline-offset:3px;border:2px solid #f4c542;box-shadow:0 0 0 3px #8d5cf6,0 0 14px #f4c54299}
+.avatar.premium-frame::after,.pf-avatar.premium-frame::after{content:"✦";position:absolute;right:-5px;top:-7px;color:#ffd45b;font-size:14px;text-shadow:0 1px 4px #000}
+.emoji-send-effect{position:absolute;z-index:5;pointer-events:none;font-size:30px;animation:emoji-pop 850ms ease-out forwards;filter:drop-shadow(0 2px 5px #0008)}
+@keyframes emoji-pop{0%{opacity:0;transform:translateY(12px) scale(.35) rotate(-15deg)}25%{opacity:1;transform:translateY(-8px) scale(1.35) rotate(8deg)}100%{opacity:0;transform:translateY(-58px) scale(.8) rotate(0)}}
+#messages{background-size:cover;background-position:center;background-repeat:no-repeat}
 .dot{position:absolute;right:0;bottom:0;width:11px;height:11px;border-radius:50%;background:var(--online);border:2px solid var(--panel)}
 .meta{min-width:0;flex:1}
 .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -269,7 +274,7 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
           <div class="name" id="hName"></div>
           <div class="status" id="hStatus"></div>
         </div>
-        <button class="icon" id="giftChatBtn" title="Подарунок">🎁</button>
+        <button class="icon" id="chatBgBtn" title="Вибрати фон цього чату">🎨</button><button class="icon" id="chatBgResetBtn" title="Скинути фон">↩</button><input id="chatBgInput" type="file" accept="image/*" hidden><button class="icon" id="giftChatBtn" title="Подарунок">🎁</button>
         <button class="icon" id="moreBtn" aria-label="menu">⋮</button>
       </header>
       <div id="chatMenu" class="menu" hidden>
@@ -1000,6 +1005,7 @@ function onMessage(m) {
   if (partner === active) {
     c.unread = 0;
     renderMessages();
+    if (emojiOnly(m.text)) { const nodes = $('messages').querySelectorAll('.msg'); const last = nodes[nodes.length - 1]; if (last) playEmojiEffect(m.text, last); }
     if (m.from !== me) markRead(partner);
   }
   renderList();
@@ -1113,6 +1119,32 @@ function pollNode(m) {
   return card;
 }
 
+function chatBackgroundKey() { return 'gigi_chat_bg_' + encodeURIComponent(me || '') + '_' + (activeGroup ? 'group_' + activeGroup : 'user_' + encodeURIComponent(active || '')); }
+function applyChatBackground() {
+  const box = $('messages');
+  const url = localStorage.getItem(chatBackgroundKey());
+  box.style.backgroundImage = url ? `linear-gradient(#10182055,#10182055),url("${url}")` : '';
+  box.style.backgroundSize = 'cover'; box.style.backgroundPosition = 'center';
+}
+function emojiOnly(value) {
+  const v = String(value || '').trim();
+  if (!v || v.length > 24) return false;
+  try { return /^(?:\p{Extended_Pictographic}|\uFE0F|\u200D|\u{1F3FB}-\u{1F3FF}|\s)+$/u.test(v) && /\p{Extended_Pictographic}/u.test(v); }
+  catch { return false; }
+}
+function playEmojiEffect(text, target) {
+  if (!emojiOnly(text) || !target) return;
+  const rect = target.getBoundingClientRect();
+  const effect = document.createElement('span');
+  effect.className = 'emoji-send-effect'; effect.textContent = text;
+  effect.style.left = Math.max(8, rect.left + rect.width / 2 - 18) + 'px';
+  effect.style.top = Math.max(8, rect.top - 8) + 'px';
+  document.body.append(effect); setTimeout(() => effect.remove(), 900);
+}
+function applyPremiumFrame(node, nick) {
+  if (nick === me && myPremium && localStorage.getItem('gigi_premium_frame') === 'gold') node.classList.add('premium-frame');
+}
+
 function renderMessages() {
   const box = $('messages');
   // Jump to the newest message only when opening a chat or when already at the bottom.
@@ -1121,6 +1153,7 @@ function renderMessages() {
   const prevTop = box.scrollTop;
   box.dataset.chat = chatKey;
   box.replaceChildren();
+  applyChatBackground();
   const msgType = activeGroup ? 'gmsg' : 'msg';
   for (const m of (activeGroup ? gcache.get(activeGroup) : cache.get(active)) || []) {
     const own = m.from === me;
@@ -1405,6 +1438,7 @@ function avatarNode(nick, url, size) {
   av.style.background = avatarBg(nick);
   if (size) { av.style.width = size + 'px'; av.style.height = size + 'px'; av.style.fontSize = Math.round(size / 2.6) + 'px'; }
   if (url) av.replaceChildren(el('img', { src: url, alt: '' }));
+  applyPremiumFrame(av, nick);
   return av;
 }
 
@@ -2121,6 +2155,7 @@ function openAdminSettings() {
     openModal([
       el('div', { class: 'acc-head' }, t('adminSettingsTitle')),
       el('div', { class: 'pf-actions', style: 'margin-bottom:10px' },
+        ...(mine && myPremium ? [el('button', { class: 'btn ghost', onclick: () => { const choice = prompt('Premium-рамка: введи 1 — золота, 0 — вимкнути', localStorage.getItem('gigi_premium_frame') === 'gold' ? '1' : '0'); if (choice === null) return; localStorage.setItem('gigi_premium_frame', choice.trim() === '1' ? 'gold' : ''); closeModal(); renderList(); renderHeader(); toast('Premium-рамку оновлено'); } }, '👑 Premium-рамка')] : []),
         el('button', { class: 'btn ghost', onclick: () => { closeModal(); adminLoadAccounts(); } }, t('accountsBtn')),
         el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('storyBtn').click(); } }, t('gigiStoryBtn')),
         el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('storyPhotoBtn').click(); } }, t('gigiStoryPhotoBtn')),
@@ -2641,6 +2676,7 @@ function applyAvatar(node, nick) {
   node.style.background = avatarBg(nick);
   const url = avatars.get(nick);
   if (url) node.replaceChildren(el('img', { src: url, alt: '' }));
+  node.classList.remove('premium-frame'); applyPremiumFrame(node, nick);
 }
 
 $('photoBtn').addEventListener('click', () => $('avatarInput').click());
@@ -2700,6 +2736,10 @@ $('adminDelBtn').addEventListener('click', e => {
 });
 
 $('back').addEventListener('click', closeChat);
+$('chatBgBtn').addEventListener('click', () => $('chatBgInput').click());
+$('chatBgResetBtn').addEventListener('click', () => { localStorage.removeItem(chatBackgroundKey()); applyChatBackground(); toast('Фон чату скинуто'); });
+$('chatBgInput').addEventListener('change', async e => { const file = e.target.files?.[0]; e.target.value = ''; if (!file) return; if (!file.type.startsWith('image/') || file.size > 5*1024*1024) return toast('Оберіть зображення до 5 МБ'); try { const data = await readAsDataURL(file); localStorage.setItem(chatBackgroundKey(), data); applyChatBackground(); toast('Фон цього чату збережено'); } catch { toast('Не вдалося зберегти фон'); } });
+
 
 $('renameBtn').addEventListener('click', () => {
   const input = prompt(t('renamePrompt'), me);
