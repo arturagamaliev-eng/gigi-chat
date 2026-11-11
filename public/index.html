@@ -360,7 +360,6 @@ const I18N = {
     profileTitle: 'Profile', aboutLabel: 'About', noBio: 'No description yet', bioPrompt: 'About you (up to 200 characters)',
     editBio: 'Edit about', changePhoto: 'Change photo', removePhoto: 'Remove photo', writeMsg: 'Write a message',
     created: 'created', lastSeen: 'last seen {time}', deleteUserConfirm: 'Delete this account and all its messages?',
-    freezeBtn: 'Freeze', unfreezeBtn: 'Unfreeze', frozenStatus: 'FROZEN', accountFrozen: 'Your account is frozen. You cannot send messages until the administrator unfreezes it.', freezeDone: 'Account status updated',
     photoRemoved: 'Photo removed', bioSaved: 'Saved', deleteMsgBtn: 'Delete message',
     groupsBtn: 'Groups', newGroup: 'New group or channel', groupTitle: 'Name', kindGroup: 'Group', kindChannel: 'Channel',
     createGroup: 'Create', groupCreated: 'Created', groupJoined: 'Joined', groupLeft: 'Left the group',
@@ -440,7 +439,6 @@ const I18N = {
     profileTitle: 'Профіль', aboutLabel: 'Про себе', noBio: 'Опису ще немає', bioPrompt: 'Про себе (до 200 символів)',
     editBio: 'Змінити опис', changePhoto: 'Змінити фото', removePhoto: 'Видалити фото', writeMsg: 'Написати',
     created: 'створено', lastSeen: 'був(ла) в мережі {time}', deleteUserConfirm: 'Видалити цей акаунт і всі його повідомлення?',
-    freezeBtn: 'Заморозити', unfreezeBtn: 'Розморозити', frozenStatus: 'ЗАМОРОЖЕНО', accountFrozen: 'Ваш акаунт заморожено. Ви не можете надсилати повідомлення, поки адміністратор не розморозить його.', freezeDone: 'Статус акаунта змінено',
     photoRemoved: 'Фото видалено', bioSaved: 'Збережено', deleteMsgBtn: 'Видалити повідомлення',
     groupsBtn: 'Групи', newGroup: 'Нова група або канал', groupTitle: 'Назва', kindGroup: 'Група', kindChannel: 'Канал',
     createGroup: 'Створити', groupCreated: 'Створено', groupJoined: 'Приєднано', groupLeft: 'Вийшли з групи',
@@ -518,7 +516,6 @@ const I18N = {
     profileTitle: 'Профиль', aboutLabel: 'О себе', noBio: 'Описания пока нет', bioPrompt: 'О себе (до 200 символов)',
     editBio: 'Изменить описание', changePhoto: 'Изменить фото', removePhoto: 'Удалить фото', writeMsg: 'Написать',
     created: 'создан', lastSeen: 'был(а) в сети {time}', deleteUserConfirm: 'Удалить этот аккаунт и все его сообщения?',
-    freezeBtn: 'Заморозить', unfreezeBtn: 'Разморозить', frozenStatus: 'ЗАМОРОЖЕН', accountFrozen: 'Ваш аккаунт заморожен. Вы не можете отправлять сообщения, пока администратор не разморозит его.', freezeDone: 'Статус аккаунта изменён',
     photoRemoved: 'Фото удалено', bioSaved: 'Сохранено', deleteMsgBtn: 'Удалить сообщение',
     groupsBtn: 'Группы', newGroup: 'Новая группа или канал', groupTitle: 'Название', kindGroup: 'Группа', kindChannel: 'Канал',
     createGroup: 'Создать', groupCreated: 'Создано', groupJoined: 'Присоединено', groupLeft: 'Вы вышли из группы',
@@ -574,6 +571,9 @@ let lang = localStorage.getItem('gigi_lang') || (navigator.language || 'en').sli
 if (!I18N[lang]) lang = 'en';
 
 let me = localStorage.getItem('gigi_nick') || null;
+let gigiHistoryReady = false;
+let gigiModalHistoryOpen = false;
+let gigiChatHistoryOpen = false;
 let socket = null;
 let pending = null;
 let online = new Set();
@@ -658,6 +658,7 @@ function toast(msg) {
 function showLogin() { $('app').hidden = true; $('login').hidden = false; }
 function showApp() {
   $('login').hidden = true; $('app').hidden = false;
+  if (!gigiHistoryReady) { history.pushState({ gigiRoot: true }, '', location.href); gigiHistoryReady = true; }
   $('meName').textContent = me;
   if ($('bottomNavName')) $('bottomNavName').textContent = me || 'Профіль';
   if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {});
@@ -669,7 +670,11 @@ function forget() {
   localStorage.removeItem('gigi_nick');
   localStorage.removeItem('gigi_token');
 }
-function closeChat() {
+function closeChat(fromPopState = false) {
+  if (gigiChatHistoryOpen && !fromPopState) {
+    history.replaceState({ gigiRoot: true }, '', location.href);
+  }
+  gigiChatHistoryOpen = false;
   active = null;
   activeGroup = null;
   $('app').classList.remove('chat-open');
@@ -989,6 +994,10 @@ async function loadChats() {
 }
 
 async function openChat(nick) {
+  if ($('chatView').hidden) {
+    history.pushState({ gigiScreen: 'chat' }, '', location.href);
+    gigiChatHistoryOpen = true;
+  }
   active = nick;
   activeGroup = null;
   if (!chats.has(nick)) chats.set(nick, { last: null, unread: 0 });
@@ -1319,11 +1328,39 @@ function refreshInfo(nick) {
 }
 
 function openModal(html) {
+  if ($('modal').hidden) {
+    history.pushState({ gigiScreen: 'modal' }, '', location.href);
+    gigiModalHistoryOpen = true;
+  }
   $('modalBody').replaceChildren(...html);
   $('modal').hidden = false;
 }
 
-function closeModal() { $('modal').hidden = true; }
+function closeModal(fromPopState = false) {
+  if ($('modal').hidden) return;
+  $('modal').hidden = true;
+  if (gigiModalHistoryOpen && !fromPopState) {
+    history.replaceState({ gigiRoot: true, gigiScreen: $('chatView').hidden ? 'main' : 'chat' }, '', location.href);
+  }
+  gigiModalHistoryOpen = false;
+}
+
+// Android system Back gesture/button: close the current Gigi Chat screen first.
+window.addEventListener('popstate', () => {
+  if (!$('app') || $('app').hidden) return;
+  if (!$('modal').hidden) {
+    $('modal').hidden = true;
+    gigiModalHistoryOpen = false;
+    return;
+  }
+  if (!$('chatView').hidden) {
+    closeChat(true);
+    return;
+  }
+  // Keep the app on its main screen instead of navigating out of Gigi Chat.
+  history.pushState({ gigiRoot: true }, '', location.href);
+  gigiHistoryReady = true;
+});
 
 function avatarNode(nick, url, size) {
   const av = el('div', { class: 'pf-avatar' }, nick[0].toUpperCase());
@@ -1383,10 +1420,8 @@ function openAccounts(users) {
       avatarNode(u.nick, null, 40),
       el('div', { class: 'meta' },
         el('div', { class: 'name' }, u.nick + ' · ID ' + u.id),
-        el('div', { class: 'sub' + (u.online ? ' on' : '') }, (u.frozen ? t('frozenStatus') + ' · ' : '') + sub + ' · ' + t('created') + ' ' + fmtDateTime(u.created))),
-      el('div', { class: 'acc-actions', style: 'display:flex;flex-direction:column;gap:6px' },
-        el('button', { class: 'btn ' + (u.frozen ? '' : 'danger'), onclick: () => adminToggleFreeze(u.id, !u.frozen) }, u.frozen ? t('unfreezeBtn') : t('freezeBtn')),
-        el('button', { class: 'btn danger', onclick: () => adminDeleteOne(u.nick) }, t('deleteBtn')))));
+        el('div', { class: 'sub' + (u.online ? ' on' : '') }, sub + ' · ' + t('created') + ' ' + fmtDateTime(u.created))),
+      el('button', { class: 'btn danger', onclick: () => adminDeleteOne(u.nick) }, t('deleteBtn'))));
   }
     if (!filtered.length) list.append(el('div', { class: 'empty' }, t('noAccounts')));
   };
@@ -1407,14 +1442,6 @@ function adminLoadAccounts() {
       return toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
     }
     openAccounts(res.users);
-  });
-}
-
-function adminToggleFreeze(userId, frozen) {
-  socket.emit('admin_toggle_freeze', { userId, frozen, code: adminCode }, res => {
-    if (!res?.ok) return toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
-    toast(t('freezeDone'));
-    adminLoadAccounts();
   });
 }
 
@@ -2295,7 +2322,7 @@ function adminCall(ev, data, done) {
   socket.emit(ev, { ...data, code }, res => {
     if (res?.ok) { adminCode = code; if (done) done(res); return; }
     if (res?.error === 'bad_code') adminCode = null;
-    toast(t(res?.error === 'frozen' ? 'accountFrozen' : res?.error === 'bad_code' ? 'badCode' : res?.error === 'no_user' ? 'errNoUser' : 'messageFailed'));
+    toast(t(res?.error === 'bad_code' ? 'badCode' : res?.error === 'no_user' ? 'errNoUser' : 'messageFailed'));
   });
 }
 
