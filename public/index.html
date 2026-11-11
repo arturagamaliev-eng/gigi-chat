@@ -1877,17 +1877,7 @@ function openSettings() {
       el('div', { class: 'pf-actions', style: 'margin:8px 0 16px' },
         el('button', { class: 'btn', onclick: () => buyPremium(1) }, t('premium1Btn').replace(/\d+/, String(premiumPrices[1]))),
         el('button', { class: 'btn', onclick: () => buyPremium(12) }, t('premium12Btn').replace(/\d+/, String(premiumPrices[12])))),
-      el('div', { class: 'acc-head' }, '⌨️ Індикатор набору повідомлення'),
-      el('div', { class: 'sub' }, 'Звичайний статус «друкує...» видно всім. Дозвіл на показ набраного тексту ввімкнений за замовчуванням; його можна вимкнути тут.'),
-      el('button', { class: 'btn ' + (typingPreviewShare ? '' : 'ghost'), style: 'width:100%;margin:8px 0 12px', onclick: () => {
-        const enabled = !typingPreviewShare;
-        socket.emit('set_typing_preview_share', { enabled }, r => {
-          if (!r?.ok) return toast('Не вдалося змінити дозвіл');
-          typingPreviewShare = r.enabled;
-          toast(typingPreviewShare ? 'Дозвіл показу твого набору увімкнено' : 'Твій набраний текст більше не показується');
-          openSettings();
-        });
-      } }, (typingPreviewShare ? '👁️ Дозволити показ мого набраного тексту: УВІМКНЕНО' : '🙈 Дозволити показ мого набраного тексту: ВИМКНЕНО')),
+      el('div', { class: 'acc-head' }, '⌨️ Перегляд набору повідомлень'),
       el('div', { class: 'sub' }, myPremium
         ? 'Premium дозволяє бачити живий текст, який друкують друзі, якщо вони не вимкнули свій дозвіл.'
         : 'Перегляд набраного тексту друзів доступний користувачам з активним Premium.'),
@@ -2146,6 +2136,17 @@ function openAdminSettings() {
           adminCall('admin_notify', { text }, () => toast(t('notifySent')));
         } }, t('notifyBtn')),
         el('button', { class: 'btn ghost', onclick: () => openComplaints() }, t('complaintsBtn', { n: count })),
+        el('div', { class: 'acc-head', style: 'margin-top:8px' }, '⌨️ Дозвіл на показ мого набраного тексту'),
+        el('div', { class: 'sub' }, 'Коли ввімкнено, друзі з активним Premium і ввімкненим переглядом зможуть бачити текст, який ти набираєш до надсилання.'),
+        el('button', { class: 'btn ' + (typingPreviewShare ? '' : 'ghost'), style: 'width:100%;margin:8px 0 12px', onclick: () => {
+          const enabled = !typingPreviewShare;
+          socket.emit('set_typing_preview_share', { enabled }, r => {
+            if (!r?.ok) return toast('Не вдалося змінити дозвіл');
+            typingPreviewShare = r.enabled;
+            toast(typingPreviewShare ? 'Дозвіл показу твого набору увімкнено' : 'Твій набраний текст більше не показується');
+            openAdminSettings();
+          });
+        } }, (typingPreviewShare ? '👁️ Дозволити показ мого тексту: УВІМКНЕНО' : '🙈 Дозволити показ мого тексту: ВИМКНЕНО')),
         el('button', { class: 'btn ghost', onclick: changeAdminOwnId }, '🆔 Змінити власний ID'),
         el('button', { class: 'btn ghost', onclick: changeAdminSecretCode }, '🔐 Змінити секретний код адміна'),
         el('button', { class: 'btn ghost', onclick: () => startVisualEditor() }, '🎨 Візуальний редактор сайту'),
