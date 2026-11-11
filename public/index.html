@@ -282,6 +282,9 @@ html,body{min-height:100%;font-size:14px}
     <input id="nick" class="field" autocomplete="username" maxlength="20">
     <label for="pass" data-i18n="passLabel" style="margin-top:14px"></label>
     <input id="pass" class="field" type="password" autocomplete="current-password" maxlength="100">
+    <label for="phone" style="margin-top:14px">Номер телефону (необов’язково)</label>
+    <input id="phone" class="field" type="tel" inputmode="tel" autocomplete="tel" maxlength="24" placeholder="+380XXXXXXXXX">
+    <div class="hint">Номер не підтверджується SMS і потрібен лише для пошуку. Його не буде видно іншим.</div>
     <div class="hint" id="loginHint"></div>
     <button class="btn" style="width:100%;margin-top:14px" data-i18n="enter"></button>
     <div class="lang" style="justify-content:center;margin-top:18px">
@@ -299,7 +302,7 @@ html,body{min-height:100%;font-size:14px}
         <button class="icon" id="myProfileBtn" aria-label="Довідка" title="Довідка та відповіді">⁉️</button>
         <div class="brand">gigi chat</div>
         <button class="icon" id="searchIdBtn" title="Пошук користувача за ID" aria-label="Пошук за ID">🆔</button>
-        <button class="icon" id="searchMsgBtn" data-i18n-title="searchMsgTitle">🔎</button>
+        <button class="icon" id="searchMsgBtn" title="Пошук за номером телефону" aria-label="Пошук за номером телефону">📱</button>
         <button class="icon" id="inviteBtn" data-i18n-title="inviteTitle" aria-label="invite">🔗</button>
         <div class="lang">
           <button type="button" data-set-lang="en">EN</button>
@@ -407,7 +410,7 @@ html,body{min-height:100%;font-size:14px}
 <script>
 const I18N = {
   en: {
-    tagline: 'Pick a nickname and password to start chatting',
+    tagline: 'Pick a nickname and password to start chatting', phoneInvalid: 'Enter a valid phone number with country code', phoneTaken: 'This phone number is already linked to another account',
     nickLabel: 'Nickname', nickHint: '3–20 characters: letters, digits or _',
     passLabel: 'Password', errShortPass: 'Password: at least 4 characters',
     errTaken: 'This nickname is taken or the password is wrong', errSession: 'Session expired. Please log in again.',
@@ -487,7 +490,7 @@ const I18N = {
     micDenied: 'Allow microphone access to send voice messages', badFile: 'This file type is not supported'
   },
   uk: {
-    tagline: 'Оберіть нікнейм і пароль, щоб почати спілкування',
+    tagline: 'Оберіть нікнейм і пароль, щоб почати спілкування', phoneInvalid: 'Введіть правильний номер із кодом країни', phoneTaken: 'Цей номер уже прив’язаний до іншого акаунта',
     nickLabel: 'Нікнейм', nickHint: '3–20 символів: літери, цифри або _',
     passLabel: 'Пароль', errShortPass: 'Пароль: щонайменше 4 символи',
     errTaken: 'Цей нікнейм уже зайнятий або пароль невірний', errSession: 'Сеанс завершився. Увійдіть знову.',
@@ -1018,7 +1021,7 @@ function onLogin(res) {
     if (res?.error === 'bad_session') { forget(); showLogin(); setHint('errSession', true); return; }
     showLogin();
     const keys = { invalid_nick: 'errInvalidNick', invalid_password: 'errShortPass', nick_taken: 'errTaken',
-      handle_required: 'handleRequired', invalid_handle: 'handleInvalid', handle_taken: 'handleTaken' };
+      invalid_phone: 'phoneInvalid', phone_taken: 'phoneTaken', handle_required: 'handleRequired', invalid_handle: 'handleInvalid', handle_taken: 'handleTaken' };
     setHint(keys[res?.error] || 'errNetwork', true);
     return;
   }
@@ -1307,7 +1310,8 @@ $('loginForm').addEventListener('submit', e => {
   if (!NICK_RE.test(nick)) return setHint('errInvalidNick', true);
   if (password.length < 4) return setHint('errShortPass', true);
   setHint('nickHint');
-  const payload = { nick, password };
+  const phone = $('phone')?.value.trim() || '';
+  const payload = { nick, password, phone };
   $('pass').value = '';
   if (socket?.connected) socket.emit('login', payload, onLogin);
   else if (!socket) { pending = payload; createSocket(); }
@@ -2152,14 +2156,14 @@ function searchUserById() {
 $('searchIdBtn').addEventListener('click', searchUserById);
 
 $('searchMsgBtn').addEventListener('click', () => {
-  const q = prompt('Пошук повідомлень у чатах:');
-  if (!q || !q.trim()) return;
-  socket.emit('search_messages', { q: q.trim() }, res => {
-    if (!res?.ok) return toast('Пошук не вдався');
-    const rows = (res.results || []).map(r => el('button', { class: 'item', style: 'width:100%;text-align:left', onclick: () => { closeModal(); if (r.scope === 'pm') openChat(r.partner); else openGroup(r.chat); } }, el('div', { class: 'meta' }, el('div', { class: 'name' }, (r.scope === 'pm' ? r.partner : r.title) + ' · ' + r.from), el('div', { class: 'preview' }, r.text))));
-    openModal([el('div', { class: 'acc-head' }, 'Результати пошуку'), ...(rows.length ? rows : [el('div', { class: 'empty' }, 'Нічого не знайдено')])]);
+  const phone = prompt('Введіть номер телефону людини (наприклад, +380XXXXXXXXX):');
+  if (phone === null || !phone.trim()) return;
+  socket.emit('user_lookup_phone', { phone }, res => {
+    if (!res?.ok) return toast(res?.error === 'not_found' ? 'За цим номером нікого не знайдено' : res?.error === 'invalid_phone' ? 'Перевірте номер телефону' : 'Не вдалося виконати пошук');
+    openProfile(res.user.nick);
   });
 });
+
 $('settingsBtn').addEventListener('click', openSettings);
 $('mobileBottomNav')?.addEventListener('click', e => {
  const button=e.target.closest('[data-nav]'); if(!button)return; const tab=button.dataset.nav;
@@ -2854,6 +2858,12 @@ function openHelpCenter() {
       'Попросіть друга відкрити свій профіль у Gigi Chat.',
       'Під його нікнеймом буде написано ID — це числовий номер акаунта.',
       'Потім перейдіть у розділ «Чати», введіть цей номер у поле пошуку друзів за ID та знайдіть потрібну людину.'
+    ]},
+    { id:'phone-search', label:'📱 Пошук за номером', title:'Як знайти людину за номером телефону', body:[
+      'Під час створення нового акаунта введіть номер телефону в поле «Номер телефону (необов’язково)». Якщо не хочете — залиште поле порожнім.',
+      'SMS-код не надсилається. Номер зберігається лише для пошуку в Gigi Chat і не показується в профілі.',
+      'Натисніть кнопку 📱 у верхній частині списку чатів, введіть повний номер із кодом країни, наприклад +380XXXXXXXXX, і відкрийте знайдений профіль.',
+      'Знайти за номером можна лише тих людей, які самі додали номер до акаунта.'
     ]},
     { id:'find-chat', label:'🔎 Як знайти друга', title:'Як знайти друга за ID', body:[
       'Відкрийте розділ «Чати».',
