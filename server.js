@@ -10,7 +10,8 @@ const MAX_TEXT = 2000;
 const NICK_RE = /^[\p{L}\p{N}_]{3,20}$/u;
 const PASS_MIN = 4;
 const PASS_MAX = 100;
-const MAX_MEDIA_CHARS = 20000000;              // base64 size, supports files up to about 15 MB
+const MAX_UPLOAD_BYTES = 500 * 1024 * 1024; // 500 MB per file
+const MAX_MEDIA_CHARS = 20000000; // legacy JSON upload route
 const CHAT_MEDIA_MS = 7 * 24 * 3600 * 1000;   // chat photos are kept 7 days
 const STORY_MS = 24 * 3600 * 1000;            // stories are kept 24 hours
 const AVATAR_MS = 365 * 24 * 3600 * 1000;     // profile photo stays until removed
@@ -252,6 +253,12 @@ CREATE TABLE IF NOT EXISTS media (
   mime TEXT NOT NULL,
   expires_at DOUBLE PRECISION NOT NULL
 );
+CREATE TABLE IF NOT EXISTS media_upload_chunks (
+  upload_id TEXT NOT NULL,
+  chunk_index INTEGER NOT NULL,
+  data TEXT NOT NULL,
+  PRIMARY KEY(upload_id, chunk_index)
+);
 CREATE TABLE IF NOT EXISTS poll_votes (message_id INTEGER NOT NULL, nick TEXT NOT NULL, option_index INTEGER NOT NULL, PRIMARY KEY(message_id, nick));
 CREATE TABLE IF NOT EXISTS group_roles (chat_id INTEGER NOT NULL, nick TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'member', PRIMARY KEY(chat_id, nick));
 `;
@@ -399,6 +406,23 @@ app.get('/api/history', route(async (req, res) => {
     ORDER BY id DESC LIMIT 200`, [a, b]);
   const reacts = await reactionsFor('msg', rows.map(r => r.id));
   res.json(rows.reverse().map(r => ({ ...toMsg(r), reactions: reacts.get(r.id) || {} })));
+}));
+
+// Single-request binary upload for every chat attachment (no chunking).
+app.post('/api/upload-binary', express.raw({ type: '*/*', limit: '525mb' }), route(async (req, res) => {
+  const token = String(req.get('x-gigi-token') || '');
+  const session = await db.one('SELECT nickname FROM sessions WHERE token = $1', [token]);
+  if (!session) return res.status(401).json({ error: 'bad_session' });
+  if (!Buffer.isBuffer(req.body) || req.body.length < 1) return res.status(400).json({ error: 'empty_file' });
+  if (req.body.length > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'too_big' });
+  const mime = String(req.get('x-file-mime') || 'application/octet-stream').split(';')[0].trim().toLowerCase().slice(0, 150);
+  if (!/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/.test(mime)) return res.status(400).json({ error: 'bad_type' });
+  const id = crypto.randomBytes(16).toString('hex');
+  // The existing media table stores base64 text; keep its format so old media URLs remain compatible.
+  await db.run('INSERT INTO media (id, data, mime, expires_at) VALUES ($1, $2, $3, $4)',
+    [id, req.body.toString('base64'), mime, Date.now() + CHAT_MEDIA_MS]);
+  const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
+  res.json({ ok: true, url: '/media/' + id, kind, mime });
 }));
 
 app.post('/api/upload', route(async (req, res) => {
