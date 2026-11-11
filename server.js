@@ -226,6 +226,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS handle TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until DOUBLE PRECISION;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS typing_preview_optin BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS typing_preview_share BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_emoji TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_handle ON users(lower(handle));
 CREATE TABLE IF NOT EXISTS blocks (
   blocker TEXT NOT NULL,
@@ -727,11 +728,11 @@ io.on('connection', async socket => {
   on('user_info', async (payload, ack) => {
     const u = await findUser(String(payload?.nick || ''));
     if (!u) return ack?.({ ok: false, error: 'no_user' });
-    const row = await db.one('SELECT user_id, nickname, avatar, bio, status_text, last_seen, premium_until FROM users WHERE nickname = $1', [u.nickname]);
+    const row = await db.one('SELECT user_id, nickname, avatar, bio, status_text, last_seen, premium_until, profile_emoji FROM users WHERE nickname = $1', [u.nickname]);
     if (row.premium_until > Date.now()) {
       return ack?.({ ok: true, info: {
         nick: row.nickname, id: row.user_id, hidden: true, online: false, lastSeen: null,
-        avatar: row.avatar, bio: row.bio, statusText: row.status_text || '',
+        avatar: row.avatar, bio: row.bio, statusText: row.status_text || '', profileEmoji: row.profile_emoji || '',
         shelf: await db.all('SELECT id, title, image FROM gift_items WHERE owner = $1 AND on_shelf = true', [row.nickname]),
       } });
     }
@@ -741,9 +742,20 @@ io.on('connection', async socket => {
       online: online.has(row.nickname),
       lastSeen: row.last_seen,
       avatar: row.avatar,
-      bio: row.bio, statusText: row.status_text || '',
+      bio: row.bio, statusText: row.status_text || '', profileEmoji: row.profile_emoji || '',
       shelf: await db.all('SELECT id, title, image FROM gift_items WHERE owner = $1 AND on_shelf = true', [row.nickname]),
     } });
+  });
+
+  on('set_profile_emoji', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const u = await db.one('SELECT premium_until FROM users WHERE nickname = $1', [me]);
+    if (!(Number(u?.premium_until || 0) > Date.now())) return ack?.({ ok: false, error: 'premium_required' });
+    const emoji = typeof payload?.emoji === 'string' ? payload.emoji.trim() : '';
+    if (emoji && (emoji.length > 16 || !/\p{Extended_Pictographic}/u.test(emoji))) return ack?.({ ok: false, error: 'invalid_emoji' });
+    await db.run('UPDATE users SET profile_emoji = $1 WHERE nickname = $2', [emoji || null, me]);
+    ack?.({ ok: true, emoji });
   });
 
   on('set_profile_status', async (payload, ack) => {
