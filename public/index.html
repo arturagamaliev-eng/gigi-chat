@@ -300,7 +300,7 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
       <form class="composer" id="composer">
         <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn"></button>
         <button type="button" class="icon" id="pollBtn" title="Створити опитування" hidden>📊</button>
-        <input id="fileInput" type="file" accept="image/*,video/mp4,video/webm,video/quicktime,.pdf,.zip,.doc,.docx,.xls,.xlsx,.csv,.txt" hidden>
+        <input id="fileInput" type="file" hidden>
         <textarea id="input" rows="1" data-i18n-ph="typeMessage"></textarea>
         <button class="btn" data-i18n="send"></button>
       </form>
@@ -423,7 +423,7 @@ const I18N = {
     broadcastConfirm: 'Send this gift to every user?', broadcastDone: 'Sent to all users', giftChatTitle: 'Send a gift',
     photoGone: 'Photo expired', storyAddPhoto: 'Add a photo to the story?', storyDelete: 'Delete story',
     storyDeleteConfirm: 'Delete this story for everyone?', storyDeleted: 'Story deleted',
-    fileTooBig: 'File is too large (max 15 MB)', uploadFailed: 'Could not send the file',
+    fileTooBig: 'File is too large (maximum 500 MB per file)', uploadFailed: 'Could not send the file',
     micDenied: 'Allow microphone access to send voice messages', badFile: 'This file type is not supported'
   },
   uk: {
@@ -501,7 +501,7 @@ const I18N = {
     broadcastConfirm: 'Надіслати цей подарунок усім користувачам?', broadcastDone: 'Надіслано всім користувачам', giftChatTitle: 'Надіслати подарунок',
     photoGone: 'Фото вже не доступне', storyAddPhoto: 'Додати фото до історії?', storyDelete: 'Видалити історію',
     storyDeleteConfirm: 'Видалити цю історію для всіх?', storyDeleted: 'Історію видалено',
-    fileTooBig: 'Файл завеликий (максимум 15 МБ)', uploadFailed: 'Не вдалося надіслати файл',
+    fileTooBig: 'Файл завеликий (максимум 500 МБ для будь-якого файлу)', uploadFailed: 'Не вдалося надіслати файл',
     micDenied: 'Дозвольте доступ до мікрофона, щоб надсилати голосові', badFile: 'Цей тип файлу не підтримується'
   },
   ru: {
@@ -579,7 +579,7 @@ const I18N = {
     broadcastConfirm: 'Отправить этот подарок всем пользователям?', broadcastDone: 'Отправлено всем пользователям', giftChatTitle: 'Отправить подарок',
     photoGone: 'Фото уже недоступно', storyAddPhoto: 'Добавить фото к истории?', storyDelete: 'Удалить историю',
     storyDeleteConfirm: 'Удалить эту историю для всех?', storyDeleted: 'История удалена',
-    fileTooBig: 'Файл слишком большой (максимум 15 МБ)', uploadFailed: 'Не удалось отправить файл',
+    fileTooBig: 'Файл слишком большой (максимум 500 МБ для любого файла)', uploadFailed: 'Не удалось отправить файл',
     micDenied: 'Разрешите доступ к микрофону, чтобы отправлять голосовые', badFile: 'Этот тип файла не поддерживается'
   }
 };
@@ -1015,17 +1015,20 @@ function readAsDataURL(blob) {
 
 async function sendMedia(blob) {
   if (!socket?.connected) return toast(t('errNetwork'));
-  if (blob.size > 15 * 1024 * 1024) return toast(t('fileTooBig'));
+  if (blob.size > 500 * 1024 * 1024) return toast(t('fileTooBig'));
   const mime = (blob.type || 'application/octet-stream').split(';')[0].toLowerCase();
-  const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : 'file';
-  let data;
-  try { data = await readAsDataURL(blob); }
-  catch { return toast(t('uploadFailed')); }
+  const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
   let res;
   try {
-    res = await (await fetch('/api/upload', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: localStorage.getItem('gigi_token'), data })
+    // One HTTP request with the original binary file; no chunk splitting or base64 expansion in the browser.
+    res = await (await fetch('/api/upload-binary', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'X-Gigi-Token': localStorage.getItem('gigi_token') || '',
+        'X-File-Mime': mime || 'application/octet-stream'
+      },
+      body: blob
     })).json();
   } catch { return toast(t('uploadFailed')); }
   if (!res?.ok) {
