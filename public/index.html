@@ -617,9 +617,56 @@ let writesStopped = false;   // true while the admin has stopped all writing
 let replyTarget = null, editTarget = null;
 let chatFolders = JSON.parse(localStorage.getItem('gigi_folders') || '{}');
 let mutedChats = new Set(JSON.parse(localStorage.getItem('gigi_muted') || '[]'));
+let offlineOutbox = (() => { try { const q = JSON.parse(localStorage.getItem('gigi_outbox') || '[]'); return Array.isArray(q) ? q.slice(-100) : []; } catch { return []; } })();
+let flushingOutbox = false;
+function saveOutbox() { try { localStorage.setItem('gigi_outbox', JSON.stringify(offlineOutbox.slice(-100))); } catch {} }
+function queueOfflineText(to, text, groupId = null) {
+  offlineOutbox.push({ to, text, groupId, created: Date.now() });
+  offlineOutbox = offlineOutbox.slice(-100);
+  saveOutbox();
+  toast('Немає зв’язку. Повідомлення збережено й буде надіслано після відновлення мережі.');
+}
+function flushOfflineOutbox() {
+  if (flushingOutbox || !socket?.connected || !me || !offlineOutbox.length) return;
+  flushingOutbox = true;
+  const sendNext = () => {
+    if (!socket?.connected || !offlineOutbox.length) { flushingOutbox = false; saveOutbox(); return; }
+    const item = offlineOutbox[0];
+    const event = item.groupId ? 'group_send' : 'message';
+    const payload = item.groupId ? { id: item.groupId, text: item.text, kind: 'text' } : { to: item.to, text: item.text };
+    let settled = false;
+    const timer = setTimeout(() => { if (!settled) { settled = true; flushingOutbox = false; } }, 12000);
+    socket.emit(event, payload, res => {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      if (!res?.ok) { offlineOutbox.shift(); saveOutbox(); }
+      else { offlineOutbox.shift(); saveOutbox(); }
+      sendNext();
+    });
+  };
+  sendNext();
+}
 
 const $ = id => document.getElementById(id);
 const enc = encodeURIComponent;
+async function fetchRetry(url, options = {}, attempts = 3) {
+  let last;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 18000);
+      const response = await fetch(url, { ...options, signal: controller.signal, cache: options.method ? options.cache : 'no-store' });
+      clearTimeout(timer);
+      if (!response.ok && response.status >= 500 && i + 1 < attempts) throw new Error('temporary_server_error');
+      return response;
+    } catch (e) {
+      last = e;
+      if (i + 1 < attempts) await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)));
+    }
+  }
+  throw last || new Error('network_error');
+}
+
 
 // Shows any unexpected error at the bottom of the screen, so it can be reported.
 window.addEventListener('error', e => { try { toast('⚠ ' + (e.message || 'error')); } catch {} });
@@ -723,7 +770,17 @@ function renameLocal(from, to) {
 }
 
 function createSocket() {
-  socket = io();
+  // Mobile networks can briefly drop packets; keep Socket.IO reconnecting patiently.
+  socket = io({
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 700,
+    reconnectionDelayMax: 10000,
+    randomizationFactor: 0.35,
+    timeout: 30000,
+    transports: ['polling', 'websocket'],
+    upgrade: true
+  });
   socket.on('connect', () => {
     setNet(true);
     let payload = null;
@@ -732,6 +789,8 @@ function createSocket() {
     if (payload) socket.emit('login', payload, onLogin);
   });
   socket.on('disconnect', () => setNet(false));
+  socket.on('reconnect_attempt', () => setNet(false));
+  socket.on('connect_error', () => setNet(false));
   socket.on('presence', list => { online = new Set(list); renderList(); renderHeader(); if (active) refreshInfo(active); });
   socket.on('conversation_removed_both', ({ a, b }) => {
     const other = a === me ? b : (b === me ? a : null);
@@ -894,6 +953,7 @@ function onLogin(res) {
     return;
   }
   me = res.nick;
+  setTimeout(flushOfflineOutbox, 250);
   localStorage.setItem('gigi_nick', me);
   if (res.token) localStorage.setItem('gigi_token', res.token);
   // Restore Premium from the server's persistent expiry returned by login.
@@ -1014,7 +1074,7 @@ function onMessage(m) {
 
 async function loadChats() {
   try {
-    const rows = await (await fetch(`/api/chats?me=${enc(me)}`)).json();
+    const rows = await (await fetchRetry(`/api/chats?me=${enc(me)}`, {}, 3)).json();
     for (const r of rows) chats.set(r.nick, { last: r.last, unread: chats.get(r.nick)?.unread || 0 });
     renderList();
   } catch {}
@@ -1038,7 +1098,7 @@ async function openChat(nick) {
   $('app').classList.add('chat-open');
   renderHeader(); renderList(); renderMessages(); renderComposer();
 
-  const rows = await (await fetch(`/api/history?me=${enc(me)}&with=${enc(nick)}`)).json();
+  const rows = await (await fetchRetry(`/api/history?me=${enc(me)}&with=${enc(nick)}`, {}, 3)).json();
   const existing = cache.get(nick) || [];
   const ids = new Set(rows.map(r => r.id));
   cache.set(nick, [...rows, ...existing.filter(m => !ids.has(m.id))]);
@@ -1189,7 +1249,7 @@ $('composer').addEventListener('submit', e => {
   const input = $('input');
   const text = input.value.trim();
   if (!text || (!active && !activeGroup)) return;
-  if (!socket?.connected) return toast(t('errNetwork'));
+  if (!socket?.connected) { queueOfflineText(active, text, activeGroup); input.value = ''; input.style.height = 'auto'; return; }
   const done = res => {
     if (res?.ok) { replyTarget = null; editTarget = null; $('replyBar').hidden = true; return; }
     const key = res?.error === 'read_only' || res?.error === 'forbidden' ? 'channelReadOnly'
@@ -1544,13 +1604,14 @@ function adminDeleteAll() {
   });
 }
 
-$('adminBtn').addEventListener('click', () => {
+$('adminBtn').addEventListener('click', e => {
+  e.preventDefault();
   if (!socket?.connected) return toast(t('errNetwork'));
-  if (adminCode) return openAdminSettings();
-  const code = prompt(t('adminCodePrompt'));
-  if (!code) return;
-  adminCode = code;
-  openAdminSettings();
+  // Always validate the current admin code with the server before showing tools.
+  adminCall('admin_complaints', {}, res => {
+    const count = Array.isArray(res.items) ? res.items.length : 0;
+    openAdminSettingsWithCount(count);
+  });
 });
 
 $('modalClose').addEventListener('click', closeModal);
@@ -2150,8 +2211,10 @@ function openAdminGroups() {
 }
 
 function openAdminSettings() {
-  adminCall('admin_complaints', {}, res => {
-    const count = res.items.length;
+  adminCall('admin_complaints', {}, res => openAdminSettingsWithCount(Array.isArray(res.items) ? res.items.length : 0));
+}
+
+function openAdminSettingsWithCount(count) {
     openModal([
       el('div', { class: 'acc-head' }, t('adminSettingsTitle')),
       el('div', { class: 'pf-actions', style: 'margin-bottom:10px' },
@@ -2207,7 +2270,6 @@ function openAdminSettings() {
         } }, '🗑 Очистити історію всіх чатів'),
       ),
     ]);
-  });
 }
 
 function visualSelector(node) {
@@ -2435,12 +2497,28 @@ function shelfNode(items) {
 }
 
 // Admin actions ask for the admin code once, then remember it while the page is open.
-function adminCall(ev, data, done) {
+function adminCall(ev, data, done, retried = false) {
+  if (!socket?.connected) { toast(t('errNetwork')); return; }
   const code = adminCode || prompt(t('adminCodePrompt'));
   if (!code) return;
+  let settled = false;
+  const timer = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    toast(t('errNetwork'));
+  }, 15000);
   socket.emit(ev, { ...data, code }, res => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
     if (res?.ok) { adminCode = code; if (done) done(res); return; }
-    if (res?.error === 'bad_code') adminCode = null;
+    if (res?.error === 'bad_code') {
+      adminCode = null;
+      if (!retried) {
+        const next = prompt(t('adminCodePrompt'));
+        if (next) { adminCode = next; return adminCall(ev, data, done, true); }
+      }
+    }
     toast(t(res?.error === 'frozen' ? 'accountFrozen' : res?.error === 'bad_code' ? 'badCode' : res?.error === 'no_user' ? 'errNoUser' : 'messageFailed'));
   });
 }
