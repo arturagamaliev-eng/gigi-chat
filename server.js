@@ -164,8 +164,10 @@ CREATE TABLE IF NOT EXISTS stories (
 const EXTRA_SCHEMA = `
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS media TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS user_id BIGSERIAL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS frozen BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone) WHERE phone IS NOT NULL;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen DOUBLE PRECISION;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS status_text TEXT;
@@ -285,14 +287,18 @@ async function authenticate(payload) {
   }
   const nick = typeof payload?.nick === 'string' ? payload.nick.trim() : '';
   const password = typeof payload?.password === 'string' ? payload.password : '';
+  const rawPhone = typeof payload?.phone === 'string' ? payload.phone.trim() : '';
+  const phone = rawPhone ? ('+' + rawPhone.replace(/\D/g, '')) : null;
+  if (rawPhone && (!/^\+?[0-9 ()-]+$/.test(rawPhone) || !/^\+[1-9]\d{6,14}$/.test(phone || ''))) return { ok: false, error: 'invalid_phone' };
   if (!NICK_RE.test(nick) || keyOf(nick) === 'gigi_chat') return { ok: false, error: 'invalid_nick' };
   if (password.length < PASS_MIN || password.length > PASS_MAX) return { ok: false, error: 'invalid_password' };
 
   const user = await findUser(nick);
   if (!user) {
     const { salt, hash } = hashPassword(password);
-    await db.run('INSERT INTO users (nickname, key, pass_salt, pass_hash, created_at) VALUES ($1, $2, $3, $4, $5)',
-      [nick, keyOf(nick), salt, hash, Date.now()]);
+    if (phone && await db.one('SELECT 1 AS x FROM users WHERE phone = $1', [phone])) return { ok: false, error: 'phone_taken' };
+    await db.run('INSERT INTO users (nickname, key, pass_salt, pass_hash, created_at, phone) VALUES ($1, $2, $3, $4, $5, $6)',
+      [nick, keyOf(nick), salt, hash, Date.now(), phone]);
     return createSession(nick);
   }
   if (!checkPassword(password, user.pass_salt, user.pass_hash)) return { ok: false, error: 'nick_taken' };
@@ -769,6 +775,17 @@ io.on('connection', async socket => {
     const rawId = String(payload?.id || '').trim();
     if (!/^\d{1,20}$/.test(rawId)) return ack?.({ ok: false, error: 'invalid_id' });
     const user = await db.one('SELECT nickname, avatar, bio FROM users WHERE user_id = $1', [rawId]);
+    if (!user) return ack?.({ ok: false, error: 'not_found' });
+    ack?.({ ok: true, user: { nick: user.nickname, avatar: user.avatar || null, bio: user.bio || '' } });
+  });
+
+  // Exact phone lookup for signed-in users. Phone numbers are never broadcast or shown in profiles.
+  on('user_lookup_phone', async (payload, ack) => {
+    if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
+    const raw = String(payload?.phone || '').trim();
+    const phone = '+' + raw.replace(/\D/g, '');
+    if (!/^\+?[0-9 ()-]+$/.test(raw) || !/^\+[1-9]\d{6,14}$/.test(phone)) return ack?.({ ok: false, error: 'invalid_phone' });
+    const user = await db.one('SELECT nickname, avatar, bio FROM users WHERE phone = $1', [phone]);
     if (!user) return ack?.({ ok: false, error: 'not_found' });
     ack?.({ ok: true, user: { nick: user.nickname, avatar: user.avatar || null, bio: user.bio || '' } });
   });
