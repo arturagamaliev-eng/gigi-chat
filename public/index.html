@@ -46,7 +46,10 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .avatar.premium-frame::after,.pf-avatar.premium-frame::after{content:"✦";position:absolute;right:-5px;top:-7px;color:#ffd45b;font-size:14px;text-shadow:0 1px 4px #000}
 .emoji-send-effect{position:absolute;z-index:5;pointer-events:none;font-size:30px;animation:emoji-pop 850ms ease-out forwards;filter:drop-shadow(0 2px 5px #0008)}
 @keyframes emoji-pop{0%{opacity:0;transform:translateY(12px) scale(.35) rotate(-15deg)}25%{opacity:1;transform:translateY(-8px) scale(1.35) rotate(8deg)}100%{opacity:0;transform:translateY(-58px) scale(.8) rotate(0)}}
-#messages{background-size:cover;background-position:center;background-repeat:no-repeat}
+#messages{background-size:cover;background-position:center;background-repeat:no-repeat;position:relative;isolation:isolate}
+#messages::before{content:'';position:absolute;inset:0;z-index:0;background-image:var(--chat-bg-image);background-size:cover;background-position:center;background-repeat:no-repeat;filter:blur(var(--chat-bg-blur,0px));transform:scale(1.04);opacity:var(--chat-bg-opacity,1);pointer-events:none}
+#messages{background-image:none!important}
+#messages>*{position:relative;z-index:1}
 .dot{position:absolute;right:0;bottom:0;width:11px;height:11px;border-radius:50%;background:var(--online);border:2px solid var(--panel)}
 .meta{min-width:0;flex:1}
 .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -274,7 +277,7 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
           <div class="name" id="hName"></div>
           <div class="status" id="hStatus"></div>
         </div>
-        <button class="icon" id="chatBgBtn" title="Вибрати фон цього чату">🎨</button><button class="icon" id="chatBgResetBtn" title="Скинути фон">↩</button><input id="chatBgInput" type="file" accept="image/*" hidden><button class="icon" id="giftChatBtn" title="Подарунок">🎁</button>
+        <button class="icon" id="chatBgBtn" title="Вибрати фон цього чату">🎨</button><button class="icon" id="chatBgResetBtn" title="Скинути фон">↩</button><button class="icon" id="chatBgTuneBtn" title="Налаштувати затемнення та розмиття">⚙️</button><input id="chatBgInput" type="file" accept="image/*" hidden><button class="icon" id="giftChatBtn" title="Подарунок">🎁</button>
         <button class="icon" id="moreBtn" aria-label="menu">⋮</button>
       </header>
       <div id="chatMenu" class="menu" hidden>
@@ -1123,9 +1126,27 @@ function chatBackgroundKey() { return 'gigi_chat_bg_' + encodeURIComponent(me ||
 function applyChatBackground() {
   const box = $('messages');
   const url = localStorage.getItem(chatBackgroundKey());
-  box.style.backgroundImage = url ? `linear-gradient(#10182055,#10182055),url("${url}")` : '';
-  box.style.backgroundSize = 'cover'; box.style.backgroundPosition = 'center';
+  const settings = getChatBackgroundSettings();
+  box.style.setProperty('--chat-bg-image', url ? `url("${url}")` : 'none');
+  box.style.setProperty('--chat-bg-opacity', String(1 - settings.dim / 100));
+  box.style.setProperty('--chat-bg-blur', settings.blur + 'px');
 }
+function getChatBackgroundSettings() {
+  try { return { dim: Math.max(0, Math.min(100, Number(JSON.parse(localStorage.getItem(chatBackgroundKey() + '_settings') || '{}').dim ?? 0))), blur: Math.max(0, Math.min(20, Number(JSON.parse(localStorage.getItem(chatBackgroundKey() + '_settings') || '{}').blur ?? 0))) }; }
+  catch { return { dim: 0, blur: 0 }; }
+}
+function openChatBackgroundSettings() {
+  const current = getChatBackgroundSettings();
+  const dim = el('input', { type: 'range', min: '0', max: '100', value: String(current.dim), class: 'field' });
+  const blur = el('input', { type: 'range', min: '0', max: '20', value: String(current.blur), class: 'field' });
+  const dimLabel = el('div', { class: 'sub' }, 'Затемнення: ' + current.dim + '%');
+  const blurLabel = el('div', { class: 'sub' }, 'Розмиття: ' + current.blur + ' px');
+  const update = () => { const v = { dim: Number(dim.value), blur: Number(blur.value) }; localStorage.setItem(chatBackgroundKey() + '_settings', JSON.stringify(v)); applyChatBackground(); dimLabel.textContent = 'Затемнення: ' + v.dim + '%'; blurLabel.textContent = 'Розмиття: ' + v.blur + ' px'; };
+  dim.addEventListener('input', update); blur.addEventListener('input', update);
+  openModal([el('div', { class: 'acc-head' }, '🎨 Налаштування фону цього чату'), dimLabel, dim, blurLabel, blur,
+    el('div', { class: 'pf-actions', style: 'margin-top:12px' }, el('button', { class: 'btn ghost', onclick: () => { dim.value = '0'; blur.value = '0'; update(); } }, 'Скинути ефекти'), el('button', { class: 'btn', onclick: closeModal }, 'Готово'))]);
+}
+
 function emojiOnly(value) {
   const v = String(value || '').trim();
   if (!v || v.length > 24) return false;
@@ -1455,6 +1476,7 @@ function openProfile(nick) {
     const statusLine = el('div', { class: 'pf-status' }, info.statusText || '');
     const actions = el('div', { class: 'pf-actions' });
     if (mine) {
+      if (myPremium) actions.append(el('button', { class: 'btn ghost', onclick: () => { const emoji = prompt('Емодзі біля імені (залиш порожнім, щоб прибрати):', info.profileEmoji || ''); if (emoji === null) return; socket.emit('set_profile_emoji', { emoji }, r => { if (!r?.ok) return toast(r?.error === 'premium_required' ? 'Потрібен Premium' : 'Не вдалося зберегти емодзі'); info.profileEmoji = r.emoji; userInfo.set(nick, info); toast('Емодзі біля імені збережено'); openProfile(nick); renderList(); renderHeader(); }); } }, '😀 Емодзі біля імені'));
       const marketButton = el('button', { class: 'btn', onclick: () => { closeModal(); openMarket(); } }, '🛍 Маркет · ⭐ …');
       socket.emit('gifts_mine', {}, balance => {
         if (balance?.ok) marketButton.textContent = '🛍 Маркет · ⭐ ' + balance.stars;
@@ -1822,6 +1844,8 @@ $('groupsBtn').addEventListener('click', openGroupsModal);
 const displayName = n => (n === 'gigi_chat' ? 'gigi chat' : n);
 const displayNameNode = (n, className = '') => {
   const node = el('span', { class: className }, displayName(n));
+  const profileEmoji = userInfo.get(n)?.profileEmoji;
+  if (profileEmoji) node.append(el('span', { class: 'profile-emoji', title: 'Емодзі профілю' }, ' ' + profileEmoji));
   if (userInfo.get(n)?.premium) node.append(el('span', { class: 'premium-crown', title: 'Premium' }, ' 👑'));
   return node;
 };
@@ -2737,6 +2761,7 @@ $('adminDelBtn').addEventListener('click', e => {
 
 $('back').addEventListener('click', closeChat);
 $('chatBgBtn').addEventListener('click', () => $('chatBgInput').click());
+$('chatBgTuneBtn').addEventListener('click', openChatBackgroundSettings);
 $('chatBgResetBtn').addEventListener('click', () => { localStorage.removeItem(chatBackgroundKey()); applyChatBackground(); toast('Фон чату скинуто'); });
 $('chatBgInput').addEventListener('change', async e => { const file = e.target.files?.[0]; e.target.value = ''; if (!file) return; if (!file.type.startsWith('image/') || file.size > 5*1024*1024) return toast('Оберіть зображення до 5 МБ'); try { const data = await readAsDataURL(file); localStorage.setItem(chatBackgroundKey(), data); applyChatBackground(); toast('Фон цього чату збережено'); } catch { toast('Не вдалося зберегти фон'); } });
 
