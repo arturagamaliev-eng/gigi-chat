@@ -429,7 +429,15 @@ app.get('/media/:id', route(async (req, res) => {
 // ---- Realtime ----
 
 const server = http.createServer(app);
-const io = new Server(server);
+// More tolerant heartbeat/upgrade settings for unstable mobile connections.
+const io = new Server(server, {
+  pingInterval: 25000,
+  pingTimeout: 60000,
+  upgradeTimeout: 30000,
+  connectTimeout: 45000,
+  maxHttpBufferSize: 20 * 1024 * 1024,
+  transports: ['polling', 'websocket']
+});
 
 const online = new Map();      // nickname -> Set of socket ids
 const socketNick = new Map();  // socket id -> nickname
