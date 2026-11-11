@@ -891,6 +891,8 @@ function onLogin(res) {
   me = res.nick;
   localStorage.setItem('gigi_nick', me);
   if (res.token) localStorage.setItem('gigi_token', res.token);
+  // Restore Premium from the server's persistent expiry returned by login.
+  myPremium = Number(res.premium_until || 0) > Date.now();
   loadMe();
   showApp();
 }
@@ -1828,7 +1830,13 @@ $('giftChatBtn').addEventListener('click', () => { if (active) openSendGiftToCha
 
 function loadMe() {
   if (!socket?.connected) return;
-  socket.emit('me_info', {}, r => { if (r?.ok) { myPremium = r.premium_until > Date.now(); typingPreviewOptIn = Boolean(r.typing_preview_optin); typingPreviewShare = r.typing_preview_share !== false; if (r.premium_prices) premiumPrices = r.premium_prices; } });
+  socket.emit('me_info', {}, r => {
+    if (!r?.ok) return;
+    myPremium = Number(r.premium_until || 0) > Date.now();
+    typingPreviewOptIn = Boolean(r.typing_preview_optin);
+    typingPreviewShare = r.typing_preview_share !== false;
+    if (r.premium_prices) premiumPrices = r.premium_prices;
+  });
 }
 
 function askHandle() {
@@ -1929,7 +1937,7 @@ function blockUser(nick) {
 function buyPremium(months) {
   socket.emit('premium_buy', { months }, res => {
     if (!res?.ok) return toast(t(res?.error === 'no_stars' ? 'noStars' : 'messageFailed'));
-    myPremium = true;
+    myPremium = Number(res.premium_until || 0) > Date.now();
     toast(t('premiumBought'));
     openSettings();
   });
