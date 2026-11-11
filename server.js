@@ -422,8 +422,11 @@ app.post('/api/upload-binary', express.raw({ type: '*/*', limit: '525mb' }), rou
   const id = crypto.randomBytes(16).toString('hex');
   // The existing media table stores base64 text; keep its format so old media URLs remain compatible.
   // Store new uploads as raw BYTEA: no base64 expansion or costly conversion.
-  await db.run('INSERT INTO media (id, data_bin, mime, expires_at) VALUES ($1, $2, $3, $4)',
-    [id, req.body, mime, Date.now() + CHAT_MEDIA_MS]);
+  // Older installations have media.data declared NOT NULL. Keep it as an empty
+  // legacy value while storing the actual bytes in BYTEA, so the insert works
+  // both before and after the schema migration.
+  await db.run('INSERT INTO media (id, data, data_bin, mime, expires_at) VALUES ($1, $2, $3, $4, $5)',
+    [id, '', req.body, mime, Date.now() + CHAT_MEDIA_MS]);
   const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
   res.json({ ok: true, url: '/media/' + id, kind, mime });
 }));
