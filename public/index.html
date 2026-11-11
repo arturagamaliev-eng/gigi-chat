@@ -161,7 +161,7 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
 .menu-item:hover{background:var(--panel)}
 .msg img.media,.msg video.media{display:block;max-width:100%;max-height:320px;border-radius:10px;cursor:pointer}
 .msg audio.media{display:block;width:240px;max-width:100%}
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:9;max-width:90vw}
+.toast{position:fixed;left:50%;top:50%;bottom:auto;transform:translate(-50%,-50%);background:var(--panel2);color:var(--text);border:1px solid var(--line);padding:13px 18px;border-radius:14px;box-shadow:0 10px 34px rgba(0,0,0,.55);z-index:10000;max-width:min(90vw,440px);width:max-content;text-align:center;font-size:15px;font-weight:650;line-height:1.4;pointer-events:none}
 @media (max-width:760px){
   .app{grid-template-columns:1fr}
   .sidebar{border-right:0}
@@ -2064,9 +2064,13 @@ function openSettings() {
       el('button', { class: 'btn ghost', onclick: () => unblockUser(n) }, t('unblockBtn'))));
     openModal([
       el('div', { class: 'acc-head' }, t('settingsTitle')),
+      el('button', { class: 'btn danger', style: 'width:100%;margin:8px 0 14px', onclick: () => { if (!confirm('Вийти з цього акаунта на цьому пристрої?')) return; closeModal(); forget(); location.reload(); } }, '🚪 Вийти з акаунта'),
       el('div', { class: 'sub' }, t('themeLabel')),
       el('div', { class: 'pf-actions', style: 'margin:8px 0 16px;flex-wrap:wrap' },
         ...[['dark','🌑 Темна'],['light','☀️ Світла'],['purple','💜 Фіолетова'],['ocean','🌊 Океан'],['rose','🌸 Рожева']].map(([key,label]) => el('button', { class: 'btn' + (theme === key ? '' : ' ghost'), onclick: () => setTheme(key) }, label))),
+      el('div', { class: 'acc-head' }, '📱 Номер телефону для пошуку'),
+      el('div', { class: 'sub' }, 'Додай номер, щоб друзі могли знайти твій акаунт. SMS не надсилається, номер не показується в профілі.'),
+      (() => { const phoneField = el('input', { class:'field', type:'tel', inputmode:'tel', placeholder:'+380XXXXXXXXX', style:'width:100%;margin:8px 0' }); phoneField.value = ''; return el('div', { style:'margin-bottom:16px' }, phoneField, el('button', { class:'btn ghost', style:'width:100%', onclick: () => { const phone = phoneField.value.trim(); socket.emit('set_my_phone', { phone }, r => { if (!r?.ok) return toast(r?.error === 'phone_taken' ? 'Цей номер уже прив’язаний до іншого акаунта' : r?.error === 'invalid_phone' ? 'Введіть номер у форматі +380XXXXXXXXX' : 'Не вдалося зберегти номер'); toast(phone ? 'Номер додано для пошуку' : 'Номер видалено з акаунта'); openSettings(); }); } }, 'Зберегти номер')); })(),
       el('div', { class: 'acc-head' }, '🔒 Безпека акаунта'),
       el('button', { class: 'btn ghost', style: 'width:100%;margin:8px 0 16px', onclick: changeAccountPassword }, '🔑 Змінити пароль акаунта'),
       el('div', { class: 'acc-head' }, '👤 Налаштування профілю'),
@@ -2100,6 +2104,8 @@ function openSettings() {
       } }, (typingPreviewOptIn ? '👁️ Бачити набраний текст друзів: УВІМКНЕНО' : '🙈 Бачити набраний текст друзів: ВИМКНЕНО'))] : []),
       el('div', { class: 'acc-head' }, t('blockedTitle')),
       ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noBlocked'))]),
+      el('div', { class:'acc-head', style:'margin-top:18px' }, '🚪 Вихід з акаунта'),
+      el('button', { class:'btn danger', style:'width:100%;margin-top:8px', onclick: () => { if (!confirm('Вийти з цього акаунта на цьому пристрої?')) return; closeModal(); forget(); location.reload(); } }, 'Вийти з акаунта'),
     ]);
   });
 }
@@ -2156,12 +2162,22 @@ function searchUserById() {
 $('searchIdBtn').addEventListener('click', searchUserById);
 
 $('searchMsgBtn').addEventListener('click', () => {
-  const phone = prompt('Введіть номер телефону людини (наприклад, +380XXXXXXXXX):');
-  if (phone === null || !phone.trim()) return;
-  socket.emit('user_lookup_phone', { phone }, res => {
-    if (!res?.ok) return toast(res?.error === 'not_found' ? 'За цим номером нікого не знайдено' : res?.error === 'invalid_phone' ? 'Перевірте номер телефону' : 'Не вдалося виконати пошук');
-    openProfile(res.user.nick);
-  });
+  const phoneInput = el('input', { class:'field', type:'tel', inputmode:'tel', placeholder:'+380XXXXXXXXX', autocomplete:'tel', style:'width:100%;margin:10px 0' });
+  const hint = el('div', { class:'hint' }, 'Введіть номер телефону. Можна вказати +380..., 380... або український номер 0XXXXXXXXX. Знайти можна акаунт, до якого власник прив’язав цей номер.');
+  const searchBtn = el('button', { class:'btn', style:'width:100%', onclick: () => {
+    const phone = phoneInput.value.trim();
+    if (!phone) return toast('Введіть номер телефону');
+    if (!socket?.connected) return toast(t('errNetwork'));
+    searchBtn.disabled = true;
+    socket.emit('user_lookup_phone', { phone }, res => {
+      searchBtn.disabled = false;
+      if (!res?.ok) { hint.textContent = res?.error === 'not_found' ? 'Номер не знайдено. Переконайтеся, що людина додала його в налаштуваннях.' : res?.error === 'invalid_phone' ? 'Перевірте номер. Приклад: +380XXXXXXXXX або 0XXXXXXXXX.' : 'Не вдалося виконати пошук. Спробуйте ще раз.'; return; }
+      closeModal(); openProfile(res.user.nick);
+    });
+  } }, 'Знайти');
+  phoneInput.addEventListener('keydown', e => { if (e.key === 'Enter') searchBtn.click(); });
+  openModal([el('div',{class:'acc-head'},'📱 Пошук за номером телефону'),phoneInput,hint,searchBtn]);
+  setTimeout(() => phoneInput.focus(), 80);
 });
 
 $('settingsBtn').addEventListener('click', openSettings);
@@ -2894,9 +2910,14 @@ function openHelpCenter() {
       'Виберіть подарунок і підтвердьте надсилання, якщо система попросить.',
       'Якщо подарунок не надсилається, перевірте баланс зірок і з’єднання з інтернетом.'
     ]},
+    { id:'phone-search', label:'📱 Пошук за номером', title:'Як додати номер і знайти людину', body:[
+      'Щоб інші могли знайти вас за номером, відкрийте «Налаштування» та знайдіть розділ «Номер телефону для пошуку».',
+      'Введіть номер у міжнародному форматі, наприклад +380XXXXXXXXX, і натисніть «Зберегти номер». Це необов’язково; SMS не надсилається.',
+      'Щоб знайти друга, натисніть 📱 угорі, введіть його номер і натисніть «Знайти». Пошук спрацює, лише якщо друг сам додав цей номер до акаунта. Номер не показується у профілі.'
+    ]},
     { id:'settings', label:'⚙️ Налаштування', title:'Налаштування та приватність', body:[
       'Відкрийте вкладку «Налаштування» внизу екрана.',
-      'Там можна змінювати доступні параметри акаунта та вигляд застосунку.',
+      'Там можна змінювати доступні параметри акаунта та вигляд застосунку, додати номер для пошуку або вийти з акаунта.',
       'Не повідомляйте нікому пароль або код адміністратора.'
     ]},
     { id:'connection', label:'📶 Поганий інтернет', title:'Якщо слабкий інтернет', body:[
