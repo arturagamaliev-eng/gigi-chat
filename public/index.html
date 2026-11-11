@@ -2763,7 +2763,49 @@ $('back').addEventListener('click', closeChat);
 $('chatBgBtn').addEventListener('click', () => $('chatBgInput').click());
 $('chatBgTuneBtn').addEventListener('click', openChatBackgroundSettings);
 $('chatBgResetBtn').addEventListener('click', () => { localStorage.removeItem(chatBackgroundKey()); applyChatBackground(); toast('Фон чату скинуто'); });
-$('chatBgInput').addEventListener('change', async e => { const file = e.target.files?.[0]; e.target.value = ''; if (!file) return; if (!file.type.startsWith('image/') || file.size > 5*1024*1024) return toast('Оберіть зображення до 5 МБ'); try { const data = await readAsDataURL(file); localStorage.setItem(chatBackgroundKey(), data); applyChatBackground(); toast('Фон цього чату збережено'); } catch { toast('Не вдалося зберегти фон'); } });
+async function compressChatBackground(file) {
+  let source, revokeUrl = null;
+  try {
+    if (typeof createImageBitmap === 'function') {
+      source = await createImageBitmap(file);
+    } else {
+      const url = URL.createObjectURL(file); revokeUrl = url;
+      source = await new Promise((resolve, reject) => {
+        const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = url;
+      });
+    }
+    const maxSide = 1400;
+    const scale = Math.min(1, maxSide / Math.max(source.width, source.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(source.width * scale));
+    canvas.height = Math.max(1, Math.round(source.height * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('canvas_unavailable');
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+    let data = canvas.toDataURL('image/jpeg', 0.78);
+    if (data.length > 3_500_000) data = canvas.toDataURL('image/jpeg', 0.62);
+    if (data.length > 4_500_000) throw new Error('image_too_large_after_compression');
+    return data;
+  } finally {
+    if (source && typeof source.close === 'function') source.close();
+    if (revokeUrl) URL.revokeObjectURL(revokeUrl);
+  }
+}
+$('chatBgInput').addEventListener('change', async e => {
+  const file = e.target.files?.[0]; e.target.value = ''; if (!file) return;
+  if (!file.type.startsWith('image/')) return toast('Оберіть файл-зображення');
+  try {
+    toast('Обробляю фото…');
+    const data = await compressChatBackground(file);
+    localStorage.setItem(chatBackgroundKey(), data);
+    applyChatBackground();
+    toast('Фото встановлено як фон цього чату');
+  } catch (err) {
+    console.error('Chat background save failed:', err);
+    toast('Не вдалося зберегти фото. Спробуй інше зображення');
+  }
+});
 
 
 $('renameBtn').addEventListener('click', () => {
