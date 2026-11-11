@@ -89,6 +89,16 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 :root[data-theme="ocean"]{--bg:#071b2b;--panel:#0d293d;--panel2:#15384e;--line:#24516a;--out:#174766;--in:#0e3047;--accent:#42c6e8;--text:#e8f8ff;--muted:#9cc2d2;--online:#52d69a;--danger:#ff7777}
 :root[data-theme="rose"]{--bg:#28151e;--panel:#38202c;--panel2:#4a2a39;--line:#664052;--out:#71374f;--in:#402532;--accent:#ff8eb7;--text:#fff0f5;--muted:#d6a8b9;--online:#52d69a;--danger:#ff7777}
 .modal-box{max-height:85vh;overflow-y:auto;max-width:460px;font-size:15px;line-height:1.4}
+.help-shell{width:min(760px,88vw);min-height: min(520px,72vh)}
+.help-layout{display:grid;grid-template-columns: minmax(112px, 175px) 1fr;gap:14px;min-height:390px}
+.help-tabs{display:flex;flex-direction:column;gap:7px;border-right:1px solid var(--line);padding-right:10px}
+.help-tab{border:0;border-radius:10px;padding:10px 8px;text-align:left;background:var(--panel2);color:var(--text);font:inherit;cursor:pointer}
+.help-tab.active{background:var(--accent);color:#fff}
+.help-content{min-width:0;overflow-wrap:anywhere}
+.help-content h3{margin:2px 0 12px;font-size:19px}
+.help-content p{margin:0 0 12px;line-height:1.5}
+.help-content .help-step{padding:10px 12px;margin:8px 0;border-radius:10px;background:var(--bg)}
+@media(max-width:560px){.help-shell{width:92vw;padding:16px}.help-layout{grid-template-columns:104px minmax(0,1fr);gap:10px;min-height:55vh}.help-tabs{padding-right:7px}.help-tab{font-size:12px;padding:9px 6px}.help-content{font-size:14px}}
 .pf-head{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-bottom:18px}
 .pf-avatar{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;font-size:36px;font-weight:700;color:#fff;position:relative;overflow:hidden}
 .pf-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -226,7 +236,7 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
   <aside class="sidebar">
     <div class="side-top">
       <div class="row">
-        <button class="icon" id="myProfileBtn" aria-label="profile" title="Профіль">👤</button>
+        <button class="icon" id="myProfileBtn" aria-label="Довідка" title="Довідка та відповіді">⁉️</button>
         <div class="brand">gigi chat</div>
         <button class="icon" id="searchIdBtn" title="Пошук користувача за ID" aria-label="Пошук за ID">🆔</button>
         <button class="icon" id="searchMsgBtn" data-i18n-title="searchMsgTitle">🔎</button>
@@ -2746,7 +2756,67 @@ $('inviteBtn').addEventListener('click', () => {
     else if (res?.error === 'already') toast(t('inviteAlready'));
   });
 });
-$('myProfileBtn').addEventListener('click', () => { if (me) openProfile(me); });
+function openHelpCenter() {
+  const topics = [
+    { id:'friend-id', label:'🆔 Як дізнатись ID друга', title:'Як дізнатись ID друга', body:[
+      'Попросіть друга відкрити свій профіль у Gigi Chat.',
+      'Під його нікнеймом буде написано ID — це числовий номер акаунта.',
+      'Потім перейдіть у розділ «Чати», введіть цей номер у поле пошуку друзів за ID та знайдіть потрібну людину.'
+    ]},
+    { id:'find-chat', label:'🔎 Як знайти друга', title:'Як знайти друга за ID', body:[
+      'Відкрийте розділ «Чати».',
+      'У полі «Пошук друзів за ID» введіть точний ID користувача.',
+      'Перевірте нікнейм у результаті та відкрийте профіль або чат.'
+    ]},
+    { id:'send-message', label:'💬 Як написати', title:'Як надіслати повідомлення', body:[
+      'Знайдіть людину та відкрийте її чат.',
+      'Натисніть на поле введення внизу, напишіть текст і натисніть «Надіслати».',
+      'Щоб відповісти на конкретне повідомлення, скористайтеся меню цього повідомлення.'
+    ]},
+    { id:'profile', label:'👤 Профіль та ID', title:'Профіль та власний ID', body:[
+      'Відкрийте свій профіль, натиснувши на своє ім’я або аватар.',
+      'Під нікнеймом відображається ваш ID. Поділіться ним із другом, якщо він хоче вас знайти.',
+      'У профілі також можна переглянути інформацію про себе та доступні елементи оформлення.'
+    ]},
+    { id:'background', label:'🎨 Фон чату', title:'Як змінити фон розмови', body:[
+      'Відкрийте потрібну розмову.',
+      'Натисніть кнопку 🎨 у верхній частині чату та виберіть зображення на телефоні.',
+      'Фон встановлюється окремо для кожної розмови. Кнопка ↩ скидає фон цього чату.'
+    ]},
+    { id:'premium', label:'👑 Premium', title:'Premium-функції', body:[
+      'Premium відкриває додаткові можливості оформлення, зокрема рамку аватарки, якщо вона доступна у вашій версії.',
+      'Термін Premium залежить від придбаного періоду. Після повторного входу статус має відновлюватися з сервера.'
+    ]},
+    { id:'gifts', label:'🎁 Подарунки', title:'Як надіслати подарунок', body:[
+      'Відкрийте чат із другом та натисніть 🎁 у верхній частині розмови.',
+      'Виберіть подарунок і підтвердьте надсилання, якщо система попросить.',
+      'Якщо подарунок не надсилається, перевірте баланс зірок і з’єднання з інтернетом.'
+    ]},
+    { id:'settings', label:'⚙️ Налаштування', title:'Налаштування та приватність', body:[
+      'Відкрийте вкладку «Налаштування» внизу екрана.',
+      'Там можна змінювати доступні параметри акаунта та вигляд застосунку.',
+      'Не повідомляйте нікому пароль або код адміністратора.'
+    ]},
+    { id:'connection', label:'📶 Поганий інтернет', title:'Якщо слабкий інтернет', body:[
+      'Зачекайте кілька секунд: застосунок може автоматично перепід’єднатися.',
+      'Якщо повідомлення не надсилається, перевірте інтернет і спробуйте ще раз.',
+      'Під час дуже слабкого зв’язку фото, відео та файли можуть завантажуватися довше.'
+    ]}
+  ];
+  const tabs = el('div', { class:'help-tabs', role:'tablist', 'aria-label':'Розділи довідки' });
+  const content = el('div', { class:'help-content', id:'helpContent' });
+  const renderTopic = id => {
+    const topic = topics.find(x => x.id === id) || topics[0];
+    tabs.querySelectorAll('.help-tab').forEach(b => b.classList.toggle('active', b.dataset.topic === topic.id));
+    content.replaceChildren(el('h3', {}, topic.title));
+    topic.body.forEach((line, i) => content.append(el('div', { class:'help-step' }, `${i+1}. ${line}`)));
+  };
+  topics.forEach((topic, i) => tabs.append(el('button', { type:'button', class:'help-tab' + (i===0?' active':''), 'data-topic':topic.id, onclick:() => renderTopic(topic.id) }, topic.label)));
+  renderTopic(topics[0].id);
+  const shell = el('div', { class:'help-shell' }, el('h2', {}, '⁉️ Довідка Gigi Chat'), el('p', {}, 'Виберіть тему зліва, щоб дізнатися, як користуватися застосунком.'), el('div', { class:'help-layout' }, tabs, content));
+  openModal([shell]);
+}
+$('myProfileBtn').addEventListener('click', openHelpCenter);
 
 function applyAvatar(node, nick) {
   node.replaceChildren(nick[0].toUpperCase());
