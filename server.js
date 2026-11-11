@@ -495,6 +495,11 @@ io.on('connection', async socket => {
     if (!online.has(res.nick)) online.set(res.nick, new Set());
     online.get(res.nick).add(socket.id);
     socket.join('u:' + res.nick);
+    // Return the persisted Premium expiry as part of login, so the client
+    // restores the entitlement immediately after every fresh login/reconnect.
+    const premiumRow = await db.one('SELECT premium_until FROM users WHERE nickname = $1', [res.nick]);
+    res.premium_until = Number(premiumRow?.premium_until || 0);
+    res.premium_active = res.premium_until > Date.now();
     broadcastPresence();
     socket.emit('stories', await recentStories(res.nick));
     ack?.(res);
@@ -1330,8 +1335,11 @@ io.on('connection', async socket => {
       await tx(async c => {
         const pay = await c.query('UPDATE users SET stars = stars - $1 WHERE nickname = $2 AND stars >= $1', [cost, me]);
         if (pay.rowCount === 0) throw Object.assign(new Error('no_stars'), { code: 'no_stars' });
-        const u = await c.query('SELECT premium_until FROM users WHERE nickname = $1', [me]);
-        const base = Math.max(Date.now(), u.rows[0].premium_until || 0);
+        const u = await c.query('SELECT premium_until FROM users WHERE nickname = $1 FOR UPDATE', [me]);
+        const previousExpiry = Number(u.rows[0]?.premium_until || 0);
+        const base = Math.max(Date.now(), previousExpiry);
+        // One month = 30 days; one year = 365 days. Buying again extends
+        // an active subscription instead of replacing or resetting its time.
         until = base + (months === 12 ? 365 : 30) * DAY_MS;
         await c.query('UPDATE users SET premium_until = $1 WHERE nickname = $2', [until, me]);
       });
