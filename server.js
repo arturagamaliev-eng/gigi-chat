@@ -151,13 +151,6 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS idx_msg_from ON messages(from_nick, id);
 CREATE INDEX IF NOT EXISTS idx_msg_to ON messages(to_nick, id);
-CREATE TABLE IF NOT EXISTS friendship_streaks (
-  user_a TEXT NOT NULL,
-  user_b TEXT NOT NULL,
-  streak INTEGER NOT NULL DEFAULT 0,
-  last_mutual_day TEXT NOT NULL,
-  PRIMARY KEY (user_a, user_b)
-);
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS reply_to INTEGER;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS edited_at DOUBLE PRECISION;
 CREATE TABLE IF NOT EXISTS admin_audit (id SERIAL PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, target TEXT, details TEXT, created_at DOUBLE PRECISION NOT NULL);
@@ -267,51 +260,6 @@ const findUser = nick => db.one('SELECT nickname, key, pass_salt, pass_hash FROM
 const findUserById = async value => { const id = Number(value); if (!Number.isSafeInteger(id) || id < 1) return null; return db.one('SELECT nickname, user_id FROM users WHERE user_id = $1', [id]); };
 const isFrozen = async nick => Boolean(await db.one('SELECT 1 AS x FROM users WHERE nickname = $1 AND frozen = TRUE', [nick]));
 const toMsg = r => ({ id: r.id, from: r.from_nick, to: r.to_nick, text: r.text, created_at: r.created_at, read_at: r.read_at ?? null, kind: r.kind || 'text', reply_to: r.reply_to ?? null, edited_at: r.edited_at ?? null });
-
-function utcDay(ts = Date.now()) {
-  return new Date(ts).toISOString().slice(0, 10);
-}
-function dayNumber(day) {
-  return Math.floor(Date.parse(day + 'T00:00:00Z') / DAY_MS);
-}
-function pairOf(a, b) {
-  return [a, b].sort((x, y) => x.localeCompare(y));
-}
-async function getFriendshipStreak(a, b) {
-  const [userA, userB] = pairOf(a, b);
-  const row = await db.one(
-    'SELECT streak, last_mutual_day FROM friendship_streaks WHERE user_a = $1 AND user_b = $2',
-    [userA, userB]);
-  if (!row) return null;
-  // Two complete days without mutual conversation end the streak.
-  if (dayNumber(utcDay()) - dayNumber(row.last_mutual_day) >= 3) return null;
-  return { count: Number(row.streak), last_day: row.last_mutual_day };
-}
-async function updateFriendshipStreak(from, to, now) {
-  const today = utcDay(now);
-  const start = Date.parse(today + 'T00:00:00Z');
-  const end = start + DAY_MS;
-  const mutual = await db.one(
-    `SELECT 1 AS yes FROM messages
-     WHERE from_nick = $1 AND to_nick = $2 AND created_at >= $3 AND created_at < $4
-     LIMIT 1`,
-    [to, from, start, end]);
-  if (!mutual) return null;
-  const [userA, userB] = pairOf(from, to);
-  const old = await db.one(
-    'SELECT streak, last_mutual_day FROM friendship_streaks WHERE user_a = $1 AND user_b = $2',
-    [userA, userB]);
-  if (old?.last_mutual_day === today) return { count: Number(old.streak), last_day: today };
-  const nextCount = old && dayNumber(today) - dayNumber(old.last_mutual_day) < 3
-    ? Number(old.streak) + 1 : 1;
-  await db.run(
-    `INSERT INTO friendship_streaks (user_a, user_b, streak, last_mutual_day)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (user_a, user_b) DO UPDATE
-     SET streak = EXCLUDED.streak, last_mutual_day = EXCLUDED.last_mutual_day`,
-    [userA, userB, nextCount, today]);
-  return { count: nextCount, last_day: today };
-}
 const auditAdmin = (actor, action, target, details='') => db.run('INSERT INTO admin_audit (actor, action, target, details, created_at) VALUES ($1,$2,$3,$4,$5)', [actor, action, target || null, details, Date.now()]);
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
@@ -435,7 +383,7 @@ app.get('/api/chats', route(async (req, res) => {
   const out = [];
   for (const r of rows) {
     const last = await db.one('SELECT * FROM messages WHERE id = $1', [r.last_id]);
-    out.push({ nick: r.partner, last: toMsg(last), streak: await getFriendshipStreak(me, r.partner) });
+    out.push({ nick: r.partner, last: toMsg(last) });
   }
   res.json(out);
 }));
@@ -700,8 +648,6 @@ io.on('connection', async socket => {
     if (MEDIA_KINDS.has(kind)) await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + CHAT_MEDIA_MS, mediaIdOf(text)]);
     const msg = { id: row.id, from: me, to, text, created_at: now, read_at: null, kind, reply_to: Number.isInteger(Number(payload?.reply_to)) ? Number(payload.reply_to) : null, edited_at: null };
     io.to('u:' + to).to('u:' + me).emit('message', msg);
-    const streak = await updateFriendshipStreak(me, to, now);
-    if (streak) io.to('u:' + to).to('u:' + me).emit('friendship_streak', { a: me, b: to, ...streak });
     ack?.({ ok: true, msg });
   });
 
