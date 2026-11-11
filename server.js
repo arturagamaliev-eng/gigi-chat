@@ -1065,10 +1065,13 @@ io.on('connection', async socket => {
     ack?.({ ok: true, id: row.id });
   });
 
-  // Public list of every group and channel; "joined" tells whether this user is a member.
+  // Public list/search of groups and channels. People are searched separately by numeric ID.
   on('group_list', async (payload, ack) => {
     const me = socketNick.get(socket.id) || '';
-    const rows = await db.all('SELECT id, kind, title, owner, avatar, created_at FROM chats ORDER BY id DESC LIMIT 200');
+    const q = typeof payload?.q === 'string' ? payload.q.trim().slice(0, 80) : '';
+    const rows = q
+      ? await db.all('SELECT id, kind, title, owner, avatar, created_at FROM chats WHERE title ILIKE $1 ORDER BY title ASC LIMIT 200', ['%' + q.replace(/[\\%_]/g, '\\$&') + '%'])
+      : await db.all('SELECT id, kind, title, owner, avatar, created_at FROM chats ORDER BY id DESC LIMIT 200');
     const out = [];
     for (const c of rows) out.push(await chatSummary(c, me));
     ack?.({ ok: true, chats: out });
