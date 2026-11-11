@@ -1020,16 +1020,31 @@ async function sendMedia(blob) {
   const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
   let res;
   try {
-    // One HTTP request with the original binary file; no chunk splitting or base64 expansion in the browser.
-    res = await (await fetch('/api/upload-binary', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'X-Gigi-Token': localStorage.getItem('gigi_token') || '',
-        'X-File-Mime': mime || 'application/octet-stream'
-      },
-      body: blob
-    })).json();
+    // One request, with visible upload progress; no chunk splitting or browser-side base64 conversion.
+    res = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/upload-binary');
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.setRequestHeader('X-Gigi-Token', localStorage.getItem('gigi_token') || '');
+      xhr.setRequestHeader('X-File-Mime', mime || 'application/octet-stream');
+      let lastShown = -1;
+      xhr.upload.onprogress = e => {
+        if (!e.lengthComputable) return;
+        const percent = Math.floor(e.loaded / e.total * 100);
+        if (percent !== lastShown && (percent === 100 || percent - lastShown >= 5)) {
+          lastShown = percent;
+          toast('Надсилання файлу: ' + percent + '%');
+        }
+      };
+      xhr.onload = () => {
+        try { resolve(JSON.parse(xhr.responseText || '{}')); }
+        catch { reject(new Error('bad_response')); }
+      };
+      xhr.onerror = () => reject(new Error('network'));
+      xhr.ontimeout = () => reject(new Error('timeout'));
+      xhr.timeout = 15 * 60 * 1000;
+      xhr.send(blob);
+    });
   } catch { return toast(t('uploadFailed')); }
   if (!res?.ok) {
     const keys = { too_big: 'fileTooBig', bad_type: 'badFile' };
