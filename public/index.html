@@ -50,6 +50,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .dot{position:absolute;right:0;bottom:0;width:11px;height:11px;border-radius:50%;background:var(--online);border:2px solid var(--panel)}
 .meta{min-width:0;flex:1}
 .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.streak-pill{display:inline-flex;align-items:center;gap:3px;margin-left:7px;padding:1px 6px;border-radius:999px;background:#e66b2522;color:#ff9b45;font-size:12px;font-weight:750;vertical-align:1px;white-space:nowrap}
 .preview{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .badge{background:var(--accent);color:#0b1520;border-radius:999px;font-size:12px;font-weight:700;padding:1px 7px;min-width:20px;text-align:center}
 .empty{color:var(--muted);text-align:center;padding:28px 16px;line-height:1.5}
@@ -300,7 +301,7 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
       <form class="composer" id="composer">
         <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn"></button>
         <button type="button" class="icon" id="pollBtn" title="Створити опитування" hidden>📊</button>
-        <input id="fileInput" type="file" hidden>
+        <input id="fileInput" type="file" accept="image/*,video/mp4,video/webm,video/quicktime,.pdf,.zip,.doc,.docx,.xls,.xlsx,.csv,.txt" hidden>
         <textarea id="input" rows="1" data-i18n-ph="typeMessage"></textarea>
         <button class="btn" data-i18n="send"></button>
       </form>
@@ -423,7 +424,7 @@ const I18N = {
     broadcastConfirm: 'Send this gift to every user?', broadcastDone: 'Sent to all users', giftChatTitle: 'Send a gift',
     photoGone: 'Photo expired', storyAddPhoto: 'Add a photo to the story?', storyDelete: 'Delete story',
     storyDeleteConfirm: 'Delete this story for everyone?', storyDeleted: 'Story deleted',
-    fileTooBig: 'File is too large (maximum 500 MB per file)', uploadFailed: 'Could not send the file',
+    fileTooBig: 'File is too large (max 15 MB)', uploadFailed: 'Could not send the file',
     micDenied: 'Allow microphone access to send voice messages', badFile: 'This file type is not supported'
   },
   uk: {
@@ -501,7 +502,7 @@ const I18N = {
     broadcastConfirm: 'Надіслати цей подарунок усім користувачам?', broadcastDone: 'Надіслано всім користувачам', giftChatTitle: 'Надіслати подарунок',
     photoGone: 'Фото вже не доступне', storyAddPhoto: 'Додати фото до історії?', storyDelete: 'Видалити історію',
     storyDeleteConfirm: 'Видалити цю історію для всіх?', storyDeleted: 'Історію видалено',
-    fileTooBig: 'Файл завеликий (максимум 500 МБ для будь-якого файлу)', uploadFailed: 'Не вдалося надіслати файл',
+    fileTooBig: 'Файл завеликий (максимум 15 МБ)', uploadFailed: 'Не вдалося надіслати файл',
     micDenied: 'Дозвольте доступ до мікрофона, щоб надсилати голосові', badFile: 'Цей тип файлу не підтримується'
   },
   ru: {
@@ -579,7 +580,7 @@ const I18N = {
     broadcastConfirm: 'Отправить этот подарок всем пользователям?', broadcastDone: 'Отправлено всем пользователям', giftChatTitle: 'Отправить подарок',
     photoGone: 'Фото уже недоступно', storyAddPhoto: 'Добавить фото к истории?', storyDelete: 'Удалить историю',
     storyDeleteConfirm: 'Удалить эту историю для всех?', storyDeleted: 'История удалена',
-    fileTooBig: 'Файл слишком большой (максимум 500 МБ для любого файла)', uploadFailed: 'Не удалось отправить файл',
+    fileTooBig: 'Файл слишком большой (максимум 15 МБ)', uploadFailed: 'Не удалось отправить файл',
     micDenied: 'Разрешите доступ к микрофону, чтобы отправлять голосовые', badFile: 'Этот тип файла не поддерживается'
   }
 };
@@ -594,6 +595,7 @@ let socket = null;
 let pending = null;
 let online = new Set();
 let chats = new Map();
+let friendshipStreaks = new Map();
 let cache = new Map();
 let results = [];
 let search = '';
@@ -811,6 +813,15 @@ function createSocket() {
     toast('Контакт і переписку видалено для обох');
   });
   socket.on('message', onMessage);
+  socket.on('friendship_streak', data => {
+    if (!data || !data.a || !data.b) return;
+    const partner = data.a === me ? data.b : (data.b === me ? data.a : null);
+    if (!partner) return;
+    friendshipStreaks.set(partner, { count: Number(data.count) || 0, last_day: data.last_day });
+    const info = chats.get(partner);
+    if (info) info.streak = friendshipStreaks.get(partner);
+    renderList();
+  });
   socket.on('typing', data => {
     if (!data || data.from !== active || activeGroup) return;
     if (remoteTypingTimer) clearTimeout(remoteTypingTimer);
@@ -1015,36 +1026,18 @@ function readAsDataURL(blob) {
 
 async function sendMedia(blob) {
   if (!socket?.connected) return toast(t('errNetwork'));
-  if (blob.size > 500 * 1024 * 1024) return toast(t('fileTooBig'));
+  if (blob.size > 15 * 1024 * 1024) return toast(t('fileTooBig'));
   const mime = (blob.type || 'application/octet-stream').split(';')[0].toLowerCase();
-  const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
+  const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : 'file';
+  let data;
+  try { data = await readAsDataURL(blob); }
+  catch { return toast(t('uploadFailed')); }
   let res;
   try {
-    // One request, with visible upload progress; no chunk splitting or browser-side base64 conversion.
-    res = await new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/upload-binary');
-      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-      xhr.setRequestHeader('X-Gigi-Token', localStorage.getItem('gigi_token') || '');
-      xhr.setRequestHeader('X-File-Mime', mime || 'application/octet-stream');
-      let lastShown = -1;
-      xhr.upload.onprogress = e => {
-        if (!e.lengthComputable) return;
-        const percent = Math.floor(e.loaded / e.total * 100);
-        if (percent !== lastShown && (percent === 100 || percent - lastShown >= 5)) {
-          lastShown = percent;
-          toast('Надсилання файлу: ' + percent + '%');
-        }
-      };
-      xhr.onload = () => {
-        try { resolve(JSON.parse(xhr.responseText || '{}')); }
-        catch { reject(new Error('bad_response')); }
-      };
-      xhr.onerror = () => reject(new Error('network'));
-      xhr.ontimeout = () => reject(new Error('timeout'));
-      xhr.timeout = 15 * 60 * 1000;
-      xhr.send(blob);
-    });
+    res = await (await fetch('/api/upload', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: localStorage.getItem('gigi_token'), data })
+    })).json();
   } catch { return toast(t('uploadFailed')); }
   if (!res?.ok) {
     const keys = { too_big: 'fileTooBig', bad_type: 'badFile' };
@@ -1103,7 +1096,12 @@ function onMessage(m) {
 async function loadChats() {
   try {
     const rows = await (await fetchRetry(`/api/chats?me=${enc(me)}`, {}, 3)).json();
-    for (const r of rows) chats.set(r.nick, { last: r.last, unread: chats.get(r.nick)?.unread || 0 });
+    for (const r of rows) {
+      const streak = r.streak || null;
+      if (streak) friendshipStreaks.set(r.nick, streak);
+      else friendshipStreaks.delete(r.nick);
+      chats.set(r.nick, { last: r.last, unread: chats.get(r.nick)?.unread || 0, streak });
+    }
     renderList();
   } catch {}
 }
@@ -1142,9 +1140,17 @@ function chatItem(nick) {
   applyAvatar(av, nick);
   if (online.has(nick)) av.append(el('span', { class: 'dot' }));
   const preview = info.last ? (info.last.from === me ? t('you') + ': ' : '') + previewText(info.last) : '';
+  const name = el('div', { class: 'name' });
+  name.append(displayNameNode(nick));
+  const streak = info.streak || friendshipStreaks.get(nick);
+  if (streak && Number(streak.count) >= 3) {
+    const lastDay = String(streak.last_day || '');
+    const ageDays = lastDay ? Math.floor((Date.now() - Date.parse(lastDay + 'T00:00:00Z')) / 86400000) : 99;
+    if (ageDays < 3) name.append(el('span', { class: 'streak-pill', title: 'Вогник дружби' }, '🔥 ' + streak.count));
+  }
   const btn = el('button', { class: 'item' + (nick === active ? ' active' : ''), onclick: () => openChat(nick) },
     av,
-    el('div', { class: 'meta' }, el('div', { class: 'name' }, displayNameNode(nick)), el('div', { class: 'preview' }, preview)));
+    el('div', { class: 'meta' }, name, el('div', { class: 'preview' }, preview)));
   if (info.unread) btn.append(el('span', { class: 'badge' }, String(info.unread)));
   return btn;
 }
