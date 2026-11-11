@@ -739,7 +739,14 @@ function createSocket() {
   socket.on('typing', data => {
     if (!data || data.from !== active || activeGroup) return;
     if (remoteTypingTimer) clearTimeout(remoteTypingTimer);
-    remoteTyping = data.active ? { preview: typeof data.preview === 'string' ? data.preview : '' } : null;
+    // Premium is a receiver-side feature: only the Premium user who enabled it
+    // sees the generic typing indicator. Draft text is never transmitted.
+    if (!myPremium || !typingPreviewOptIn) {
+      remoteTyping = null;
+      renderHeader();
+      return;
+    }
+    remoteTyping = data.active ? { preview: '' } : null;
     renderHeader();
     if (data.active) remoteTypingTimer = setTimeout(() => { remoteTyping = null; renderHeader(); }, 2300);
   });
@@ -1083,7 +1090,7 @@ function renderHeader() {
   applyAvatar(av, active);
   av.style.background = avatarBg(active);
   const st = $('hStatus');
-  st.textContent = remoteTyping ? (remoteTyping.preview ? 'друкує: ' + remoteTyping.preview : 'друкує...') : statusText(active);
+  st.textContent = remoteTyping ? 'друкує...' : statusText(active);
   st.classList.toggle('on', on);
 }
 
@@ -1177,7 +1184,7 @@ $('input').addEventListener('input', e => {
   e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
   if (!active || activeGroup || !socket?.connected) return;
   const text = e.target.value;
-  socket.emit('typing_update', { to: active, active: Boolean(text.trim()), text: text.slice(0, 160) });
+  socket.emit('typing_update', { to: active, active: Boolean(text.trim()) });
   if (localTypingTimer) clearTimeout(localTypingTimer);
   if (text.trim()) localTypingTimer = setTimeout(() => {
     if (active) socket.emit('typing_update', { to: active, active: false });
@@ -1877,16 +1884,19 @@ function openSettings() {
         el('button', { class: 'btn', onclick: () => buyPremium(1) }, t('premium1Btn').replace(/\d+/, String(premiumPrices[1]))),
         el('button', { class: 'btn', onclick: () => buyPremium(12) }, t('premium12Btn').replace(/\d+/, String(premiumPrices[12])))),
       el('div', { class: 'acc-head' }, '⌨️ Індикатор набору повідомлення'),
-      el('div', { class: 'sub' }, 'Друзі бачитимуть «друкує...». Якщо ти дозволиш показ тексту, друзі з Premium зможуть бачити набраний текст до надсилання.'),
-      el('button', { class: 'btn ' + (typingPreviewOptIn ? '' : 'ghost'), style: 'width:100%;margin:8px 0 16px', onclick: () => {
+      el('div', { class: 'sub' }, myPremium
+        ? 'Коли функція увімкнена, ти бачитимеш «друкує...» у друзів. Їм не потрібно нічого вмикати. Твій власний набір ця настройка не показує.'
+        : 'Перегляд індикатора набору друзів доступний користувачам з активним Premium.'),
+      ...(myPremium ? [el('button', { class: 'btn ' + (typingPreviewOptIn ? '' : 'ghost'), style: 'width:100%;margin:8px 0 16px', onclick: () => {
         const enabled = !typingPreviewOptIn;
         socket.emit('set_typing_preview_optin', { enabled }, r => {
-          if (!r?.ok) return toast('Не вдалося змінити налаштування');
+          if (!r?.ok) return toast(r?.error === 'premium_required' ? 'Потрібен активний Premium' : 'Не вдалося змінити налаштування');
           typingPreviewOptIn = r.enabled;
-          toast(typingPreviewOptIn ? 'Показ набраного тексту дозволено Premium-користувачам' : 'Показ набраного тексту вимкнено');
+          if (!typingPreviewOptIn) { remoteTyping = null; if (remoteTypingTimer) clearTimeout(remoteTypingTimer); renderHeader(); }
+          toast(typingPreviewOptIn ? 'Тепер ти бачиш, коли друзі друкують' : 'Індикатор набору вимкнено');
           openSettings();
         });
-      } }, (typingPreviewOptIn ? '👁️ Показ тексту: УВІМКНЕНО' : '🙈 Показ тексту: ВИМКНЕНО')),
+      } }, (typingPreviewOptIn ? '👁️ Бачити набір друзів: УВІМКНЕНО' : '🙈 Бачити набір друзів: ВИМКНЕНО'))] : []),
       el('div', { class: 'acc-head' }, t('blockedTitle')),
       ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noBlocked'))]),
     ]);
