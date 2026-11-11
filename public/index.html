@@ -50,7 +50,6 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .dot{position:absolute;right:0;bottom:0;width:11px;height:11px;border-radius:50%;background:var(--online);border:2px solid var(--panel)}
 .meta{min-width:0;flex:1}
 .name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.streak-pill{display:inline-flex;align-items:center;gap:3px;margin-left:7px;padding:1px 6px;border-radius:999px;background:#e66b2522;color:#ff9b45;font-size:12px;font-weight:750;vertical-align:1px;white-space:nowrap}
 .preview{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .badge{background:var(--accent);color:#0b1520;border-radius:999px;font-size:12px;font-weight:700;padding:1px 7px;min-width:20px;text-align:center}
 .empty{color:var(--muted);text-align:center;padding:28px 16px;line-height:1.5}
@@ -595,7 +594,6 @@ let socket = null;
 let pending = null;
 let online = new Set();
 let chats = new Map();
-let friendshipStreaks = new Map();
 let cache = new Map();
 let results = [];
 let search = '';
@@ -813,15 +811,6 @@ function createSocket() {
     toast('Контакт і переписку видалено для обох');
   });
   socket.on('message', onMessage);
-  socket.on('friendship_streak', data => {
-    if (!data || !data.a || !data.b) return;
-    const partner = data.a === me ? data.b : (data.b === me ? data.a : null);
-    if (!partner) return;
-    friendshipStreaks.set(partner, { count: Number(data.count) || 0, last_day: data.last_day });
-    const info = chats.get(partner);
-    if (info) info.streak = friendshipStreaks.get(partner);
-    renderList();
-  });
   socket.on('typing', data => {
     if (!data || data.from !== active || activeGroup) return;
     if (remoteTypingTimer) clearTimeout(remoteTypingTimer);
@@ -1096,12 +1085,7 @@ function onMessage(m) {
 async function loadChats() {
   try {
     const rows = await (await fetchRetry(`/api/chats?me=${enc(me)}`, {}, 3)).json();
-    for (const r of rows) {
-      const streak = r.streak || null;
-      if (streak) friendshipStreaks.set(r.nick, streak);
-      else friendshipStreaks.delete(r.nick);
-      chats.set(r.nick, { last: r.last, unread: chats.get(r.nick)?.unread || 0, streak });
-    }
+    for (const r of rows) chats.set(r.nick, { last: r.last, unread: chats.get(r.nick)?.unread || 0 });
     renderList();
   } catch {}
 }
@@ -1140,17 +1124,9 @@ function chatItem(nick) {
   applyAvatar(av, nick);
   if (online.has(nick)) av.append(el('span', { class: 'dot' }));
   const preview = info.last ? (info.last.from === me ? t('you') + ': ' : '') + previewText(info.last) : '';
-  const name = el('div', { class: 'name' });
-  name.append(displayNameNode(nick));
-  const streak = info.streak || friendshipStreaks.get(nick);
-  if (streak && Number(streak.count) >= 3) {
-    const lastDay = String(streak.last_day || '');
-    const ageDays = lastDay ? Math.floor((Date.now() - Date.parse(lastDay + 'T00:00:00Z')) / 86400000) : 99;
-    if (ageDays < 3) name.append(el('span', { class: 'streak-pill', title: 'Вогник дружби' }, '🔥 ' + streak.count));
-  }
   const btn = el('button', { class: 'item' + (nick === active ? ' active' : ''), onclick: () => openChat(nick) },
     av,
-    el('div', { class: 'meta' }, name, el('div', { class: 'preview' }, preview)));
+    el('div', { class: 'meta' }, el('div', { class: 'name' }, displayNameNode(nick)), el('div', { class: 'preview' }, preview)));
   if (info.unread) btn.append(el('span', { class: 'badge' }, String(info.unread)));
   return btn;
 }
