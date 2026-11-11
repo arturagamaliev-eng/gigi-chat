@@ -1364,13 +1364,23 @@ $('search').addEventListener('input', e => {
     results = [];
     groupResults = [];
     if (!search) return renderList();
-    // Friend discovery is intentionally numeric-ID-only; nicknames are not searchable.
-    if (!/^\d{1,20}$/.test(search) || !socket?.connected) return renderList();
-    socket.emit('user_lookup_id', { id: search }, res => {
-      if (search !== e.target.value.trim()) return;
-      results = res?.ok && res.user?.nick && res.user.nick !== me ? [res.user.nick] : [];
-      renderList();
-    });
+    if (!socket?.connected) return renderList();
+    // People are discoverable only by numeric ID; groups/channels by their title.
+    if (/^\d{1,20}$/.test(search)) {
+      socket.emit('user_lookup_id', { id: search }, res => {
+        if (search !== e.target.value.trim()) return;
+        results = res?.ok && res.user?.nick && res.user.nick !== me ? [res.user.nick] : [];
+        groupResults = [];
+        renderList();
+      });
+    } else {
+      results = [];
+      socket.emit('group_list', { q: search }, res => {
+        if (search !== e.target.value.trim()) return;
+        groupResults = res?.ok ? (res.chats || []) : [];
+        renderList();
+      });
+    }
   }, 250);
 });
 
@@ -2165,13 +2175,14 @@ $('mobileBottomNav')?.addEventListener('click', e => {
  if(tab==='contacts'){
   closeModal();
   const names=[...chats.keys()];
-  const rows=names.map(nick=>el('button',{class:'item',onclick:()=>{closeModal();openChat(nick);}},avatarNode(nick,avatars.get(nick)||null,42),el('div',{class:'meta'},el('div',{class:'name'},nick),el('div',{class:'preview'},'Відкрити контакт'))));
+  const rows=names.sort((a,b)=>a.localeCompare(b)).map(nick=>el('button',{class:'item',onclick:()=>{closeModal();openChat(nick);}},avatarNode(nick,avatars.get(nick)||null,42),el('div',{class:'meta'},el('div',{class:'name'},nick),el('div',{class:'preview'},'Відкрити контакт'))));
+  const contactsList=el('div',{class:'contacts-scroll',style:'max-height:62vh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-bottom:8px'},...(rows.length?rows:[el('div',{class:'empty'},'Контактів поки немає')]));
   openModal([
    el('div',{class:'acc-head'},'Контакти'),
    el('div',{class:'pf-actions',style:'margin:8px 0 14px;flex-wrap:wrap'},
     el('button',{class:'btn',onclick:()=>{closeModal();openCreateGroup('group');}},'👥 Створити групу'),
     el('button',{class:'btn ghost',onclick:()=>{closeModal();openCreateGroup('channel');}},'📢 Створити канал')),
-   ...(rows.length?rows:[el('div',{class:'empty'},'Контактів поки немає')])
+   contactsList
   ]); return;
  }
  if(tab==='settings'){closeModal();openSettings();return;}
