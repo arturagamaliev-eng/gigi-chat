@@ -1619,7 +1619,12 @@ io.on('connection', async socket => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
     if (await isFrozen(me)) return ack?.({ ok: false, error: 'frozen' });
-    const to = (await findUserById(payload?.toId))?.nickname;
+    // The chat gift button sends the open chat's nickname (`to`).
+    // Also accept `toId` for callers that use the numeric user ID.
+    const recipient = payload?.toId != null
+      ? await findUserById(payload.toId)
+      : await findUser(String(payload?.to || ''));
+    const to = recipient?.nickname;
     if (!to) return ack?.({ ok: false, error: 'no_user' });
     if (to === me) return ack?.({ ok: false, error: 'self' });
     const id = Number(payload?.id);
