@@ -225,6 +225,7 @@ CREATE TABLE IF NOT EXISTS story_views (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS handle TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS premium_until DOUBLE PRECISION;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS typing_preview_optin BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS typing_preview_share BOOLEAN NOT NULL DEFAULT true;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_handle ON users(lower(handle));
 CREATE TABLE IF NOT EXISTS blocks (
   blocker TEXT NOT NULL,
@@ -583,17 +584,34 @@ io.on('connection', async socket => {
     ack?.({ ok: true, enabled });
   });
 
-  // Typing presence is transient. A Premium recipient can enable this in their
-  // settings to see the generic “друкує...” indicator. Never transmit draft text.
+  // Every account shares draft previews by default; each user can opt out.
+  on('set_typing_preview_share', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const enabled = payload?.enabled === true;
+    await db.run('UPDATE users SET typing_preview_share = $1 WHERE nickname = $2', [enabled, me]);
+    ack?.({ ok: true, enabled });
+  });
+
+  // Generic typing presence is available to everyone. Draft text is sent only
+  // when the sender has sharing enabled and the recipient is Premium with preview enabled.
   on('typing_update', async payload => {
     const me = socketNick.get(socket.id);
     if (!me) return;
     const to = (await findUser(String(payload?.to || '')))?.nickname;
     if (!to || to === me) return;
-    const recipient = await db.one('SELECT typing_preview_optin FROM users WHERE nickname = $1', [to]);
-    if (!(await isPremium(to)) || !recipient?.typing_preview_optin) return;
     const active = payload?.active === true;
-    io.to('u:' + to).emit('typing', { from: me, active });
+    let preview;
+    if (active) {
+      const [sender, recipient] = await Promise.all([
+        db.one('SELECT typing_preview_share FROM users WHERE nickname = $1', [me]),
+        db.one('SELECT typing_preview_optin FROM users WHERE nickname = $1', [to])
+      ]);
+      if (sender?.typing_preview_share && recipient?.typing_preview_optin && await isPremium(to)) {
+        preview = typeof payload?.text === 'string' ? payload.text.slice(0, 160) : '';
+      }
+    }
+    io.to('u:' + to).emit('typing', { from: me, active, ...(preview !== undefined ? { preview } : {}) });
   });
 
   on('message', async (payload, ack) => {
@@ -1284,8 +1302,8 @@ io.on('connection', async socket => {
   on('me_info', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
-    const u = await db.one('SELECT stars, handle, premium_until, typing_preview_optin FROM users WHERE nickname = $1', [me]);
-    ack?.({ ok: true, stars: u.stars, handle: u.handle, premium_until: u.premium_until || 0, premium_prices: premiumPrices, typing_preview_optin: Boolean(u.typing_preview_optin) });
+    const u = await db.one('SELECT stars, handle, premium_until, typing_preview_optin, typing_preview_share FROM users WHERE nickname = $1', [me]);
+    ack?.({ ok: true, stars: u.stars, handle: u.handle, premium_until: u.premium_until || 0, premium_prices: premiumPrices, typing_preview_optin: Boolean(u.typing_preview_optin), typing_preview_share: u.typing_preview_share !== false });
   });
 
   on('set_handle', async (payload, ack) => {
