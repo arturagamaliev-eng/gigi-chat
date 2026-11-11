@@ -88,6 +88,7 @@ label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
 .pf-avatar{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;font-size:36px;font-weight:700;color:#fff;position:relative;overflow:hidden}
 .pf-avatar img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .pf-name{font-size:20px;font-weight:650}
+.premium-crown{display:inline-block;margin-left:5px;font-size:.9em;vertical-align:baseline;filter:drop-shadow(0 1px 2px rgba(255,190,40,.35))}
 .pf-status{font-size:13px;color:var(--muted)}
 .pf-status.on{color:var(--online)}
 .pf-bio{background:var(--bg);border-radius:12px;padding:12px 14px;margin:12px 0;color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
@@ -601,6 +602,10 @@ let activeGroup = null;      // id of the open group or channel (active is null 
 let pendingGroupAvatar = null;
 let groupResults = [];       // groups and channels matching the search text
 let myPremium = false;       // true while your premium is active
+let typingPreviewOptIn = false;
+let remoteTyping = null;
+let remoteTypingTimer = null;
+let localTypingTimer = null;
 let premiumPrices = { 1: 1000, 12: 5000 };
 let writesStopped = false;   // true while the admin has stopped all writing
 let replyTarget = null, editTarget = null;
@@ -674,6 +679,9 @@ function forget() {
   localStorage.removeItem('gigi_token');
 }
 function closeChat(fromPopState = false) {
+  if (active && socket?.connected) socket.emit('typing_update', { to: active, active: false });
+  remoteTyping = null;
+  if (remoteTypingTimer) clearTimeout(remoteTypingTimer);
   if (gigiChatHistoryOpen && !fromPopState) {
     history.replaceState({ gigiRoot: true }, '', location.href);
   }
@@ -728,6 +736,13 @@ function createSocket() {
     toast('Контакт і переписку видалено для обох');
   });
   socket.on('message', onMessage);
+  socket.on('typing', data => {
+    if (!data || data.from !== active || activeGroup) return;
+    if (remoteTypingTimer) clearTimeout(remoteTypingTimer);
+    remoteTyping = data.active ? { preview: typeof data.preview === 'string' ? data.preview : '' } : null;
+    renderHeader();
+    if (data.active) remoteTypingTimer = setTimeout(() => { remoteTyping = null; renderHeader(); }, 2300);
+  });
   socket.on('msg_deleted', onMsgDeleted);
   socket.on('msg_edited', m => { for (const list of cache.values()) { const x=list.find(v=>v.id===m.id); if(x){x.text=m.text;x.edited_at=m.edited_at;} } if(active) renderMessages(); });
   socket.on('stories', list => { stories = list || []; renderStories(); });
@@ -1001,6 +1016,9 @@ async function openChat(nick) {
     history.pushState({ gigiScreen: 'chat' }, '', location.href);
     gigiChatHistoryOpen = true;
   }
+  if (active && active !== nick && socket?.connected) socket.emit('typing_update', { to: active, active: false });
+  remoteTyping = null;
+  if (remoteTypingTimer) clearTimeout(remoteTypingTimer);
   active = nick;
   activeGroup = null;
   if (!chats.has(nick)) chats.set(nick, { last: null, unread: 0 });
@@ -1021,6 +1039,7 @@ async function openChat(nick) {
 }
 
 function chatItem(nick) {
+  if (!userInfo.has(nick)) refreshInfo(nick);
   const info = chats.get(nick) || {};
   const av = el('div', { class: 'avatar' }, nick[0].toUpperCase());
   applyAvatar(av, nick);
@@ -1028,7 +1047,7 @@ function chatItem(nick) {
   const preview = info.last ? (info.last.from === me ? t('you') + ': ' : '') + previewText(info.last) : '';
   const btn = el('button', { class: 'item' + (nick === active ? ' active' : ''), onclick: () => openChat(nick) },
     av,
-    el('div', { class: 'meta' }, el('div', { class: 'name' }, displayName(nick)), el('div', { class: 'preview' }, preview)));
+    el('div', { class: 'meta' }, el('div', { class: 'name' }, displayNameNode(nick)), el('div', { class: 'preview' }, preview)));
   if (info.unread) btn.append(el('span', { class: 'badge' }, String(info.unread)));
   return btn;
 }
@@ -1059,12 +1078,12 @@ function renderHeader() {
   if (activeGroup) return renderGroupHeader();
   if (!active) return;
   const on = online.has(active);
-  $('hName').textContent = displayName(active);
+  $('hName').replaceChildren(displayNameNode(active));
   const av = $('hAvatar');
   applyAvatar(av, active);
   av.style.background = avatarBg(active);
   const st = $('hStatus');
-  st.textContent = statusText(active);
+  st.textContent = remoteTyping ? (remoteTyping.preview ? 'друкує: ' + remoteTyping.preview : 'друкує...') : statusText(active);
   st.classList.toggle('on', on);
 }
 
@@ -1145,6 +1164,8 @@ $('composer').addEventListener('submit', e => {
   else if (activeGroup) socket.emit('group_send', { id: activeGroup, text, kind: 'text' }, done);
   else socket.emit('message', { to: active, text, reply_to: replyTarget?.id || null }, done);
   input.value = ''; input.style.height = 'auto';
+  if (active && !activeGroup) socket.emit('typing_update', { to: active, active: false });
+  if (localTypingTimer) clearTimeout(localTypingTimer);
   input.focus();
 });
 
@@ -1154,6 +1175,16 @@ $('input').addEventListener('keydown', e => {
 $('input').addEventListener('input', e => {
   e.target.style.height = 'auto';
   e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
+  if (!active || activeGroup || !socket?.connected) return;
+  const text = e.target.value;
+  socket.emit('typing_update', { to: active, active: Boolean(text.trim()), text: text.slice(0, 160) });
+  if (localTypingTimer) clearTimeout(localTypingTimer);
+  if (text.trim()) localTypingTimer = setTimeout(() => {
+    if (active) socket.emit('typing_update', { to: active, active: false });
+  }, 1800);
+});
+$('input').addEventListener('blur', () => {
+  if (active && !activeGroup && socket?.connected) socket.emit('typing_update', { to: active, active: false });
 });
 
 $('folderFilter').addEventListener('change', renderList);
@@ -1327,6 +1358,7 @@ function refreshInfo(nick) {
     if (!res?.ok) return;
     userInfo.set(nick, res.info);
     if (active === nick) renderHeader();
+    if (chats.has(nick)) renderList();
   });
 }
 
@@ -1398,7 +1430,7 @@ function openProfile(nick) {
     openModal([
       el('div', { class: 'pf-head' },
         avatarNode(nick, avatarUrl, 96),
-        el('div', { class: 'pf-name' }, nick),
+        el('div', { class: 'pf-name' }, displayNameNode(nick)),
         el('div', { class: 'pf-id' }, 'ID: ' + (info.id ?? '—')),
         status),
       statusLine,
@@ -1751,6 +1783,11 @@ function openGroupsModal() {
 $('groupsBtn').addEventListener('click', openGroupsModal);
 
 const displayName = n => (n === 'gigi_chat' ? 'gigi chat' : n);
+const displayNameNode = (n, className = '') => {
+  const node = el('span', { class: className }, displayName(n));
+  if (userInfo.get(n)?.premium) node.append(el('span', { class: 'premium-crown', title: 'Premium' }, ' 👑'));
+  return node;
+};
 
 // Opens the list of your gifts; one tap sends that gift to the open chat's person.
 function openSendGiftToChat(nick) {
@@ -1790,7 +1827,7 @@ $('giftChatBtn').addEventListener('click', () => { if (active) openSendGiftToCha
 
 function loadMe() {
   if (!socket?.connected) return;
-  socket.emit('me_info', {}, r => { if (r?.ok) { myPremium = r.premium_until > Date.now(); if (r.premium_prices) premiumPrices = r.premium_prices; } });
+  socket.emit('me_info', {}, r => { if (r?.ok) { myPremium = r.premium_until > Date.now(); typingPreviewOptIn = Boolean(r.typing_preview_optin); if (r.premium_prices) premiumPrices = r.premium_prices; } });
 }
 
 function askHandle() {
@@ -1839,6 +1876,17 @@ function openSettings() {
       el('div', { class: 'pf-actions', style: 'margin:8px 0 16px' },
         el('button', { class: 'btn', onclick: () => buyPremium(1) }, t('premium1Btn').replace(/\d+/, String(premiumPrices[1]))),
         el('button', { class: 'btn', onclick: () => buyPremium(12) }, t('premium12Btn').replace(/\d+/, String(premiumPrices[12])))),
+      el('div', { class: 'acc-head' }, '⌨️ Індикатор набору повідомлення'),
+      el('div', { class: 'sub' }, 'Друзі бачитимуть «друкує...». Якщо ти дозволиш показ тексту, друзі з Premium зможуть бачити набраний текст до надсилання.'),
+      el('button', { class: 'btn ' + (typingPreviewOptIn ? '' : 'ghost'), style: 'width:100%;margin:8px 0 16px', onclick: () => {
+        const enabled = !typingPreviewOptIn;
+        socket.emit('set_typing_preview_optin', { enabled }, r => {
+          if (!r?.ok) return toast('Не вдалося змінити налаштування');
+          typingPreviewOptIn = r.enabled;
+          toast(typingPreviewOptIn ? 'Показ набраного тексту дозволено Premium-користувачам' : 'Показ набраного тексту вимкнено');
+          openSettings();
+        });
+      } }, (typingPreviewOptIn ? '👁️ Показ тексту: УВІМКНЕНО' : '🙈 Показ тексту: ВИМКНЕНО')),
       el('div', { class: 'acc-head' }, t('blockedTitle')),
       ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noBlocked'))]),
     ]);
