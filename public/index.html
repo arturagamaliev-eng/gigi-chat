@@ -210,6 +210,66 @@ body.has-bg .chat,body.has-bg .messages{background:transparent}
  .account-tools-secondary .icon{width:44px;height:44px;font-size:21px}
 }
 
+
+/* Responsive compact layout: fit short and narrow Android screens. */
+:root{--visible-height:100dvh}
+html,body{min-height:100%;font-size:14px}
+.app{height:var(--visible-height);min-height:0}
+@supports(height:100dvh){.app{height:100dvh}}
+.modal-box{max-height:calc(var(--visible-height) - 24px);max-height:min(90dvh,calc(var(--visible-height) - 24px));overflow:auto;overscroll-behavior:contain}
+@media(max-width:760px){
+  .side-top{padding:10px;gap:7px}
+  .item{gap:9px;padding:8px}
+  .avatar{width:38px;height:38px}
+  .chat-top{gap:8px;padding:8px 10px;min-height:54px}
+  .chat-top .avatar{width:34px!important;height:34px!important}
+  .messages{padding:12px 10px;gap:5px}
+  .msg{max-width:88%;padding:7px 10px;font-size:14px}
+  .composer{gap:6px;padding:7px 8px calc(7px + env(safe-area-inset-bottom));align-items:center}
+  .composer textarea{min-width:0;max-height:100px;padding:8px 10px;font-size:14px}
+  .composer .btn{padding:9px 11px;font-size:13px;white-space:nowrap}
+  .composer .icon{padding:5px;font-size:12px}
+  .mobile-bottom-nav{height:60px;bottom:calc(8px + env(safe-area-inset-bottom));width:min(94vw,480px);padding:3px 5px}
+  .mobile-nav-item{height:52px;font-size:10px;gap:1px}
+  .mobile-nav-item .mobile-nav-icon{font-size:22px}
+  .mobile-nav-avatar{width:27px;height:27px;font-size:17px}
+  .sidebar{padding-bottom:76px}
+  .chat{padding-bottom:76px}
+  .modal-open .mobile-bottom-nav,.keyboard-open .mobile-bottom-nav{display:none!important}
+  .viewer{padding:8px;align-items:center}
+  .modal-box{width:100%;max-width:520px;max-height:calc(var(--visible-height) - 16px);padding:22px 12px 12px;border-radius:14px;font-size:14px}
+  .modal-box .viewer-close{top:5px;right:6px}
+  .modal-box .acc-head{font-size:16px;margin-bottom:5px}
+  .modal-box .pf-actions{gap:6px}
+  .modal-box .pf-actions .btn{padding:8px 10px;font-size:13px;border-radius:9px}
+  .gift-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .gcard{padding:5px;border-radius:10px}
+  .gcard img{border-radius:8px}
+  .gcard-name,.gcard-price{font-size:11px}
+  .help-shell{min-height:0;max-height:calc(var(--visible-height) - 16px);overflow:auto}
+}
+@media(max-width:380px){
+  html,body{font-size:13px}
+  .chat-top{gap:6px;padding:7px 8px}
+  .chat-top .icon{padding:4px 5px;font-size:12px}
+  .composer{gap:4px;padding-left:5px;padding-right:5px}
+  .composer .btn{padding:8px 9px;font-size:12px}
+  .mobile-bottom-nav{height:56px;bottom:calc(6px + env(safe-area-inset-bottom))}
+  .mobile-nav-item{height:49px;font-size:9px}
+  .mobile-nav-item .mobile-nav-icon{font-size:20px}
+  .modal-box{padding-left:9px;padding-right:9px}
+  .gift-grid{gap:5px}
+}
+@media(max-height:620px) and (max-width:760px){
+  .chat-top{min-height:46px;padding-top:5px;padding-bottom:5px}
+  .messages{padding-top:7px;padding-bottom:7px}
+  .composer{padding-top:5px;padding-bottom:5px}
+  .mobile-bottom-nav{height:52px}
+  .mobile-nav-item{height:46px}
+  .mobile-nav-icon{font-size:19px!important}
+  .modal-box{max-height:calc(var(--visible-height) - 10px);padding-top:20px}
+}
+
 </style>
 </head>
 <body>
@@ -1475,22 +1535,42 @@ function openModal(html) {
   }
   $('modalBody').replaceChildren(...html);
   $('modal').hidden = false;
+  document.body.classList.add('modal-open');
 }
 
 function closeModal(fromPopState = false) {
   if ($('modal').hidden) return;
   $('modal').hidden = true;
+  document.body.classList.remove('modal-open');
   if (gigiModalHistoryOpen && !fromPopState) {
     history.replaceState({ gigiRoot: true, gigiScreen: $('chatView').hidden ? 'main' : 'chat' }, '', location.href);
   }
   gigiModalHistoryOpen = false;
 }
 
+// Keep the app fitted to the actually visible area when the Android keyboard opens.
+(function fitVisibleViewport() {
+  const update = () => {
+    const vv = window.visualViewport;
+    const height = vv ? vv.height : window.innerHeight;
+    document.documentElement.style.setProperty('--visible-height', Math.max(240, Math.round(height)) + 'px');
+    const keyboardOpen = !!vv && (window.innerHeight - vv.height - vv.offsetTop) > 120;
+    document.body.classList.toggle('keyboard-open', keyboardOpen);
+  };
+  update();
+  window.addEventListener('resize', update, { passive: true });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', update, { passive: true });
+    window.visualViewport.addEventListener('scroll', update, { passive: true });
+  }
+})();
+
 // Android system Back gesture/button: close the current Gigi Chat screen first.
 window.addEventListener('popstate', () => {
   if (!$('app') || $('app').hidden) return;
   if (!$('modal').hidden) {
     $('modal').hidden = true;
+    document.body.classList.remove('modal-open');
     gigiModalHistoryOpen = false;
     return;
   }
@@ -2546,7 +2626,8 @@ function openMarket() {
     if (!mine?.ok) return toast(t('messageFailed'));
     socket.emit('market_list', {}, res => {
       if (!res?.ok) return toast(t('messageFailed'));
-      const rows = [el('div', { class: 'gift-grid' }, ...res.items.map(it => giftCard(it, false)))];
+      const sortedItems = [...(Array.isArray(res.items) ? res.items : [])].sort((a, b) => Number(a.price || 0) - Number(b.price || 0) || Number(a.id || 0) - Number(b.id || 0));
+      const rows = sortedItems.length ? [el('div', { class: 'gift-grid' }, ...sortedItems.map(it => giftCard(it, false)))] : [];
       openModal([
         el('div', { class: 'acc-head' }, t('marketTitle') + ' · ⭐ ' + mine.stars),
         el('div', { class: 'pf-actions', style: 'margin-bottom:12px' },
