@@ -2218,7 +2218,6 @@ function openAdminSettingsWithCount(count) {
     openModal([
       el('div', { class: 'acc-head' }, t('adminSettingsTitle')),
       el('div', { class: 'pf-actions', style: 'margin-bottom:10px' },
-        ...(mine && myPremium ? [el('button', { class: 'btn ghost', onclick: () => { const choice = prompt('Premium-рамка: введи 1 — золота, 0 — вимкнути', localStorage.getItem('gigi_premium_frame') === 'gold' ? '1' : '0'); if (choice === null) return; localStorage.setItem('gigi_premium_frame', choice.trim() === '1' ? 'gold' : ''); closeModal(); renderList(); renderHeader(); toast('Premium-рамку оновлено'); } }, '👑 Premium-рамка')] : []),
         el('button', { class: 'btn ghost', onclick: () => { closeModal(); adminLoadAccounts(); } }, t('accountsBtn')),
         el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('storyBtn').click(); } }, t('gigiStoryBtn')),
         el('button', { class: 'btn ghost', onclick: () => { closeModal(); $('storyPhotoBtn').click(); } }, t('gigiStoryPhotoBtn')),
