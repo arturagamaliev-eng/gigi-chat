@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS stories (
 const EXTRA_SCHEMA = `
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS media TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS user_id BIGSERIAL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS frozen BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen DOUBLE PRECISION;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
@@ -255,6 +256,7 @@ CREATE TABLE IF NOT EXISTS group_roles (chat_id INTEGER NOT NULL, nick TEXT NOT 
 
 const findUser = nick => db.one('SELECT nickname, key, pass_salt, pass_hash FROM users WHERE key = $1', [keyOf(nick)]);
 const findUserById = async value => { const id = Number(value); if (!Number.isSafeInteger(id) || id < 1) return null; return db.one('SELECT nickname, user_id FROM users WHERE user_id = $1', [id]); };
+const isFrozen = async nick => Boolean(await db.one('SELECT 1 AS x FROM users WHERE nickname = $1 AND frozen = TRUE', [nick]));
 const toMsg = r => ({ id: r.id, from: r.from_nick, to: r.to_nick, text: r.text, created_at: r.created_at, read_at: r.read_at ?? null, kind: r.kind || 'text', reply_to: r.reply_to ?? null, edited_at: r.edited_at ?? null });
 const auditAdmin = (actor, action, target, details='') => db.run('INSERT INTO admin_audit (actor, action, target, details, created_at) VALUES ($1,$2,$3,$4,$5)', [actor, action, target || null, details, Date.now()]);
 
@@ -574,6 +576,7 @@ io.on('connection', async socket => {
   on('message', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (await isFrozen(me)) return ack?.({ ok: false, error: 'frozen' });
     if (await isBlockedBetween(me, payload?.to)) return ack?.({ ok: false, error: 'blocked' });
     if (writesStopped) return ack?.({ ok: false, error: 'stopped' });
     const kind = MEDIA_KINDS.has(payload?.kind) ? payload.kind : 'text';
@@ -608,6 +611,7 @@ io.on('connection', async socket => {
   on('msg_edit', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (await isFrozen(me)) return ack?.({ ok: false, error: 'frozen' });
     const id = Number(payload?.id), text = typeof payload?.text === 'string' ? payload.text.trim() : '';
     if (!Number.isInteger(id) || !text || text.length > MAX_TEXT) return ack?.({ ok: false, error: 'invalid' });
     const row = await db.one("SELECT id, from_nick, to_nick, kind FROM messages WHERE id = $1", [id]);
@@ -777,18 +781,33 @@ io.on('connection', async socket => {
     ack?.({ ok: true, nick: target.nickname, id: target.user_id, sessionsRevoked: removed?.rowCount ?? 0 });
   });
 
+  // Admin only: freeze/unfreeze one account by its stable numeric ID.
+  on('admin_toggle_freeze', async (payload, ack) => {
+    const actor = socketNick.get(socket.id);
+    if (!actor) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
+    const id = Number(payload?.userId);
+    if (!Number.isSafeInteger(id) || id < 1) return ack?.({ ok: false, error: 'invalid_user_id' });
+    const target = await db.one('SELECT nickname, frozen FROM users WHERE user_id = $1', [id]);
+    if (!target) return ack?.({ ok: false, error: 'no_user' });
+    const frozen = typeof payload?.frozen === 'boolean' ? payload.frozen : !target.frozen;
+    await db.run('UPDATE users SET frozen = $1 WHERE user_id = $2', [frozen, id]);
+    await auditAdmin(actor, frozen ? 'freeze_user' : 'unfreeze_user', target.nickname, `ID ${id}`);
+    ack?.({ ok: true, id, nick: target.nickname, frozen });
+  });
+
   on('admin_list', async (payload, ack) => {
     if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     const q = String(payload?.q || '').trim().slice(0, 80);
     const rows = await db.all(
-      `SELECT user_id, nickname, avatar, bio, last_seen, created_at FROM users
+      `SELECT user_id, nickname, avatar, bio, last_seen, created_at, frozen FROM users
        WHERE ($1 = '' OR nickname ILIKE $2 OR user_id::text = $1)
        ORDER BY nickname`,
       [q, `%${q.replace(/[\\%_]/g, '\\$&')}%`]);
     ack?.({ ok: true, users: rows.map(r => ({
       id: r.user_id, nick: r.nickname, online: online.has(r.nickname),
-      lastSeen: r.last_seen, created: r.created_at,
+      lastSeen: r.last_seen, created: r.created_at, frozen: Boolean(r.frozen),
     })) });
   });
 
@@ -937,6 +956,7 @@ io.on('connection', async socket => {
   on('story_post', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (await isFrozen(me)) return ack?.({ ok: false, error: 'frozen' });
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
     const media = typeof payload?.media === 'string' && payload.media ? payload.media : null;
@@ -967,6 +987,7 @@ io.on('connection', async socket => {
   on('group_create', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (await isFrozen(me)) return ack?.({ ok: false, error: 'frozen' });
     const kind = ['group', 'channel'].includes(payload?.kind) ? payload.kind : null;
     const title = typeof payload?.title === 'string' ? payload.title.trim() : '';
     if (!kind || !title || title.length > 40) return ack?.({ ok: false, error: 'invalid' });
@@ -1032,6 +1053,7 @@ io.on('connection', async socket => {
   on('group_send', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (await isFrozen(me)) return ack?.({ ok: false, error: 'frozen' });
     const id = Number(payload?.id);
     const c = Number.isInteger(id) ? await db.one('SELECT id, kind, owner FROM chats WHERE id = $1', [id]) : null;
     if (!c || !(await isMember(id, me))) return ack?.({ ok: false, error: 'forbidden' });
@@ -1053,6 +1075,7 @@ io.on('connection', async socket => {
   // Create a group poll. Each member may select one option; a new vote replaces the old one.
   on('group_poll_create', async (payload, ack) => {
     const me = socketNick.get(socket.id);
+    if (me && await isFrozen(me)) return ack?.({ ok: false, error: 'frozen' });
     const id = Number(payload?.id);
     const question = typeof payload?.question === 'string' ? payload.question.trim().slice(0, 180) : '';
     const options = Array.isArray(payload?.options) ? payload.options.map(x => String(x).trim().slice(0, 100)).filter(Boolean).slice(0, 8) : [];
@@ -1070,6 +1093,7 @@ io.on('connection', async socket => {
 
   on('poll_vote', async (payload, ack) => {
     const me = socketNick.get(socket.id);
+    if (me && await isFrozen(me)) return ack?.({ ok: false, error: 'frozen' });
     const id = Number(payload?.id), option = Number(payload?.option);
     const poll = Number.isInteger(id) ? await db.one("SELECT id, chat_id, text FROM gmessages WHERE id = $1 AND kind = 'poll'", [id]) : null;
     if (!me || !poll || !(await isMember(poll.chat_id, me))) return ack?.({ ok: false, error: 'forbidden' });
@@ -1397,6 +1421,7 @@ io.on('connection', async socket => {
   on('user_story_post', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (await isFrozen(me)) return ack?.({ ok: false, error: 'frozen' });
     if (!(await isPremium(me))) return ack?.({ ok: false, error: 'premium_required' });
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
     const media = typeof payload?.media === 'string' && payload.media ? payload.media : null;
@@ -1559,6 +1584,7 @@ io.on('connection', async socket => {
   on('gift_send', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (await isFrozen(me)) return ack?.({ ok: false, error: 'frozen' });
     const to = (await findUserById(payload?.toId))?.nickname;
     if (!to) return ack?.({ ok: false, error: 'no_user' });
     if (to === me) return ack?.({ ok: false, error: 'self' });
@@ -1689,6 +1715,7 @@ io.on('connection', async socket => {
   on('react', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    if (await isFrozen(me)) return ack?.({ ok: false, error: 'frozen' });
     const type = ['story', 'msg', 'gmsg'].includes(payload?.type) ? payload.type : null;
     const id = Number(payload?.id);
     const emoji = String(payload?.emoji || '');
