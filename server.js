@@ -15,6 +15,17 @@ const CHAT_MEDIA_MS = 7 * 24 * 3600 * 1000;   // chat photos are kept 7 days
 const STORY_MS = 24 * 3600 * 1000;            // stories are kept 24 hours
 const AVATAR_MS = 365 * 24 * 3600 * 1000;     // profile photo stays until removed
 const keyOf = s => s.toLowerCase();
+function normalizePhone(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return null;
+  if (!/^\+?[0-9 ()-]+$/.test(value)) return false;
+  let digits = value.replace(/\D/g, '');
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  // Accept common Ukrainian input formats: +380..., 380..., or local 0XXXXXXXXX.
+  if (digits.length === 10 && digits.startsWith('0')) digits = '38' + digits;
+  const phone = '+' + digits;
+  return /^\+[1-9]\d{6,14}$/.test(phone) ? phone : false;
+}
 const MEDIA_RE = /^\/media\/([a-f0-9]{32})$/;
 const mediaIdOf = url => { const m = MEDIA_RE.exec(String(url || '')); return m ? m[1] : null; };
 const MEDIA_KINDS = new Set(['image', 'video', 'audio', 'file']);
@@ -288,8 +299,8 @@ async function authenticate(payload) {
   const nick = typeof payload?.nick === 'string' ? payload.nick.trim() : '';
   const password = typeof payload?.password === 'string' ? payload.password : '';
   const rawPhone = typeof payload?.phone === 'string' ? payload.phone.trim() : '';
-  const phone = rawPhone ? ('+' + rawPhone.replace(/\D/g, '')) : null;
-  if (rawPhone && (!/^\+?[0-9 ()-]+$/.test(rawPhone) || !/^\+[1-9]\d{6,14}$/.test(phone || ''))) return { ok: false, error: 'invalid_phone' };
+  const phone = rawPhone ? normalizePhone(rawPhone) : null;
+  if (rawPhone && !phone) return { ok: false, error: 'invalid_phone' };
   if (!NICK_RE.test(nick) || keyOf(nick) === 'gigi_chat') return { ok: false, error: 'invalid_nick' };
   if (password.length < PASS_MIN || password.length > PASS_MAX) return { ok: false, error: 'invalid_password' };
 
@@ -302,6 +313,14 @@ async function authenticate(payload) {
     return createSession(nick);
   }
   if (!checkPassword(password, user.pass_salt, user.pass_hash)) return { ok: false, error: 'nick_taken' };
+  // If an existing account signs in and supplies an optional phone, attach it now.
+  // Previously the phone field was only saved for brand-new accounts, so existing users
+  // could type a number at login/registration and still remain unsearchable by phone.
+  if (phone) {
+    const taken = await db.one('SELECT 1 AS x FROM users WHERE phone = $1 AND nickname <> $2', [phone, user.nickname]);
+    if (taken) return { ok: false, error: 'phone_taken' };
+    await db.run('UPDATE users SET phone = $1 WHERE nickname = $2', [phone, user.nickname]);
+  }
   return createSession(user.nickname);
 }
 
@@ -779,12 +798,29 @@ io.on('connection', async socket => {
     ack?.({ ok: true, user: { nick: user.nickname, avatar: user.avatar || null, bio: user.bio || '' } });
   });
 
+  // Let a signed-in user add/remove their own optional phone number for private lookup.
+  on('set_my_phone', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
+    const raw = typeof payload?.phone === 'string' ? payload.phone.trim() : '';
+    if (!raw) {
+      await db.run('UPDATE users SET phone = NULL WHERE nickname = $1', [me]);
+      return ack?.({ ok: true, phone: null });
+    }
+    const phone = normalizePhone(raw);
+    if (!phone) return ack?.({ ok: false, error: 'invalid_phone' });
+    const taken = await db.one('SELECT 1 AS x FROM users WHERE phone = $1 AND nickname <> $2', [phone, me]);
+    if (taken) return ack?.({ ok: false, error: 'phone_taken' });
+    await db.run('UPDATE users SET phone = $1 WHERE nickname = $2', [phone, me]);
+    ack?.({ ok: true, phone: true });
+  });
+
   // Exact phone lookup for signed-in users. Phone numbers are never broadcast or shown in profiles.
   on('user_lookup_phone', async (payload, ack) => {
     if (!socketNick.get(socket.id)) return ack?.({ ok: false, error: 'not_logged_in' });
     const raw = String(payload?.phone || '').trim();
-    const phone = '+' + raw.replace(/\D/g, '');
-    if (!/^\+?[0-9 ()-]+$/.test(raw) || !/^\+[1-9]\d{6,14}$/.test(phone)) return ack?.({ ok: false, error: 'invalid_phone' });
+    const phone = normalizePhone(raw);
+    if (!phone) return ack?.({ ok: false, error: 'invalid_phone' });
     const user = await db.one('SELECT nickname, avatar, bio FROM users WHERE phone = $1', [phone]);
     if (!user) return ack?.({ ok: false, error: 'not_found' });
     ack?.({ ok: true, user: { nick: user.nickname, avatar: user.avatar || null, bio: user.bio || '' } });
