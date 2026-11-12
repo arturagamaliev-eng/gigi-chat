@@ -345,7 +345,7 @@ async function partnersOf(nick) {
 // user and for the people they have a chat with.
 async function recentStories(me) {
   const rows = await db.all(
-    `SELECT stories.id, stories.text, stories.media, stories.author, stories.created_at, CASE WHEN media.mime LIKE 'video/%' THEN 'video' WHEN media.mime LIKE 'image/%' THEN 'image' ELSE NULL END AS media_kind, (SELECT COUNT(*)::int FROM story_views v WHERE v.story_id = stories.id) AS views FROM stories LEFT JOIN media ON media.id = substr(stories.media, 8, 32)
+    `SELECT id, text, media, author, created_at, (SELECT COUNT(*)::int FROM story_views v WHERE v.story_id = stories.id) AS views FROM stories
      WHERE created_at > $1 AND (author IS NULL OR author = $2 OR author IN (
        SELECT CASE WHEN from_nick = $2 THEN to_nick ELSE from_nick END FROM messages WHERE from_nick = $2 OR to_nick = $2))
      ORDER BY id DESC LIMIT 20`,
@@ -1080,13 +1080,12 @@ io.on('connection', async socket => {
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
     const media = typeof payload?.media === 'string' && payload.media ? payload.media : null;
-    const mediaKind = payload?.media_kind === 'video' ? 'video' : 'image';
-    if (media) { const mid = mediaIdOf(media); const file = mid ? await db.one('SELECT mime FROM media WHERE id = $1', [mid]) : null; if (!file || (mediaKind === 'video' ? !file.mime.startsWith('video/') : !file.mime.startsWith('image/'))) return ack?.({ ok: false, error: 'invalid' }); }
+    if (media && !isOurMedia(media, 'image')) return ack?.({ ok: false, error: 'invalid' });
     if ((!text && !media) || text.length > 500) return ack?.({ ok: false, error: 'invalid' });
     const now = Date.now();
     const row = await db.one('INSERT INTO stories (text, media, created_at) VALUES ($1, $2, $3) RETURNING id', [text, media, now]);
     if (media) await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + STORY_MS, mediaIdOf(media)]);
-    io.emit('story', { id: row.id, text, media, media_kind: media ? mediaKind : null, created_at: now });
+    io.emit('story', { id: row.id, text, media, created_at: now });
     ack?.({ ok: true });
   });
 
@@ -1532,14 +1531,13 @@ io.on('connection', async socket => {
     if (!(await isPremium(me))) return ack?.({ ok: false, error: 'premium_required' });
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
     const media = typeof payload?.media === 'string' && payload.media ? payload.media : null;
-    const mediaKind = payload?.media_kind === 'video' ? 'video' : 'image';
-    if (media) { const mid = mediaIdOf(media); const file = mid ? await db.one('SELECT mime FROM media WHERE id = $1', [mid]) : null; if (!file || (mediaKind === 'video' ? !file.mime.startsWith('video/') : !file.mime.startsWith('image/'))) return ack?.({ ok: false, error: 'invalid' }); }
+    if (media && !isOurMedia(media, 'image')) return ack?.({ ok: false, error: 'invalid' });
     if ((!text && !media) || text.length > 500) return ack?.({ ok: false, error: 'invalid' });
     const now = Date.now();
     const row = await db.one('INSERT INTO stories (text, media, author, created_at) VALUES ($1, $2, $3, $4) RETURNING id',
       [text, media, me, now]);
     if (media) await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + STORY_MS, mediaIdOf(media)]);
-    const story = { id: row.id, text, media, media_kind: media ? mediaKind : null, author: me, created_at: now, reactions: {} };
+    const story = { id: row.id, text, media, author: me, created_at: now, reactions: {} };
     for (const p of [me, ...(await partnersOf(me))]) io.to('u:' + p).emit('story', story);
     ack?.({ ok: true });
   });
