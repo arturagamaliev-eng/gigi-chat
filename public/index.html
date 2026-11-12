@@ -313,8 +313,8 @@ html,body{min-height:100%;font-size:14px}
       <input id="search" class="field" type="search" autocomplete="off" data-i18n-ph="search">
       <div class="row"><select id="folderFilter" class="field" aria-label="Папка чатів"><option value="all">Усі чати</option><option value="personal">Особисті</option><option value="groups">Групи</option><option value="channels">Канали</option></select><button class="icon" id="folderManage" title="Папки">📁</button></div>
     </div>
-    <input id="storyPhoto" type="file" accept="image/*" hidden>
-    <input id="myStoryPhoto" type="file" accept="image/*" hidden>
+    <input id="storyPhoto" type="file" accept="image/*,video/mp4,video/webm,video/quicktime" hidden>
+    <input id="myStoryPhoto" type="file" accept="image/*,video/mp4,video/webm,video/quicktime" hidden>
     <input id="bgInput" type="file" accept="image/*" hidden>
     <div class="stories" id="stories" hidden></div>
     <div class="list" id="list"></div>
@@ -391,6 +391,7 @@ html,body{min-height:100%;font-size:14px}
     <button class="icon viewer-close" id="viewerClose">✕</button>
     <div class="viewer-title" id="viewerTitle"></div>
     <img id="viewerImg" class="viewer-img" alt="" hidden>
+    <video id="viewerVideo" class="viewer-img" controls playsinline hidden></video>
     <div id="viewerText"></div>
     <div id="storyReacts"></div>
     <button id="storyDelBtn" class="menu-item" data-i18n="storyDelete"></button>
@@ -406,6 +407,8 @@ html,body{min-height:100%;font-size:14px}
 
 <div id="toast" class="toast" role="status" hidden></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const I18N = {
@@ -651,6 +654,37 @@ const NICK_RE = /^[\p{L}\p{N}_]{3,20}$/u;
 
 let lang = localStorage.getItem('gigi_lang') || (navigator.language || 'en').slice(0, 2);
 if (!I18N[lang]) lang = 'en';
+
+const GIGI_FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyAyV_xX052tKZi26yWznkJ9FOAPXNY55U0',
+  authDomain: 'gigi-chat-c743a.firebaseapp.com',
+  projectId: 'gigi-chat-c743a',
+  storageBucket: 'gigi-chat-c743a.firebasestorage.app',
+  messagingSenderId: '737635454927',
+  appId: '1:737635454927:web:faa1a791657a446f124cba',
+  measurementId: 'G-Y3H9KD33Y6'
+};
+const GIGI_VAPID_KEY = 'BFoTtYjiYjca1rXn5twdKBEe0BedPaySzGsbgJ1qWpisO_FPObzQPi74vYFnEnnuSf4wNw4JrJSU_2mME-L1EPo';
+let gigiPushSetup = false;
+async function setupGigiWebPush() {
+  if (gigiPushSetup || !('serviceWorker' in navigator) || !('Notification' in window) || !window.firebase) return;
+  gigiPushSetup = true;
+  try {
+    const permission = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
+    if (permission !== 'granted') return;
+    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    if (!firebase.apps.length) firebase.initializeApp(GIGI_FIREBASE_CONFIG);
+    const messaging = firebase.messaging();
+    const fcmToken = await messaging.getToken({ vapidKey: GIGI_VAPID_KEY, serviceWorkerRegistration: registration });
+    const sessionToken = localStorage.getItem('gigi_token');
+    if (fcmToken && sessionToken && socket?.connected) socket.emit('push_register', { fcmToken, sessionToken });
+    messaging.onMessage(payload => {
+      const title = payload.notification?.title || payload.data?.title || 'Gigi Chat';
+      const body = payload.notification?.body || payload.data?.body || 'Нове повідомлення';
+      if (document.hidden) new Notification(title, { body, icon: '/favicon.ico' });
+    });
+  } catch (e) { console.warn('Web Push setup:', e.message); gigiPushSetup = false; }
+}
 
 let me = localStorage.getItem('gigi_nick') || null;
 let socket = null;
@@ -1029,6 +1063,7 @@ function onLogin(res) {
   setTimeout(flushOfflineOutbox, 250);
   localStorage.setItem('gigi_nick', me);
   if (res.token) localStorage.setItem('gigi_token', res.token);
+  setTimeout(setupGigiWebPush, 800);
   // Restore Premium from the server's persistent expiry returned by login.
   myPremium = Number(res.premium_until || 0) > Date.now();
   loadMe();
@@ -1413,7 +1448,7 @@ function renderStories() {
   box.hidden = stories.length === 0;
   for (const s of stories) {
     box.append(el('button', { class: 'story' + (seenStories.has(s.id) ? ' seen' : ''), onclick: () => openStory(s) },
-      el('span', { class: 'ring' }, el('span', {}, 'G')),
+      el('span', { class: 'ring' }, el('span', {}, s.media_kind === 'video' ? '▶' : 'G')),
       el('span', {}, s.author ? displayName(s.author) : t('storyTitle'))));
   }
 }
@@ -1421,8 +1456,13 @@ function renderStories() {
 function openStory(s) {
   $('viewerTitle').textContent = s.author ? displayName(s.author) : t('storyTitle');
   $('viewerText').textContent = s.text || '';
-  $('viewerImg').hidden = !s.media;
-  if (s.media) $('viewerImg').src = s.media;
+  const isVideo = s.media_kind === 'video' || s.kind === 'video';
+  $('viewerImg').hidden = !s.media || isVideo;
+  $('viewerVideo').hidden = !isVideo;
+  $('viewerVideo').pause();
+  $('viewerVideo').removeAttribute('src');
+  if (s.media && isVideo) { $('viewerVideo').src = s.media; $('viewerVideo').load(); }
+  else if (s.media) $('viewerImg').src = s.media;
   $('storyDelBtn').dataset.id = String(s.id);
   renderStoryReacts(s);
   $('viewer').hidden = false;
@@ -1431,8 +1471,8 @@ function openStory(s) {
   renderStories();
 }
 
-$('viewerClose').addEventListener('click', () => { $('viewer').hidden = true; });
-$('viewer').addEventListener('click', e => { if (e.target.id === 'viewer') $('viewer').hidden = true; });
+$('viewerClose').addEventListener('click', () => { $('viewerVideo').pause(); $('viewer').hidden = true; });
+$('viewer').addEventListener('click', e => { if (e.target.id === 'viewer') { $('viewerVideo').pause(); $('viewer').hidden = true; } });
 
 let pendingStory = null;
 
@@ -1465,8 +1505,8 @@ async function uploadBlob(blob) {
   return res.url;
 }
 
-function postStory(code, text, media) {
-  socket.emit('story_post', { code, text, media }, res => {
+function postStory(code, text, media, media_kind) {
+  socket.emit('story_post', { code, text, media, media_kind }, res => {
     if (res?.ok) return toast(t('storyPosted'));
     toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
   });
@@ -1495,8 +1535,11 @@ $('storyPhoto').addEventListener('change', async e => {
   if (!code) return;
   const text = (prompt(t('storyPrompt')) || '').trim();
   try {
-    const media = await uploadBlob(await compressImage(f));
-    postStory(code, text, media);
+    if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) throw new Error('type');
+    if (f.size > 15 * 1024 * 1024) throw new Error('size');
+    const blob = f.type.startsWith('image/') ? await compressImage(f) : f;
+    const media = await uploadBlob(blob);
+    postStory(code, text, media, f.type.startsWith('video/') ? 'video' : 'image');
   } catch {
     toast(t('uploadFailed'));
   }
@@ -2602,8 +2645,11 @@ $('myStoryPhoto').addEventListener('change', async e => {
   if (!f) return;
   const text = (prompt(t('storyPrompt')) || '').trim();
   try {
-    const media = await uploadBlob(await compressImage(f));
-    socket.emit('user_story_post', { text, media }, res => {
+    if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) throw new Error('type');
+    if (f.size > 15 * 1024 * 1024) throw new Error('size');
+    const blob = f.type.startsWith('image/') ? await compressImage(f) : f;
+    const media = await uploadBlob(blob);
+    socket.emit('user_story_post', { text, media, media_kind: f.type.startsWith('video/') ? 'video' : 'image' }, res => {
       toast(res?.ok ? t('storyPosted') : t(res?.error === 'premium_required' ? 'premiumRequired' : 'messageFailed'));
     });
   } catch {
@@ -2909,6 +2955,12 @@ function openHelpCenter() {
       'Відкрийте чат із другом та натисніть 🎁 у верхній частині розмови.',
       'Виберіть подарунок і підтвердьте надсилання, якщо система попросить.',
       'Якщо подарунок не надсилається, перевірте баланс зірок і з’єднання з інтернетом.'
+    ]},
+    { id:'earn-stars', label:'⭐ Як заробити зірки', title:'Як заробити зірки', body:[
+      'Натисніть кнопку 🔗 «Запросити друга» у верхній частині екрана.',
+      'Поділіться запрошенням із другом — надішліть йому посилання на Gigi Chat.',
+      'Після натискання кнопки запрошення система нараховує 15 ⭐. Отримати цю нагороду можна один раз на день.',
+      'Перевірити баланс зірок можна в Маркеті 🛍. Зірки можна використовувати для доступних подарунків та інших функцій, де вказана оплата зірками.'
     ]},
     { id:'phone-search', label:'📱 Пошук за номером', title:'Як додати номер і знайти людину', body:[
       'Щоб інші могли знайти вас за номером, відкрийте «Налаштування» та знайдіть розділ «Номер телефону для пошуку».',
