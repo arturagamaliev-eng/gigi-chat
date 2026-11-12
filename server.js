@@ -4,6 +4,18 @@ const crypto = require('crypto');
 const express = require('express');
 const { Server } = require('socket.io');
 const { Pool } = require('pg');
+const admin = require('firebase-admin');
+
+let firebaseReady = false;
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    firebaseReady = true;
+  } else {
+    console.warn('FIREBASE_SERVICE_ACCOUNT is not set; Web Push is disabled');
+  }
+} catch (e) { console.error('Firebase Admin initialization failed:', e.message); }
 
 const PORT = process.env.PORT || 3000;
 const MAX_TEXT = 2000;
@@ -267,6 +279,12 @@ CREATE TABLE IF NOT EXISTS media (
 );
 CREATE TABLE IF NOT EXISTS poll_votes (message_id INTEGER NOT NULL, nick TEXT NOT NULL, option_index INTEGER NOT NULL, PRIMARY KEY(message_id, nick));
 CREATE TABLE IF NOT EXISTS group_roles (chat_id INTEGER NOT NULL, nick TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'member', PRIMARY KEY(chat_id, nick));
+CREATE TABLE IF NOT EXISTS push_tokens (
+  token TEXT PRIMARY KEY,
+  nickname TEXT NOT NULL,
+  created_at DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_push_tokens_nick ON push_tokens(nickname);
 `;
 
 const findUser = nick => db.one('SELECT nickname, key, pass_salt, pass_hash FROM users WHERE key = $1', [keyOf(nick)]);
@@ -345,7 +363,7 @@ async function partnersOf(nick) {
 // user and for the people they have a chat with.
 async function recentStories(me) {
   const rows = await db.all(
-    `SELECT id, text, media, author, created_at, (SELECT COUNT(*)::int FROM story_views v WHERE v.story_id = stories.id) AS views FROM stories
+    `SELECT stories.id, stories.text, stories.media, stories.author, stories.created_at, CASE WHEN media.mime LIKE 'video/%' THEN 'video' WHEN media.mime LIKE 'image/%' THEN 'image' ELSE NULL END AS media_kind, (SELECT COUNT(*)::int FROM story_views v WHERE v.story_id = stories.id) AS views FROM stories LEFT JOIN media ON media.id = substr(stories.media, 8, 32)
      WHERE created_at > $1 AND (author IS NULL OR author = $2 OR author IN (
        SELECT CASE WHEN from_nick = $2 THEN to_nick ELSE from_nick END FROM messages WHERE from_nick = $2 OR to_nick = $2))
      ORDER BY id DESC LIMIT 20`,
@@ -450,6 +468,26 @@ app.get('/media/:id', route(async (req, res) => {
   res.set('Cache-Control', 'private, max-age=86400');
   res.send(Buffer.from(row.data, 'base64'));
 }));
+
+// Send a background Web Push notification to all registered browsers for a user.
+async function sendWebPush(nick, from) {
+  if (!firebaseReady) return;
+  const rows = await db.all('SELECT token FROM push_tokens WHERE nickname = $1', [nick]);
+  if (!rows.length) return;
+  const tokens = rows.map(r => r.token);
+  try {
+    const result = await admin.messaging().sendEachForMulticast({
+      tokens,
+      data: { title: 'Gigi Chat', body: `${from} надіслав(ла) тобі повідомлення`, url: '/' },
+      webpush: { headers: { TTL: '86400' } }
+    });
+    const invalid = [];
+    result.responses.forEach((r, i) => {
+      if (!r.success && ['messaging/registration-token-not-registered','messaging/invalid-registration-token'].includes(r.error?.code)) invalid.push(tokens[i]);
+    });
+    if (invalid.length) await db.run('DELETE FROM push_tokens WHERE token = ANY($1::text[])', [invalid]);
+  } catch (e) { console.error('Web Push send failed:', e.message); }
+}
 
 // ---- Realtime ----
 
@@ -652,6 +690,17 @@ io.on('connection', async socket => {
     io.to('u:' + to).emit('typing', { from: me, active, ...(preview !== undefined ? { preview } : {}) });
   });
 
+  on('push_register', async (payload, ack) => {
+    const me = socketNick.get(socket.id);
+    const sessionToken = String(payload?.sessionToken || '');
+    const fcmToken = String(payload?.fcmToken || '');
+    if (!me || !sessionToken || !fcmToken || fcmToken.length > 4096) return ack?.({ ok: false, error: 'invalid' });
+    const session = await db.one('SELECT nickname FROM sessions WHERE token = $1', [sessionToken]);
+    if (!session || session.nickname !== me) return ack?.({ ok: false, error: 'bad_session' });
+    await db.run('INSERT INTO push_tokens (token, nickname, created_at) VALUES ($1, $2, $3) ON CONFLICT (token) DO UPDATE SET nickname = excluded.nickname, created_at = excluded.created_at', [fcmToken, me, Date.now()]);
+    ack?.({ ok: true });
+  });
+
   on('message', async (payload, ack) => {
     const me = socketNick.get(socket.id);
     if (!me) return ack?.({ ok: false, error: 'not_logged_in' });
@@ -673,6 +722,7 @@ io.on('connection', async socket => {
     if (MEDIA_KINDS.has(kind)) await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + CHAT_MEDIA_MS, mediaIdOf(text)]);
     const msg = { id: row.id, from: me, to, text, created_at: now, read_at: null, kind, reply_to: Number.isInteger(Number(payload?.reply_to)) ? Number(payload.reply_to) : null, edited_at: null };
     io.to('u:' + to).to('u:' + me).emit('message', msg);
+    sendWebPush(to, me).catch(e => console.error('push:', e.message));
     ack?.({ ok: true, msg });
   });
 
@@ -1080,12 +1130,13 @@ io.on('connection', async socket => {
     if (!adminOk(payload?.code)) return ack?.({ ok: false, error: 'bad_code' });
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
     const media = typeof payload?.media === 'string' && payload.media ? payload.media : null;
-    if (media && !isOurMedia(media, 'image')) return ack?.({ ok: false, error: 'invalid' });
+    const mediaKind = payload?.media_kind === 'video' ? 'video' : 'image';
+    if (media) { const mid = mediaIdOf(media); const file = mid ? await db.one('SELECT mime FROM media WHERE id = $1', [mid]) : null; if (!file || (mediaKind === 'video' ? !file.mime.startsWith('video/') : !file.mime.startsWith('image/'))) return ack?.({ ok: false, error: 'invalid' }); }
     if ((!text && !media) || text.length > 500) return ack?.({ ok: false, error: 'invalid' });
     const now = Date.now();
     const row = await db.one('INSERT INTO stories (text, media, created_at) VALUES ($1, $2, $3) RETURNING id', [text, media, now]);
     if (media) await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + STORY_MS, mediaIdOf(media)]);
-    io.emit('story', { id: row.id, text, media, created_at: now });
+    io.emit('story', { id: row.id, text, media, media_kind: media ? mediaKind : null, created_at: now });
     ack?.({ ok: true });
   });
 
@@ -1531,13 +1582,14 @@ io.on('connection', async socket => {
     if (!(await isPremium(me))) return ack?.({ ok: false, error: 'premium_required' });
     const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
     const media = typeof payload?.media === 'string' && payload.media ? payload.media : null;
-    if (media && !isOurMedia(media, 'image')) return ack?.({ ok: false, error: 'invalid' });
+    const mediaKind = payload?.media_kind === 'video' ? 'video' : 'image';
+    if (media) { const mid = mediaIdOf(media); const file = mid ? await db.one('SELECT mime FROM media WHERE id = $1', [mid]) : null; if (!file || (mediaKind === 'video' ? !file.mime.startsWith('video/') : !file.mime.startsWith('image/'))) return ack?.({ ok: false, error: 'invalid' }); }
     if ((!text && !media) || text.length > 500) return ack?.({ ok: false, error: 'invalid' });
     const now = Date.now();
     const row = await db.one('INSERT INTO stories (text, media, author, created_at) VALUES ($1, $2, $3, $4) RETURNING id',
       [text, media, me, now]);
     if (media) await db.run('UPDATE media SET expires_at = $1 WHERE id = $2', [now + STORY_MS, mediaIdOf(media)]);
-    const story = { id: row.id, text, media, author: me, created_at: now, reactions: {} };
+    const story = { id: row.id, text, media, media_kind: media ? mediaKind : null, author: me, created_at: now, reactions: {} };
     for (const p of [me, ...(await partnersOf(me))]) io.to('u:' + p).emit('story', story);
     ack?.({ ok: true });
   });
