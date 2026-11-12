@@ -270,13 +270,6 @@ html,body{min-height:100%;font-size:14px}
   .modal-box{max-height:calc(var(--visible-height) - 10px);padding-top:20px}
 }
 
-
-.settings-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;position:sticky;top:0;background:var(--panel);padding:5px 0 12px;z-index:2}
-.settings-tab{min-width:0;border:1px solid var(--line);border-radius:12px;padding:10px 4px;background:var(--panel2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer}
-.settings-tab.active{background:var(--accent);border-color:var(--accent);color:white}
-.settings-pane{min-height:120px;animation:settingsIn .16s ease}
-@keyframes settingsIn{from{opacity:.65;transform:translateY(3px)}to{opacity:1;transform:none}}
-@media(max-width:380px){.settings-tab{font-size:11px;padding:9px 2px}}
 </style>
 </head>
 <body>
@@ -320,8 +313,8 @@ html,body{min-height:100%;font-size:14px}
       <input id="search" class="field" type="search" autocomplete="off" data-i18n-ph="search">
       <div class="row"><select id="folderFilter" class="field" aria-label="Папка чатів"><option value="all">Усі чати</option><option value="personal">Особисті</option><option value="groups">Групи</option><option value="channels">Канали</option></select><button class="icon" id="folderManage" title="Папки">📁</button></div>
     </div>
-    <input id="storyPhoto" type="file" accept="image/*,video/mp4,video/webm,video/quicktime" hidden>
-    <input id="myStoryPhoto" type="file" accept="image/*,video/mp4,video/webm,video/quicktime" hidden>
+    <input id="storyPhoto" type="file" accept="image/*" hidden>
+    <input id="myStoryPhoto" type="file" accept="image/*" hidden>
     <input id="bgInput" type="file" accept="image/*" hidden>
     <div class="stories" id="stories" hidden></div>
     <div class="list" id="list"></div>
@@ -398,7 +391,6 @@ html,body{min-height:100%;font-size:14px}
     <button class="icon viewer-close" id="viewerClose">✕</button>
     <div class="viewer-title" id="viewerTitle"></div>
     <img id="viewerImg" class="viewer-img" alt="" hidden>
-    <video id="viewerVideo" class="viewer-img" controls playsinline hidden></video>
     <div id="viewerText"></div>
     <div id="storyReacts"></div>
     <button id="storyDelBtn" class="menu-item" data-i18n="storyDelete"></button>
@@ -1421,7 +1413,7 @@ function renderStories() {
   box.hidden = stories.length === 0;
   for (const s of stories) {
     box.append(el('button', { class: 'story' + (seenStories.has(s.id) ? ' seen' : ''), onclick: () => openStory(s) },
-      el('span', { class: 'ring' }, el('span', {}, s.media_kind === 'video' ? '▶' : 'G')),
+      el('span', { class: 'ring' }, el('span', {}, 'G')),
       el('span', {}, s.author ? displayName(s.author) : t('storyTitle'))));
   }
 }
@@ -1429,13 +1421,8 @@ function renderStories() {
 function openStory(s) {
   $('viewerTitle').textContent = s.author ? displayName(s.author) : t('storyTitle');
   $('viewerText').textContent = s.text || '';
-  const isVideo = s.media_kind === 'video' || s.kind === 'video';
-  $('viewerImg').hidden = !s.media || isVideo;
-  $('viewerVideo').hidden = !isVideo;
-  $('viewerVideo').pause();
-  $('viewerVideo').removeAttribute('src');
-  if (s.media && isVideo) { $('viewerVideo').src = s.media; $('viewerVideo').load(); }
-  else if (s.media) $('viewerImg').src = s.media;
+  $('viewerImg').hidden = !s.media;
+  if (s.media) $('viewerImg').src = s.media;
   $('storyDelBtn').dataset.id = String(s.id);
   renderStoryReacts(s);
   $('viewer').hidden = false;
@@ -1444,8 +1431,8 @@ function openStory(s) {
   renderStories();
 }
 
-$('viewerClose').addEventListener('click', () => { $('viewerVideo').pause(); $('viewer').hidden = true; });
-$('viewer').addEventListener('click', e => { if (e.target.id === 'viewer') { $('viewerVideo').pause(); $('viewer').hidden = true; } });
+$('viewerClose').addEventListener('click', () => { $('viewer').hidden = true; });
+$('viewer').addEventListener('click', e => { if (e.target.id === 'viewer') $('viewer').hidden = true; });
 
 let pendingStory = null;
 
@@ -1478,8 +1465,8 @@ async function uploadBlob(blob) {
   return res.url;
 }
 
-function postStory(code, text, media, media_kind) {
-  socket.emit('story_post', { code, text, media, media_kind }, res => {
+function postStory(code, text, media) {
+  socket.emit('story_post', { code, text, media }, res => {
     if (res?.ok) return toast(t('storyPosted'));
     toast(t(res?.error === 'bad_code' ? 'badCode' : 'messageFailed'));
   });
@@ -1508,11 +1495,8 @@ $('storyPhoto').addEventListener('change', async e => {
   if (!code) return;
   const text = (prompt(t('storyPrompt')) || '').trim();
   try {
-    if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) throw new Error('type');
-    if (f.size > 15 * 1024 * 1024) throw new Error('size');
-    const blob = f.type.startsWith('image/') ? await compressImage(f) : f;
-    const media = await uploadBlob(blob);
-    postStory(code, text, media, f.type.startsWith('video/') ? 'video' : 'image');
+    const media = await uploadBlob(await compressImage(f));
+    postStory(code, text, media);
   } catch {
     toast(t('uploadFailed'));
   }
@@ -2078,7 +2062,7 @@ function openSettings() {
       avatarNode(n, null, 40),
       el('div', { class: 'meta' }, el('div', { class: 'name' }, n)),
       el('button', { class: 'btn ghost', onclick: () => unblockUser(n) }, t('unblockBtn'))));
-    const settingsNodes = [
+    openModal([
       el('div', { class: 'acc-head' }, t('settingsTitle')),
       el('button', { class: 'btn danger', style: 'width:100%;margin:8px 0 14px', onclick: () => { if (!confirm('Вийти з цього акаунта на цьому пристрої?')) return; closeModal(); forget(); location.reload(); } }, '🚪 Вийти з акаунта'),
       el('div', { class: 'sub' }, t('themeLabel')),
@@ -2122,29 +2106,7 @@ function openSettings() {
       ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noBlocked'))]),
       el('div', { class:'acc-head', style:'margin-top:18px' }, '🚪 Вихід з акаунта'),
       el('button', { class:'btn danger', style:'width:100%;margin-top:8px', onclick: () => { if (!confirm('Вийти з цього акаунта на цьому пристрої?')) return; closeModal(); forget(); location.reload(); } }, 'Вийти з акаунта'),
-    ];
-    const tabNames = ['Дані', 'Теми', 'Історії', 'Інше'];
-    const tabIcons = ['👤', '🎨', '📖', '⚙️'];
-    const panes = tabNames.map((name, i) => el('div', { class: 'settings-pane', style: i ? 'display:none' : '' }));
-    let section = 0;
-    settingsNodes.forEach(node => {
-      const label = (node.textContent || '').trim();
-      if (label === t('themeLabel')) section = 1;
-      if (/premiumTitle|blockedTitle|Вихід з акаунта/.test(label)) section = 3;
-      if (node.classList?.contains('pf-actions') && /Опублікувати історію|Опублікувати фото-історію/.test(label)) {
-        [...node.children].forEach(child => {
-          if (/Опублікувати історію|Опублікувати фото-історію/.test(child.textContent || '')) panes[2].append(child);
-          else panes[section].append(child);
-        });
-        return;
-      }
-      panes[section].append(node);
-    });
-    const tabBar = el('div', { class: 'settings-tabs' }, ...tabNames.map((name, i) => el('button', { class: 'settings-tab' + (i === 0 ? ' active' : ''), onclick: () => {
-      panes.forEach((pane, index) => pane.style.display = index === i ? '' : 'none');
-      tabBar.querySelectorAll('.settings-tab').forEach((button, index) => button.classList.toggle('active', index === i));
-    } }, tabIcons[i] + ' ' + name)));
-    openModal([tabBar, ...panes]);
+    ]);
   });
 }
 
@@ -2640,11 +2602,8 @@ $('myStoryPhoto').addEventListener('change', async e => {
   if (!f) return;
   const text = (prompt(t('storyPrompt')) || '').trim();
   try {
-    if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) throw new Error('type');
-    if (f.size > 15 * 1024 * 1024) throw new Error('size');
-    const blob = f.type.startsWith('image/') ? await compressImage(f) : f;
-    const media = await uploadBlob(blob);
-    socket.emit('user_story_post', { text, media, media_kind: f.type.startsWith('video/') ? 'video' : 'image' }, res => {
+    const media = await uploadBlob(await compressImage(f));
+    socket.emit('user_story_post', { text, media }, res => {
       toast(res?.ok ? t('storyPosted') : t(res?.error === 'premium_required' ? 'premiumRequired' : 'messageFailed'));
     });
   } catch {
