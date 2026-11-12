@@ -270,6 +270,13 @@ html,body{min-height:100%;font-size:14px}
   .modal-box{max-height:calc(var(--visible-height) - 10px);padding-top:20px}
 }
 
+
+.settings-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;position:sticky;top:0;background:var(--panel);padding:5px 0 12px;z-index:2}
+.settings-tab{min-width:0;border:1px solid var(--line);border-radius:12px;padding:10px 4px;background:var(--panel2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer}
+.settings-tab.active{background:var(--accent);border-color:var(--accent);color:white}
+.settings-pane{min-height:120px;animation:settingsIn .16s ease}
+@keyframes settingsIn{from{opacity:.65;transform:translateY(3px)}to{opacity:1;transform:none}}
+@media(max-width:380px){.settings-tab{font-size:11px;padding:9px 2px}}
 </style>
 </head>
 <body>
@@ -2071,7 +2078,7 @@ function openSettings() {
       avatarNode(n, null, 40),
       el('div', { class: 'meta' }, el('div', { class: 'name' }, n)),
       el('button', { class: 'btn ghost', onclick: () => unblockUser(n) }, t('unblockBtn'))));
-    openModal([
+    const settingsNodes = [
       el('div', { class: 'acc-head' }, t('settingsTitle')),
       el('button', { class: 'btn danger', style: 'width:100%;margin:8px 0 14px', onclick: () => { if (!confirm('Вийти з цього акаунта на цьому пристрої?')) return; closeModal(); forget(); location.reload(); } }, '🚪 Вийти з акаунта'),
       el('div', { class: 'sub' }, t('themeLabel')),
@@ -2115,7 +2122,29 @@ function openSettings() {
       ...(rows.length ? rows : [el('div', { class: 'empty' }, t('noBlocked'))]),
       el('div', { class:'acc-head', style:'margin-top:18px' }, '🚪 Вихід з акаунта'),
       el('button', { class:'btn danger', style:'width:100%;margin-top:8px', onclick: () => { if (!confirm('Вийти з цього акаунта на цьому пристрої?')) return; closeModal(); forget(); location.reload(); } }, 'Вийти з акаунта'),
-    ]);
+    ];
+    const tabNames = ['Дані', 'Теми', 'Історії', 'Інше'];
+    const tabIcons = ['👤', '🎨', '📖', '⚙️'];
+    const panes = tabNames.map((name, i) => el('div', { class: 'settings-pane', style: i ? 'display:none' : '' }));
+    let section = 0;
+    settingsNodes.forEach(node => {
+      const label = (node.textContent || '').trim();
+      if (label === t('themeLabel')) section = 1;
+      if (/premiumTitle|blockedTitle|Вихід з акаунта/.test(label)) section = 3;
+      if (node.classList?.contains('pf-actions') && /Опублікувати історію|Опублікувати фото-історію/.test(label)) {
+        [...node.children].forEach(child => {
+          if (/Опублікувати історію|Опублікувати фото-історію/.test(child.textContent || '')) panes[2].append(child);
+          else panes[section].append(child);
+        });
+        return;
+      }
+      panes[section].append(node);
+    });
+    const tabBar = el('div', { class: 'settings-tabs' }, ...tabNames.map((name, i) => el('button', { class: 'settings-tab' + (i === 0 ? ' active' : ''), onclick: () => {
+      panes.forEach((pane, index) => pane.style.display = index === i ? '' : 'none');
+      tabBar.querySelectorAll('.settings-tab').forEach((button, index) => button.classList.toggle('active', index === i));
+    } }, tabIcons[i] + ' ' + name)));
+    openModal([tabBar, ...panes]);
   });
 }
 
