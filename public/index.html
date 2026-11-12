@@ -331,6 +331,7 @@ html,body{min-height:100%;font-size:14px}
       </div>
       <div class="account-tools-secondary" aria-label="Додаткові дії">
         <button class="icon" id="groupsBtn" data-i18n-title="groupsBtn" title="Групи" hidden>👥</button>
+        <button class="icon" id="notesBtn" aria-label="Мої нотатки" title="Мої нотатки">📝</button>
         <button class="icon" id="settingsBtn" aria-label="settings" title="Налаштування" hidden>⚙</button>
         <button class="icon" id="logout" aria-label="logout" title="Вийти" hidden>⎋</button>
       </div>
@@ -362,6 +363,7 @@ html,body{min-height:100%;font-size:14px}
       <div id="replyBar" class="chan-note" hidden></div>
       <form class="composer" id="composer">
         <button type="button" class="icon" id="attachBtn" data-i18n="attachBtn"></button>
+        <button type="button" class="icon" id="voiceRecordBtn" title="Записати голосове повідомлення">🎙️</button>
         <button type="button" class="icon" id="pollBtn" title="Створити опитування" hidden>📊</button>
         <input id="fileInput" type="file" accept="image/*,video/mp4,video/webm,video/quicktime,.pdf,.zip,.doc,.docx,.xls,.xlsx,.csv,.txt" hidden>
         <textarea id="input" rows="1" data-i18n-ph="typeMessage"></textarea>
@@ -1081,7 +1083,7 @@ async function sendMedia(blob) {
   if (!socket?.connected) return toast(t('errNetwork'));
   if (blob.size > 15 * 1024 * 1024) return toast(t('fileTooBig'));
   const mime = (blob.type || 'application/octet-stream').split(';')[0].toLowerCase();
-  const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : 'file';
+  const kind = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
   let data;
   try { data = await readAsDataURL(blob); }
   catch { return toast(t('uploadFailed')); }
@@ -1399,6 +1401,41 @@ $('pollBtn').addEventListener('click', () => {
     if (!res?.ok) return toast(res?.error === 'invalid_poll' ? 'Потрібно мінімум два різні варіанти' : 'Не вдалося створити опитування');
     const list = gcache.get(activeGroup) || []; list.push(res.msg); gcache.set(activeGroup, list); renderMessages();
   });
+});
+
+
+// Private notes are stored only in this browser/device.
+$('notesBtn').addEventListener('click', () => {
+  const key = 'gigi_private_notes_' + (me || 'guest');
+  const notes = JSON.parse(localStorage.getItem(key) || '[]');
+  const list = el('div', { class: 'note-list' });
+  const draw = () => {
+    list.replaceChildren();
+    const current = JSON.parse(localStorage.getItem(key) || '[]');
+    current.forEach((note, i) => list.append(el('div', { class:'acc-row' },
+      el('div', { class:'meta' }, el('div', { class:'name' }, note.title || 'Нотатка'), el('div', { class:'sub' }, note.body)),
+      el('button', { class:'icon', title:'Редагувати', onclick:() => edit(i) }, '✏️'),
+      el('button', { class:'icon', title:'Видалити', onclick:() => { current.splice(i,1); localStorage.setItem(key,JSON.stringify(current)); draw(); } }, '🗑️'))));
+  };
+  const edit = i => { const current=JSON.parse(localStorage.getItem(key)||'[]'); const old=current[i]||{title:'',body:''}; const title=prompt('Назва нотатки:',old.title); if(title===null)return; const body=prompt('Текст нотатки:',old.body); if(body===null)return; current[i]={title,body}; localStorage.setItem(key,JSON.stringify(current)); draw(); };
+  openModal([el('div',{class:'acc-head'},'📝 Мої нотатки'),el('div',{class:'hint'},'Приватно: нотатки зберігаються лише на цьому пристрої.'),list,el('button',{class:'btn',onclick:()=>{const current=JSON.parse(localStorage.getItem(key)||'[]');current.push({title:'Нова нотатка',body:''});localStorage.setItem(key,JSON.stringify(current));edit(current.length-1);}},'＋ Додати нотатку')]);
+  draw();
+});
+
+// Record voice messages with the browser microphone and send through existing audio upload API.
+let voiceRecorder = null, voiceChunks = [];
+$('voiceRecordBtn').addEventListener('click', async () => {
+  const btn=$('voiceRecordBtn');
+  if (voiceRecorder?.state === 'recording') { voiceRecorder.stop(); btn.textContent='🎙️'; btn.title='Записати голосове повідомлення'; return; }
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return toast('Запис голосу не підтримується цим браузером');
+  try {
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    const mime=['audio/webm;codecs=opus','audio/webm','audio/mp4'].find(x=>MediaRecorder.isTypeSupported(x));
+    voiceRecorder=new MediaRecorder(stream,mime?{mimeType:mime}:undefined); voiceChunks=[];
+    voiceRecorder.ondataavailable=e=>{if(e.data.size)voiceChunks.push(e.data);};
+    voiceRecorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());const blob=new Blob(voiceChunks,{type:voiceRecorder.mimeType||'audio/webm'});if(blob.size)sendMedia(blob);};
+    voiceRecorder.start(); btn.textContent='⏹️'; btn.title='Зупинити й надіслати';
+  } catch { toast('Дозволь доступ до мікрофона, щоб записати голос'); }
 });
 
 $('attachBtn').addEventListener('click', () => $('fileInput').click());
