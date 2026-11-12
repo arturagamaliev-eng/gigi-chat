@@ -2107,6 +2107,9 @@ function openSettings() {
       el('button', { class: 'btn ghost', onclick: () => unblockUser(n) }, t('unblockBtn'))));
     openModal([
       el('div', { class: 'acc-head' }, t('settingsTitle')),
+      el('div', { class: 'acc-head' }, '🔔 Push-сповіщення'),
+      el('div', { class: 'sub' }, 'Дозволь сповіщення, щоб отримувати повідомлення, коли Gigi Chat закритий.'),
+      el('button', { class: 'btn', style: 'width:100%;margin:8px 0 16px', onclick: async () => { gigiPushSetup = false; await setupGigiWebPush(); if (Notification.permission === 'granted') toast('Перевірка Push-підписки завершена. Якщо сповіщення не працюють, перевіримо сервер.'); else toast('Дозволь сповіщення у вікні Chrome.'); } }, '🔔 Увімкнути сповіщення'),
       el('button', { class: 'btn danger', style: 'width:100%;margin:8px 0 14px', onclick: () => { if (!confirm('Вийти з цього акаунта на цьому пристрої?')) return; closeModal(); forget(); location.reload(); } }, '🚪 Вийти з акаунта'),
       el('div', { class: 'sub' }, t('themeLabel')),
       el('div', { class: 'pf-actions', style: 'margin:8px 0 16px;flex-wrap:wrap' },
